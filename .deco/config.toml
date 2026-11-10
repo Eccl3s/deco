@@ -1,0 +1,19 @@
+# deco project-local development container configuration
+
+[container]
+image = "registry.fedoraproject.org/fedora:40"
+name = "deco-dev"
+
+[env]
+EDITOR = "vim"
+SHELL = "/bin/bash"
+
+[[mount]]
+source = "."
+target = "/work"
+readonly = false
+
+[[mount]]
+source = "$HOME/.config"
+target = "/home/dev/.config"
+readonly = true
