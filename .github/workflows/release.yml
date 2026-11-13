@@ -1,0 +1,39 @@
+# Optional: release source archives on version tags (no Podman binaries or opam publication).
+name: Deco source release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify release on OCaml 5.5.2
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: '5.5.2'
+      - name: Verify compiler version
+        run: test "$(opam exec -- ocamlc -version)" = '5.5.2'
+      - run: opam install . --deps-only --with-test
+      - run: opam exec -- dune build
+      - run: opam exec -- dune build @check
+      - run: opam exec -- dune runtest
+
+  publish:
+    name: Publish GitHub source archives
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish source release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" --verify-tag --generate-notes --title "$TAG"
