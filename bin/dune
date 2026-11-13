@@ -1,0 +1,6 @@
+(executable
+ (public_name deco)
+ (name deco)
+ (libraries deco)
+ (flags
+  (:standard -w +a -warn-error +a)))
