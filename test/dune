@@ -4,5 +4,6 @@
   test_config_decode
   test_config_validate
   test_config_diagnostic
-  test_config_resolve)
- (libraries deco config))
+  test_config_resolve
+  test_project)
+ (libraries deco config unix))
