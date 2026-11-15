@@ -1,8 +1,28 @@
-(** Pure planning from a successfully loaded configuration; no runtime queries.
-*)
+type operation =
+  | Availability
+  | Image_exists
+  | Image_inspect
+  | Container_exists
+  | Container_inspect
+  | Build
+  | Built_exists
+  | Built_inspect
+  | Create
+  | Created_exists
+  | Created_inspect
+  | Start
+  | Started_exists
+  | Started_inspect
+      (** Pure planning from a successfully loaded configuration; no runtime
+          queries. *)
+
 type argument = Literal of string | Image_id | Container_id
 
-type step = { condition : string option; command : argument list }
+type step = {
+  operation : operation;
+  condition : string option;
+  command : argument list;
+}
 
 type t = private {
   build : string list;

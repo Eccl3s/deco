@@ -1,5 +1,27 @@
+type operation =
+  | Availability
+  | Image_exists
+  | Image_inspect
+  | Container_exists
+  | Container_inspect
+  | Build
+  | Built_exists
+  | Built_inspect
+  | Create
+  | Created_exists
+  | Created_inspect
+  | Start
+  | Started_exists
+  | Started_inspect
+
 type argument = Literal of string | Image_id | Container_id
-type step = { condition : string option; command : argument list }
+
+type step = {
+  operation : operation;
+  condition : string option;
+  command : argument list;
+}
+
 type t = { build : string list; create : argument list; steps : step list }
 type error = string
 
@@ -137,7 +159,27 @@ let make (loaded : Config_loader.t) =
           @ mount @ [ "--" ])
         @ [ Image_id ]
       in
-      let step ?condition command = { condition; command } in
+      let roles =
+        [
+          Availability;
+          Image_exists;
+          Image_inspect;
+          Container_exists;
+          Container_inspect;
+          Build;
+          Built_exists;
+          Built_inspect;
+          Create;
+          Created_exists;
+          Created_inspect;
+          Start;
+          Started_exists;
+          Started_inspect;
+        ]
+      in
+      let step ?condition command =
+        { operation = Availability; condition; command }
+      in
       let steps =
         [
           step (literals Podman_command.info);
@@ -152,17 +194,37 @@ let make (loaded : Config_loader.t) =
               ("After ownership and compatibility checks pass, if image "
              ^ quote image ^ " is missing")
             (literals build);
+          step ~condition:"After building the missing image"
+            (literals (Podman_command.exists "image" image));
+          step ~condition:"After building the missing image"
+            (literals (Podman_command.inspect "image" image));
           step
             ~condition:
               ("After ownership and compatibility checks pass, if container "
              ^ quote c.container.name ^ " is missing")
             create;
+          step ~condition:"After creating the missing container"
+            (literals [ "podman"; "container"; "exists"; "--" ]
+            @ [ Container_id ]);
+          step ~condition:"After creating the missing container"
+            (literals [ "podman"; "container"; "inspect"; "--" ]
+            @ [ Container_id ]);
           step
             ~condition:
               ("After ownership and compatibility checks pass, if container "
              ^ quote c.container.name ^ " is new or stopped")
             (literals [ "podman"; "start"; "--" ] @ [ Container_id ]);
+          step ~condition:"After starting the container"
+            (literals [ "podman"; "container"; "exists"; "--" ]
+            @ [ Container_id ]);
+          step ~condition:"After starting the container"
+            (literals [ "podman"; "container"; "inspect"; "--" ]
+            @ [ Container_id ]);
         ]
+      in
+      assert (List.length roles = List.length steps);
+      let steps =
+        List.map2 (fun operation step -> { step with operation }) roles steps
       in
       if
         List.exists

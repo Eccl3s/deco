@@ -7,7 +7,7 @@ type error =
 
 type 'a presence = Absent | Present of 'a
 type labels = (string * string) list
-type image = { id : string; labels : labels }
+type image = { id : string; labels : labels; user : string; workdir : string }
 
 type mount = {
   kind : string;
@@ -62,8 +62,21 @@ let labels value =
   | `Assoc xs -> List.map (fun (k, v) -> (k, string v)) xs
   | _ -> failwith "Expected labels object"
 
+let optional name default decode = function
+  | `Assoc xs -> (
+      match List.assoc_opt name xs with
+      | None | Some `Null -> default
+      | Some value -> decode value)
+  | _ -> failwith "Expected object"
+
 let image json : image =
-  { id = string (field "Id" json); labels = labels (field "Labels" json) }
+  let config = field "Config" json in
+  {
+    id = string (field "Id" json);
+    labels = optional "Labels" [] labels json;
+    user = optional "User" "" string config;
+    workdir = optional "WorkingDir" "" string config;
+  }
 
 let mount json =
   {
@@ -80,9 +93,9 @@ let container json =
     labels = labels (field "Labels" config);
     state = string (field "Status" (field "State" json));
     image_id = string (field "Image" json);
-    user = string (field "User" config);
+    user = optional "User" "" string config;
     userns = string (field "UsernsMode" host);
-    workdir = string (field "WorkingDir" config);
+    workdir = optional "WorkingDir" "" string config;
     init =
       (match host with
       | `Assoc xs -> (
@@ -124,3 +137,17 @@ let inspect_image ?(run = default_run) name = inspect run "image" image name
 
 let inspect_container ?(run = default_run) name =
   inspect run "container" container name
+
+let decode_image text =
+  try
+    match Yojson.Basic.from_string text with
+    | `List [ json ] -> Ok (image json)
+    | _ -> Error "Expected one image"
+  with Failure e | Yojson.Json_error e -> Error e
+
+let decode_container text =
+  try
+    match Yojson.Basic.from_string text with
+    | `List [ json ] -> Ok (container json)
+    | _ -> Error "Expected one container"
+  with Failure e | Yojson.Json_error e -> Error e

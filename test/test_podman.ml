@@ -50,7 +50,9 @@ let () =
   assert (
     match
       inspect
-        (result ~stdout:"[{\"Id\":\"abc\",\"Labels\":null,\"Extra\":true}]"
+        (result
+           ~stdout:
+             "[{\"Id\":\"abc\",\"Labels\":null,\"Config\":{\"User\":\"\",\"WorkingDir\":\"/\"},\"Extra\":true}]"
            (Unix.WEXITED 0))
     with
     | Ok (Present i) -> i.id = "abc" && i.labels = []
@@ -233,3 +235,18 @@ let () =
            ("dev.deco.user-identity", "uid:1,gid:1");
            ("dev.deco.user-identity", "uid:1,gid:1");
          ]))
+
+let () =
+  List.iter
+    (fun text ->
+      assert (
+        match Podman.decode_image text with
+        | Ok i -> i.user = "" && i.workdir = "" && i.labels = []
+        | _ -> false))
+    [
+      {|[{"Id":"iid","Config":{}}]|};
+      {|[{"Id":"iid","Labels":null,"Config":{"User":null,"WorkingDir":null}}]|};
+    ];
+  assert (
+    Result.is_error
+      (Podman.decode_image {|[{"Id":"iid","Config":{"User":42}}]|}))

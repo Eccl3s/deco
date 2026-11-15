@@ -8,7 +8,7 @@ type error =
 
 type 'a presence = Absent | Present of 'a
 type labels = (string * string) list
-type image = { id : string; labels : labels }
+type image = { id : string; labels : labels; user : string; workdir : string }
 
 type mount = {
   kind : string;
@@ -34,3 +34,7 @@ val inspect_image : ?run:runner -> string -> (image presence, error) result
 
 val inspect_container :
   ?run:runner -> string -> (container presence, error) result
+
+val message : Process.result -> string
+val decode_image : string -> (image, string) result
+val decode_container : string -> (container, string) result
