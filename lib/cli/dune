@@ -1,0 +1,17 @@
+(library
+ (name cli)
+ (private_modules error_report)
+ (libraries deco cmdliner unix)
+ (flags
+  (:standard -w +a -warn-error +a)))
+
+(rule
+ (targets generated_version.ml build_version.txt)
+ (deps (universe))
+ (action
+  (with-stdout-to
+   generated_version.ml
+   (run
+    %{exe:../../tools/gen_version/gen_version.exe}
+    %{version:deco}
+    build_version.txt))))

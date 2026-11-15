@@ -29,3 +29,9 @@ let () =
       { path = [ "a" ]; message = "b" }
     < 0);
   assert (D.compare diagnostic diagnostic = 0)
+
+let () =
+  assert (Config.Diagnostic.format_path [] = "");
+  assert (
+    Config.Diagnostic.format_path [ "build"; "args"; "a.b" ]
+    = "build.args.\"a.b\"")

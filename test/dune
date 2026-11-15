@@ -9,4 +9,13 @@
   test_config_loader
   test_host_paths
   test_user_identity)
+ (modules :standard \ test_cli)
  (libraries deco config unix))
+
+(test
+ (name test_cli)
+ (modules test_cli)
+ (libraries unix)
+ (deps ../bin/deco.exe)
+ (action
+  (run %{test} %{exe:../bin/deco.exe} %{read:../lib/cli/build_version.txt})))

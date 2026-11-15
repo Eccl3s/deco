@@ -31,7 +31,19 @@ See [specs/](specs/) for the full CLI and configuration specifications.
 
 ## Getting Started
 
-Once implemented, Deco's intended workflow will be:
+Deco currently implements `validate`, help, and version output. Other commands
+below describe the planned workflow.
+
+Validate an existing project with `deco validate` or select one explicitly with
+`deco --project-dir PATH validate` (the option also works after the command).
+Use `deco --help` for details and `deco --version` for the development version.
+Validation checks configuration, defaults, host paths and identity without Podman.
+Podman-backed `--project` lookup, runtime compatibility, namespace feasibility,
+and image account/executable checks remain deferred; this is not full v1
+validation conformance. Errors go to stderr with exit code 2; success identifies
+the config path on stdout with exit code 0.
+
+The intended full workflow will be:
 
 Initialize a project:
 
@@ -247,3 +259,15 @@ See [LICENSE](LICENSE) for details.
 For v0.1.0, `[user]` supports `keep-id` and `image`. Explicit UID/GID values
 must be in 0–4294967294 and fit an OCaml `int`. Image mode, including an
 omitted mode, forbids UID/GID settings; this is an additional v0.1.0 restriction.
+
+### Build and release versions
+
+The CLI derives its version during the build from Dune package metadata, or
+from Git (including an untagged commit identifier). There is no runtime Git
+dependency and no hardcoded development version.
+
+Before preparing a release archive, embed the release version in `dune-project`
+and regenerate `deco.opam` in a disposable release checkout. Build and verify
+`deco --version` before archiving. Metadata-free archives without Git fail to
+build; raw GitHub source archives must first receive explicit version metadata.
+The existing release workflow does not prepare these archives automatically.

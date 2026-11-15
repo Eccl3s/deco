@@ -10,11 +10,11 @@
      --dev-pkg
      %{pkg-self:dev}
      --with-cmdliner
-     false)))))
+     %{pkg:cmdliner:installed})))))
 
 (depends
  (all_platforms
-  (ocaml ocamlfind ocamlbuild topkg)))
+  (ocaml ocamlfind ocamlbuild topkg cmdliner)))
 
 (source
  (fetch

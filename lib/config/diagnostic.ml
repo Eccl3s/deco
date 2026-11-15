@@ -4,7 +4,7 @@ let compare a b =
   let order = Stdlib.compare a.path b.path in
   if order = 0 then String.compare a.message b.message else order
 
-let to_string { path; message } =
+let format_path path =
   let component s =
     if
       s <> ""
@@ -16,6 +16,7 @@ let to_string { path; message } =
     then s
     else Printf.sprintf "%S" s
   in
-  match path with
-  | [] -> message
-  | _ -> String.concat "." (List.map component path) ^ ": " ^ message
+  String.concat "." (List.map component path)
+
+let to_string { path; message } =
+  match path with [] -> message | _ -> format_path path ^ ": " ^ message

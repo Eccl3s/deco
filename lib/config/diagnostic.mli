@@ -7,3 +7,6 @@ val compare : t -> t -> int
 val to_string : t -> string
 (** Render a dotted path, quoting non-bare components, followed by the message.
     An empty path renders only the message. *)
+
+val format_path : string list -> string
+(** Render quoted dotted components; the empty path renders an empty string. *)
