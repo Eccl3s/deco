@@ -6,10 +6,10 @@ type t = {
 }
 (** Load an already selected project without rediscovery. Success includes
     decoding, core validation, defaults, and host-path resolution and filesystem
-    checks. Image references, numeric identities, and runtime compatibility
-    remain deferred. Filesystem checks reflect current state, not future
-    availability; success does not establish readiness for container operations.
-*)
+    checks. Image syntax is checked; IPv6 registries are unsupported. Numeric
+    identities and runtime compatibility remain deferred. Filesystem checks
+    reflect current state, not future availability; success does not establish
+    readiness for container operations. *)
 
 type error =
   | Read_error of { config_path : string; message : string }

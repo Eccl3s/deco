@@ -1,3 +1,4 @@
 (library
  (name config)
+ (private_modules image_reference)
  (libraries otoml))

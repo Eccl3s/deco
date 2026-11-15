@@ -67,12 +67,12 @@ let () =
   let c =
     resolve
       (decode
-         "image.tag=''\n\
+         "image.tag='latest'\n\
           user={mode='image',uid=-5,gid='host'}\n\
           build={pull=false,no_cache=false}")
   in
   assert (
-    c.image.tag = ""
+    c.image.tag = "latest"
     && c.user.uid = Some (Config.Id (-5))
     && c.user.gid = Some Config.Host);
   assert ((not c.build.pull) && not c.build.no_cache);
@@ -98,6 +98,17 @@ let () =
   (match (Config.Resolve.apply invalid, Config.Validate.check invalid) with
   | Error actual, Error expected -> assert (actual = expected)
   | _ -> failwith "Expected derived-name failure");
-  (* Image-reference validity remains deferred, even for derived names. *)
+  (* Image names use repository limits, not the 128-character container limit. *)
   let c = resolve (named 128 "container.name='short'") in
   assert (c.container.name = "short" && String.length c.image.name = 138)
+
+let () =
+  let source = decode "image={name='Bad',tag=''}" in
+  assert (
+    Config.Resolve.apply source
+    = Result.map (fun () -> assert false) (Config.Validate.check source));
+  let c =
+    resolve (decode "image={name='REGISTRY.example:5000/team/demo',tag='Dev'}")
+  in
+  assert (
+    c.image.name = "REGISTRY.example:5000/team/demo" && c.image.tag = "Dev")

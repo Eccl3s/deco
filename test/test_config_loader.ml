@@ -204,3 +204,20 @@ let () =
       let c = loaded p in
       assert (c.project = p && c.source.project.name = "demo");
       assert (Sys.getcwd () = cwd))
+
+let () =
+  let path = Filename.temp_file "deco-image-validation-" ".toml" in
+  Fun.protect
+    ~finally:(fun () -> Unix.unlink path)
+    (fun () ->
+      write path
+        "project.name='demo'\n\
+         image={name='Bad',tag=''}\n\
+         build.context='missing'";
+      let p : P.t = { root = Filename.dirname path; config_path = path } in
+      match L.load p with
+      | Error (L.Validation_errors { errors; _ }) ->
+          assert (
+            List.map (fun (e : Config.Validate.error) -> e.path) errors
+            = [ [ "image"; "name" ]; [ "image"; "tag" ] ])
+      | _ -> failwith "Expected image errors before filesystem checks")

@@ -38,6 +38,32 @@ let check (config : Config_types.t) =
       then error path "Container paths must not contain . or .. components"
   in
   name [ "project"; "name" ] config.project.name;
+  let explicit_image_name =
+    Option.bind config.image (fun image -> image.name)
+  in
+  let check_image path check value =
+    match check value with Ok () -> () | Error message -> error path message
+  in
+  (match explicit_image_name with
+  | Some value ->
+      check_image [ "image"; "name" ] Image_reference.check_name value
+  | None when valid_name config.project.name -> (
+      let derived = config.project.name ^ "-dev-image" in
+      match Image_reference.check_name derived with
+      | Ok () -> ()
+      | Error message ->
+          error [ "image"; "name" ]
+            (Printf.sprintf
+               "Derived image name %S is invalid: %s; set an explicit valid \
+                image.name"
+               derived message))
+  | None -> ());
+  Option.iter
+    (fun image ->
+      optional [ "image"; "tag" ]
+        (fun path value -> check_image path Image_reference.check_tag value)
+        image.tag)
+    config.image;
   let explicit_container_name =
     Option.bind config.container (fun container -> container.name)
   in

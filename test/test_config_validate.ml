@@ -49,7 +49,10 @@ let () =
     [ ""; "  "; "-bad"; "bad!"; "é"; String.make 129 'a' ];
   List.iter
     (fun name ->
-      valid (decode ("project.name='" ^ name ^ "'\ncontainer.name='short'")))
+      valid
+        (decode
+           ("project.name='" ^ name
+          ^ "'\ncontainer.name='short'\nimage.name='valid'")))
     [ "a"; "0"; "A.b_c-d"; String.make 128 'a' ];
   let c = config "user={}\ncontainer={}\nmounts={}" in
   let before = Marshal.to_string c [] in
@@ -82,8 +85,8 @@ let () =
 let () =
   ignore (errors (config "container.shell='/bin/../sh'"));
   ignore (errors (config "build.args.''='x'"));
-  (* Image reference grammar and IDs in image mode are intentionally deferred. *)
-  valid (config "image={tag=''}");
+  (* Image syntax is checked; identity bounds remain deferred. *)
+  ignore (errors (config "image={tag=''}"));
   valid (config "user={mode='image',uid=1000}");
   (* Lexical paths need only be absolute and exclude dot components. *)
   valid (config "container={shell='/',workdir='/a//b/'}")
@@ -107,8 +110,56 @@ let () =
           | _ -> failwith "Expected derived-name error")
         [ 115; 128 ])
     [ ""; "container={}"; "container.shell='sh'" ];
-  valid (named 128 "container.name='short'");
+  valid (named 128 "container.name='short'\nimage.name='valid'");
   ignore (errors (named 128 "container.name='!'"));
   match errors (decode "project.name='-invalid'") with
   | [ e ] -> assert (e.path = [ "project"; "name" ])
   | _ -> failwith "Unexpected cascading diagnostic"
+
+let () =
+  let image name = config ("image.name='" ^ name ^ "'") in
+  List.iter
+    (fun name -> valid (image name))
+    [
+      "demo";
+      "team/demo";
+      "localhost/demo";
+      "REGISTRY.example:5000/team/demo";
+      "127.0.0.1:5000/demo";
+      "a.b_c__d---e";
+      String.make 255 'a';
+      "example.org/" ^ String.make 243 'a';
+    ];
+  List.iter
+    (fun name -> ignore (errors (image name)))
+    [
+      "";
+      "Demo";
+      "a/";
+      "/a";
+      "a//b";
+      "a___b";
+      "a_-b";
+      "a-_b";
+      "a..b";
+      "a-";
+      "a:tag";
+      "a@sha256:abc";
+      "https://example.org/a";
+      "docker://a";
+      "a b";
+      "é";
+      "host:port/a";
+      "[::1]:5000/a";
+      String.make 256 'a';
+      "example.org/" ^ String.make 244 'a';
+    ];
+  List.iter
+    (fun tag -> valid (config ("image.tag='" ^ tag ^ "'")))
+    [ "A"; "_tag"; "v1.0-dev"; String.make 128 'a' ];
+  List.iter
+    (fun tag -> ignore (errors (config ("image.tag='" ^ tag ^ "'"))))
+    [ ""; " "; "-a"; ".a"; "a/b"; "a:b"; String.make 129 'a' ];
+  assert (List.length (errors (config "image={name='Bad',tag=''}")) = 2);
+  ignore (errors (decode "project.name='Demo'"));
+  valid (decode "project.name='Demo'\nimage.name='demo'")
