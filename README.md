@@ -159,7 +159,7 @@ Deco is written in OCaml and uses Dune as its build system and OPAM for dependen
 
 ### Prerequisites
 
-- OCaml
+- OCaml 5.5.2 or newer; CI tests 5.5.2.
 - OPAM
 - Dune
 - [Podman](https://podman.io/docs/installation)
