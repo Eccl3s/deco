@@ -1,6 +1,6 @@
 (library
  (name deco)
- (libraries config unix))
+ (libraries config unix yojson))
 
 (rule
  (target template_data.ml)

@@ -1,6 +1,8 @@
 (tests
  (names
   test_deco
+  test_process
+  test_podman
   test_config_decode
   test_config_validate
   test_config_diagnostic
@@ -16,7 +18,7 @@
   test_init
   init_test_support
   test_embed_templates)
- (libraries deco config unix otoml))
+ (libraries deco config unix otoml yojson))
 
 (test
  (name test_cli)

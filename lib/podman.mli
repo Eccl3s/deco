@@ -1,0 +1,36 @@
+type runner = string list -> (Process.result, Process.error) result
+(** Read-only Podman operations. No functions print or assign CLI exit codes. *)
+
+type error =
+  | Unavailable of string
+  | Runtime of { operation : string; message : string }
+  | Invalid_response of { operation : string; message : string }
+
+type 'a presence = Absent | Present of 'a
+type labels = (string * string) list
+type image = { id : string; labels : labels }
+
+type mount = {
+  kind : string;
+  source : string;
+  destination : string;
+  options : string list;
+}
+
+type container = {
+  id : string;
+  labels : labels;
+  state : string;
+  image_id : string;
+  user : string;
+  userns : string;
+  workdir : string;
+  init : bool;
+  mounts : mount list;
+}
+
+val available : ?run:runner -> unit -> (unit, error) result
+val inspect_image : ?run:runner -> string -> (image presence, error) result
+
+val inspect_container :
+  ?run:runner -> string -> (container presence, error) result
