@@ -2,6 +2,7 @@
  (names
   test_deco
   test_process
+  test_assemble_plan
   test_podman
   test_config_decode
   test_config_validate

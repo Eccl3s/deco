@@ -40,7 +40,7 @@ let message (r : Process.result) =
   status ^ if r.stderr = "" then "" else ": " ^ String.trim r.stderr
 
 let available ?(run = default_run) () =
-  match run [ "podman"; "info" ] with
+  match run Podman_command.info with
   | Ok { status = Unix.WEXITED 0; _ } -> Ok ()
   | Ok r -> Error (Unavailable (message r))
   | Error e -> Error (Unavailable (e.operation ^ ": " ^ e.message))
@@ -96,16 +96,16 @@ let container json =
 let inspect (run : runner) kind decode name =
   let operation = kind ^ " inspect" in
   let invoke args =
-    match run ("podman" :: args) with
+    match run args with
     | Ok r -> Ok r
     | Error e ->
         Error (Runtime { operation; message = e.operation ^ ": " ^ e.message })
   in
-  match invoke [ kind; "exists"; "--"; name ] with
+  match invoke (Podman_command.exists kind name) with
   | Error e -> Error e
   | Ok { status = Unix.WEXITED 1; _ } -> Ok Absent
   | Ok { status = Unix.WEXITED 0; _ } -> (
-      match invoke [ kind; "inspect"; "--"; name ] with
+      match invoke (Podman_command.inspect kind name) with
       | Error e -> Error e
       | Ok ({ status = Unix.WEXITED 0; _ } as r) -> (
           try
