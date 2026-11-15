@@ -2,6 +2,7 @@ type t = {
   project : Project.t;
   source : Config.t;
   effective : Config.Effective.t;
+  host_paths : Host_paths.t;
 }
 
 type error =
@@ -11,23 +12,25 @@ type error =
       config_path : string;
       errors : Config.Validate.error list;
     }
+  | Host_path_errors of {
+      config_path : string;
+      errors : Config.Diagnostic.t list;
+    }
+
+let render_all config_path render errors =
+  String.concat "\n"
+    (List.map (fun error -> config_path ^ ": " ^ render error) errors)
 
 let error_to_string = function
   | Read_error { config_path; message } -> config_path ^ ": " ^ message
   | Decode_errors { config_path; errors } ->
-      String.concat "\n"
-        (List.map
-           (fun error ->
-             config_path ^ ": " ^ Config.Decode.error_to_string error)
-           errors)
+      render_all config_path Config.Decode.error_to_string errors
   | Validation_errors { config_path; errors } ->
-      String.concat "\n"
-        (List.map
-           (fun error ->
-             config_path ^ ": " ^ Config.Validate.error_to_string error)
-           errors)
+      render_all config_path Config.Validate.error_to_string errors
+  | Host_path_errors { config_path; errors } ->
+      render_all config_path Config.Diagnostic.to_string errors
 
-let load (project : Project.t) =
+let load ?home_dir (project : Project.t) =
   let config_path = project.config_path in
   let contents =
     try Ok (In_channel.with_open_bin config_path In_channel.input_all)
@@ -49,4 +52,8 @@ let load (project : Project.t) =
       | Ok source -> (
           match Config.Resolve.apply source with
           | Error errors -> Error (Validation_errors { config_path; errors })
-          | Ok effective -> Ok { project; source; effective }))
+          | Ok effective -> (
+              match Host_paths.resolve ?home_dir ~project effective with
+              | Error errors -> Error (Host_path_errors { config_path; errors })
+              | Ok host_paths -> Ok { project; source; effective; host_paths }))
+      )

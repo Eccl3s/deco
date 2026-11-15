@@ -47,6 +47,10 @@ let () =
     (fun () ->
       let deco = Filename.concat temp ".deco" in
       Unix.mkdir deco 0o700;
+      let build = Filename.concat deco "build" in
+      Unix.mkdir build 0o700;
+      let containerfile = Filename.concat build "Containerfile" in
+      write containerfile "FROM scratch";
       let path = Filename.concat deco "config.toml" in
       let minimal = "project.name='demo'" in
       write path minimal;
@@ -54,6 +58,9 @@ let () =
       let c = loaded p in
       assert (
         c.project = p && c.source.build = None && not c.effective.build.pull);
+      assert (c.host_paths.build_context = Unix.realpath build);
+      assert (c.host_paths.containerfile = Unix.realpath containerfile);
+      assert (c.host_paths.workspace_source = None);
       write path (minimal ^ "\nbuild.pull=false");
       let explicit = loaded p in
       assert ((Option.get explicit.source.build).pull = Some false);
@@ -101,6 +108,67 @@ let () =
                 List.length (String.split_on_char '\n' rendered)
                 = List.length errors)
           | _ -> failwith "Expected validation errors"));
+      (* Earlier stages must take precedence over invalid filesystem paths. *)
+      write path "project.name=1\nbuild.context='missing'";
+      (match L.load p with
+      | Error (L.Decode_errors _) -> ()
+      | _ -> assert false);
+      write path (minimal ^ "\nuser.mode='keep-id'\nbuild.context='missing'");
+      (match L.load p with
+      | Error (L.Validation_errors _) -> ()
+      | _ -> assert false);
+      let check_paths suffix =
+        write path (minimal ^ "\n" ^ suffix);
+        let source =
+          match Config.Decode.from_string (minimal ^ "\n" ^ suffix) with
+          | Ok c -> c
+          | Error _ -> assert false
+        in
+        let effective =
+          match Config.Resolve.apply source with
+          | Ok c -> c
+          | Error _ -> assert false
+        in
+        match (L.load p, Deco.Host_paths.resolve ~project:p effective) with
+        | ( Error (L.Host_path_errors { config_path; errors } as error),
+            Error expected ) ->
+            assert (config_path = p.config_path && errors = expected);
+            assert (
+              L.error_to_string error
+              = String.concat "\n"
+                  (List.map
+                     (fun e ->
+                       config_path ^ ": " ^ Config.Diagnostic.to_string e)
+                     expected))
+        | _ -> failwith "Expected matching host-path errors"
+      in
+      List.iter check_paths
+        [
+          "build.context='missing'";
+          "build.containerfile='missing'";
+          "mounts.workspace={target='/w',source='missing'}";
+          "build.context='missing'\n\
+           mounts.workspace={target='/w',source='missing'}";
+        ];
+      let outside = Filename.concat temp "outside" in
+      write outside "FROM scratch";
+      check_paths ("build.containerfile='" ^ outside ^ "'");
+      write path (minimal ^ "\nmounts.workspace.target='/w'");
+      let workspace_loaded = loaded p in
+      assert (workspace_loaded.host_paths.workspace_source = Some p.root);
+      assert (
+        (Option.get workspace_loaded.effective.mounts.workspace).source = ".");
+      write path (minimal ^ "\nbuild.context='~/.deco/build'");
+      (match L.load ~home_dir:p.root p with
+      | Ok c ->
+          assert (
+            c.host_paths.build_context = Unix.realpath build
+            && c.effective.build.context = "~/.deco/build")
+      | _ -> assert false);
+      write path
+        (minimal
+       ^ "\nbuild={context='.deco/build',containerfile='Containerfile'}");
+      assert ((loaded p).host_paths.containerfile = Unix.realpath containerfile);
       write path minimal;
       if Unix.geteuid () <> 0 then (
         Unix.chmod path 0;
