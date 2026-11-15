@@ -3,8 +3,8 @@
     This module defines the OCaml representation of the subset of
     [.deco/config.toml] supported by Deco v0.1.0, as specified in
     [specs/deco-config.md]. It defines the configuration types used by the
-    decoder. Default resolution, semantic validation, and serialisation are
-    deferred to later commits.
+    decoder and partial pure validator. Default resolution, remaining semantic
+    and runtime validation, and serialisation are deferred to later commits.
 
     Conventions:
 

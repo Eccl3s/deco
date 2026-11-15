@@ -98,9 +98,7 @@ let () =
   | _ -> failwith "Expected syntax location");
   (match bad "project.name='x'\nuser.uid=999999999999999999999999999999" with
   | [ Syntax_error { location = None; message } ] ->
-      assert (
-        String.starts_with ~prefix:"TOML parser could not decode a value: "
-          message)
+      assert (message = "Integer exceeds the supported OCaml int range")
   | _ -> failwith "Expected numeric parser failure");
   assert (
     error_to_string (Schema_error { path = []; message = "problem" })

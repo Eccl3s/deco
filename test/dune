@@ -1,3 +1,7 @@
 (tests
- (names test_deco test_config_decode)
+ (names
+  test_deco
+  test_config_decode
+  test_config_validate
+  test_config_diagnostic)
  (libraries deco config))

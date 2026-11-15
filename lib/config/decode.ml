@@ -2,27 +2,13 @@ open Config_types
 
 type error =
   | Syntax_error of { message : string; location : (int * int) option }
-  | Schema_error of { path : string list; message : string }
+  | Schema_error of Diagnostic.t
 
 let error_to_string = function
   | Syntax_error { message; location = None } -> message
   | Syntax_error { message; location = Some (line, column) } ->
       Printf.sprintf "Line %d, column %d: %s" line column message
-  | Schema_error { path; message } -> (
-      let component s =
-        if
-          s <> ""
-          && String.for_all
-               (function
-                 | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' | '_' | '-' -> true
-                 | _ -> false)
-               s
-        then s
-        else Printf.sprintf "%S" s
-      in
-      match path with
-      | [] -> message
-      | _ -> String.concat "." (List.map component path) ^ ": " ^ message)
+  | Schema_error diagnostic -> Diagnostic.to_string diagnostic
 
 let parse input =
   try Ok (Otoml.Parser.from_string input) with
@@ -30,6 +16,15 @@ let parse input =
       Error [ Syntax_error { message; location } ]
   | Otoml.Duplicate_key message ->
       Error [ Syntax_error { message; location = None } ]
+  | Failure message when message = "int_of_string" ->
+      Error
+        [
+          Syntax_error
+            {
+              message = "Integer exceeds the supported OCaml int range";
+              location = None;
+            };
+        ]
   | Failure message ->
       Error
         [
@@ -43,16 +38,11 @@ let parse input =
 let from_string input =
   let errors = ref [] in
   let sorted_errors () =
-    List.sort
-      (fun a b ->
-        match (a, b) with
-        | Schema_error a, Schema_error b -> compare a.path b.path
-        | _ -> 0)
-      !errors
+    List.map
+      (fun diagnostic -> Schema_error diagnostic)
+      (List.sort Diagnostic.compare !errors)
   in
-  let error path message =
-    errors := Schema_error { path; message } :: !errors
-  in
+  let error path message = errors := Diagnostic.{ path; message } :: !errors in
   let string path = function
     | Otoml.TomlString s -> Some s
     | _ ->
