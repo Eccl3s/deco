@@ -12,6 +12,7 @@ bug-reports: "https://github.com/Eccl3s/deco/issues"
 depends: [
   "dune" {>= "3.24"}
   "ocaml"
+  "otoml" {>= "1.0.5"}
   "odoc" {with-doc}
 ]
 build: [
