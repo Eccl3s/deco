@@ -6,5 +6,6 @@
   test_config_diagnostic
   test_config_resolve
   test_project
-  test_config_loader)
+  test_config_loader
+  test_host_paths)
  (libraries deco config unix))
