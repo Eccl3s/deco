@@ -18,8 +18,8 @@ type outcome = {
   started : bool;
 }
 
-let compatibility (loaded : Config_loader.t) (image : Podman.image)
-    (c : Podman.container) =
+let compatibility ?(selinux_enabled = true) (loaded : Config_loader.t)
+    (image : Podman.image) (c : Podman.container) =
   let expected = loaded.effective in
   let failures = ref [] in
   let check b message = if not b then failures := message :: !failures in
@@ -75,8 +75,9 @@ let compatibility (loaded : Config_loader.t) (image : Podman.image)
           let has x = List.mem x m.options in
           check
             (match w.relabel with
-            | Config.Shared -> has "z"
-            | Private -> has "Z"
+            | Config.Shared ->
+                has "z" || ((not selinux_enabled) && not (has "Z"))
+            | Private -> has "Z" || ((not selinux_enabled) && not (has "z"))
             | No_relabel -> not (has "z" || has "Z"))
             "Mount relabel policy differs or cannot be verified"
       | _ -> check false "Workspace mount missing or duplicated")
@@ -86,6 +87,7 @@ let compatibility (loaded : Config_loader.t) (image : Podman.image)
   | xs -> Error (String.concat "; " xs)
 
 let run ?(execute = fun output argv -> Process.run ~output argv) loaded =
+  let selinux_enabled = ref true in
   let completed = ref [] in
   let fail cause = Error { cause; completed = List.rev !completed } in
   let ( let* ) result f =
@@ -133,7 +135,7 @@ let run ?(execute = fun output argv -> Process.run ~output argv) loaded =
         fail (Conflict "Existing container has no configured image")
     | Some i, Some c ->
         let* () =
-          match compatibility loaded i c with
+          match compatibility ~selinux_enabled:!selinux_enabled loaded i c with
           | Ok () -> Ok ()
           | Error e -> fail (Conflict e)
         in
@@ -250,7 +252,10 @@ let run ?(execute = fun output argv -> Process.run ~output argv) loaded =
                   let* () =
                     match !image with
                     | Some i -> (
-                        match compatibility loaded i c with
+                        match
+                          compatibility ~selinux_enabled:!selinux_enabled loaded
+                            i c
+                        with
                         | Ok () -> Ok ()
                         | Error e -> fail (Conflict e))
                     | None -> Ok ()
@@ -259,6 +264,21 @@ let run ?(execute = fun output argv -> Process.run ~output argv) loaded =
                   if index = Started_inspect && c.state <> "running" then
                     fail (Runtime "Container is not running after start")
                   else Ok ()
+              | Availability ->
+                  (try
+                     let open Yojson.Basic.Util in
+                     let value =
+                       Yojson.Basic.from_string r.stdout
+                       |> member "host" |> member "security"
+                       |> member "selinuxEnabled"
+                     in
+                     match value with
+                     | `Bool enabled -> selinux_enabled := enabled
+                     | _ -> ()
+                   with
+                   | Yojson.Json_error _ | Yojson.Basic.Util.Type_error _ ->
+                     ());
+                  Ok ()
               | Build ->
                   built := true;
                   Ok ()

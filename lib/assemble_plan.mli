@@ -25,6 +25,8 @@ type step = {
 }
 
 type t = private {
+  image_name : string;
+  container_name : string;
   build : string list;
   create : argument list;
   steps : step list;
@@ -41,4 +43,7 @@ val resolve :
 val render_command : argument list -> string
 
 (* POSIX shell representation; symbolic IDs are explicitly marked placeholders. *)
+val render_multiline : argument list -> string
+(** Indented POSIX shell command with continuations between argument groups. *)
+
 val render : t -> string

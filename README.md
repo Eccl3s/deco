@@ -31,7 +31,7 @@ See [specs/](specs/) for the full CLI and configuration specifications.
 
 ## Getting Started
 
-Deco currently implements `init`, `validate`, help, and version output. Other commands
+Deco currently implements `init`, `validate`, `assemble`, help, and version output. Other commands
 below describe the planned workflow.
 
 Validate an existing project with `deco validate` or select one explicitly with
@@ -299,3 +299,37 @@ in `lib/templates`, embedded at build time. Init substitutes `{{project_name}}`,
 These tokens belong inside quoted TOML values. Containerfiles remain unchanged;
 unsupported TOML settings are never silently stripped. Missing partners and
 unknown or unterminated placeholders fail the embedding build.
+
+### Assemble a supported configuration
+
+`deco assemble` builds a missing image, creates a missing container, and starts
+it. Compatible running containers are reused. Configuration must validate first;
+generated templates still contain unsupported settings and require manual editing.
+For a minimal supported setup, use `.deco/config.toml`:
+
+```toml
+[project]
+name = "example"
+```
+
+And `.deco/build/Containerfile`:
+
+```dockerfile
+FROM alpine:3.23
+CMD ["sleep", "infinity"]
+```
+
+Run `deco assemble --dry-run` (or `-d`) to preview four high-level steps and complete,
+multiline Podman build/create commands without invoking Podman or writing files.
+The image ID appears as a placeholder resolved during execution. Use `--project-dir PATH` before or after `assemble` to select a project.
+
+Exit codes are 0 for success, 1 for runtime failure, 2 for invalid configuration or
+usage, 3 for unavailable Podman, and 4 for ownership, compatibility, or state
+conflicts. Failed operations retain partial resources; inspect them with Podman
+before retrying. Assemble never automatically rebuilds or replaces resources.
+Hooks and advanced configuration remain unsupported. Automated CLI tests use fake
+Podman responses; disposable live integration coverage is a separate step.
+
+Compact build output requires both stdin and stdout to be terminals. Press `t`
+to expand the full log permanently. Redirected output, `NO_COLOR`, and
+`TERM=dumb` use normal full-log streaming instead.

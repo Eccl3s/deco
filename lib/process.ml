@@ -2,7 +2,7 @@ type output = Capture | Inherit
 type result = { status : Unix.process_status; stdout : string; stderr : string }
 type error = { operation : string; message : string }
 
-let run ?(output = Capture) argv =
+let run ?(output = Capture) ?poll argv =
   match argv with
   | [] -> Error { operation = "launch"; message = "Empty argument vector" }
   | program :: _ ->
@@ -45,7 +45,18 @@ let run ?(output = Capture) argv =
                         Unix.stdin out_fd err_fd
                     in
                     let rec wait () =
-                      try snd (Unix.waitpid [] pid)
+                      try
+                        match poll with
+                        | None -> snd (Unix.waitpid [] pid)
+                        | Some tick ->
+                            tick ();
+                            let child, status =
+                              Unix.waitpid [ Unix.WNOHANG ] pid
+                            in
+                            if child = 0 then (
+                              ignore (Unix.select [] [] [] 0.1);
+                              wait ())
+                            else status
                       with Unix.Unix_error (Unix.EINTR, _, _) -> wait ()
                     in
                     let status = wait () in
@@ -60,3 +71,78 @@ let run ?(output = Capture) argv =
           | Unix.Unix_error (e, operation, _) ->
               Error { operation; message = Unix.error_message e }
           | Sys_error message -> Error { operation = "capture"; message })
+
+let run_stream ~on_chunk ~poll argv =
+  match argv with
+  | [] -> Error { operation = "launch"; message = "Empty argument vector" }
+  | program :: _ ->
+      let rd, wr = Unix.pipe ~cloexec:true () in
+      let input =
+        Unix.openfile "/dev/null" [ Unix.O_RDONLY; Unix.O_CLOEXEC ] 0
+      in
+      Fun.protect
+        ~finally:(fun () ->
+          Unix.close rd;
+          Unix.close input)
+        (fun () ->
+          try
+            let pid =
+              Fun.protect
+                ~finally:(fun () -> Unix.close wr)
+                (fun () ->
+                  Unix.create_process program (Array.of_list argv) input wr wr)
+            in
+            let buffer = Bytes.create 8192 in
+            let status = ref None and deadline = ref None and eof = ref false in
+            let rec check_child () =
+              if !status = None then
+                try
+                  let child, result = Unix.waitpid [ Unix.WNOHANG ] pid in
+                  if child <> 0 then (
+                    status := Some result;
+                    deadline := Some (Unix.gettimeofday () +. 1.))
+                with Unix.Unix_error (Unix.EINTR, _, _) -> check_child ()
+            in
+            let rec drain () =
+              check_child ();
+              poll ();
+              let remaining =
+                match !deadline with
+                | None -> 0.1
+                | Some until -> min 0.1 (max 0. (until -. Unix.gettimeofday ()))
+              in
+              if !status <> None && (!eof || remaining = 0.) then ()
+              else
+                let ready, _, _ =
+                  try Unix.select (if !eof then [] else [ rd ]) [] [] remaining
+                  with Unix.Unix_error (Unix.EINTR, _, _) -> ([], [], [])
+                in
+                (if ready <> [] then
+                   let n =
+                     try Some (Unix.read rd buffer 0 (Bytes.length buffer))
+                     with Unix.Unix_error (Unix.EINTR, _, _) -> None
+                   in
+                   match n with
+                   | Some 0 -> eof := true
+                   | Some n -> on_chunk (Bytes.sub_string buffer 0 n)
+                   | None -> ());
+                drain ()
+            in
+            let rec reap () =
+              if !status = None then
+                try
+                  let _, result = Unix.waitpid [] pid in
+                  status := Some result
+                with Unix.Unix_error (Unix.EINTR, _, _) -> reap ()
+            in
+            (try drain ()
+             with e ->
+               (try check_child () with Unix.Unix_error _ -> ());
+               if !status = None then (
+                 (try Unix.kill pid Sys.sigterm
+                  with Unix.Unix_error (Unix.ESRCH, _, _) -> ());
+                 try reap () with Unix.Unix_error _ -> ());
+               raise e);
+            Ok { status = Option.get !status; stdout = ""; stderr = "" }
+          with Unix.Unix_error (e, operation, _) ->
+            Error { operation; message = Unix.error_message e })

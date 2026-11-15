@@ -94,7 +94,16 @@ let container json =
     state = string (field "Status" (field "State" json));
     image_id = string (field "Image" json);
     user = optional "User" "" string config;
-    userns = string (field "UsernsMode" host);
+    userns =
+      (let mode = string (field "UsernsMode" host) in
+       let annotations = optional "Annotations" [] labels host in
+       match
+         (mode, List.assoc_opt "io.podman.annotations.userns" annotations)
+       with
+       | "private", Some requested
+         when String.starts_with ~prefix:"keep-id:" requested ->
+           requested
+       | _ -> mode);
     workdir = optional "WorkingDir" "" string config;
     init =
       (match host with
@@ -103,7 +112,33 @@ let container json =
           | None | Some `Null -> false
           | Some value -> boolean value)
       | _ -> failwith "Expected object");
-    mounts = List.map mount (list (field "Mounts" json));
+    mounts =
+      List.map
+        (fun raw ->
+          let m = mount raw in
+          let binds =
+            optional "Binds" [] (fun v -> List.map string (list v)) host
+          in
+          let policies =
+            List.filter_map
+              (fun bind ->
+                match String.split_on_char ':' bind with
+                | [ source; target; options ]
+                  when source = m.source && target = m.destination ->
+                    Some (String.split_on_char ',' options)
+                | _ -> None)
+              binds
+          in
+          match policies with
+          | [ options ] ->
+              {
+                m with
+                options =
+                  m.options @ List.filter (fun x -> x = "z" || x = "Z") options;
+              }
+          | [] -> m
+          | _ -> failwith "Ambiguous bind metadata")
+        (list (field "Mounts" json));
   }
 
 let inspect (run : runner) kind decode name =

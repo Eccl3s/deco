@@ -1,6 +1,12 @@
 (library
  (name cli)
- (private_modules error_report)
+ (private_modules
+  build_output
+  error_report
+  cli_common
+  init_command
+  validate_command
+  assemble_command)
  (libraries deco cmdliner unix)
  (flags
   (:standard -w +a -warn-error +a)))

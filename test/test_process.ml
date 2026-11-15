@@ -11,6 +11,7 @@ let () =
         done
     | "exit" -> exit 7
     | "signal" -> Unix.kill (Unix.getpid ()) Sys.sigterm
+    | "hold-silent" | "hold-writing" | "early-eof" -> ()
     | _ -> assert false
   else
     let run args =
@@ -30,3 +31,129 @@ let () =
       match Process.run ~output:Inherit [ Sys.executable_name; "echo"; "" ] with
       | Ok r -> r.status = Unix.WEXITED 0 && r.stdout = ""
       | _ -> false)
+
+let () =
+  if Array.length Sys.argv = 1 then (
+    let log = Buffer.create 32 in
+    let result =
+      Process.run_stream ~on_chunk:(Buffer.add_string log)
+        ~poll:(fun () -> ())
+        [ Sys.executable_name; "large" ]
+    in
+    assert (match result with Ok r -> r.status = Unix.WEXITED 0 | _ -> false);
+    assert (Buffer.length log = 200000))
+
+let () =
+  if Array.length Sys.argv = 1 then (
+    let polls = ref 0 in
+    let result =
+      Process.run
+        ~poll:(fun () -> incr polls)
+        [ Sys.executable_name; "echo"; "captured output" ]
+    in
+    assert (!polls > 0);
+    assert (
+      match result with
+      | Ok r ->
+          r.status = Unix.WEXITED 0
+          && r.stdout = "captured output"
+          && r.stderr = ""
+      | Error _ -> false))
+
+(* Run the pipe-holder regressions under a separate watchdog. *)
+let () =
+  if Array.length Sys.argv > 1 then
+    match Sys.argv.(1) with
+    | "hold-silent" | "hold-writing" ->
+        let child = Unix.fork () in
+        if child = 0 then (
+          Sys.set_signal Sys.sigpipe Sys.Signal_ignore;
+          let until = Unix.gettimeofday () +. 10. in
+          (try
+             while Unix.gettimeofday () < until do
+               if Sys.argv.(1) = "hold-writing" then (
+                 output_string stdout "descendant\n";
+                 flush stdout);
+               ignore (Unix.select [] [] [] 0.01)
+             done
+           with Sys_error _ -> ());
+          Unix._exit 0)
+        else (
+          Out_channel.with_open_bin Sys.argv.(2) (fun ch ->
+              Printf.fprintf ch "%d" child);
+          exit 7)
+    | "early-eof" ->
+        Unix.close Unix.stdout;
+        Unix.close Unix.stderr;
+        ignore (Unix.select [] [] [] 0.2);
+        Unix._exit 7
+    | _ -> ()
+  else (
+    List.iter
+      (fun mode ->
+        let pidfile = Filename.temp_file "deco-descendant-" ".pid" in
+        let worker = Unix.fork () in
+        (if worker = 0 then
+           let result =
+             Process.run_stream
+               ~on_chunk:(fun _ -> ())
+               ~poll:(fun () -> ())
+               [ Sys.executable_name; mode; pidfile ]
+           in
+           Unix._exit
+             (match result with
+             | Ok r when r.status = Unix.WEXITED 7 -> 0
+             | _ -> 1));
+        Fun.protect
+          ~finally:(fun () ->
+            let contents =
+              In_channel.with_open_bin pidfile In_channel.input_all
+            in
+            (match int_of_string_opt contents with
+            | Some pid -> (
+                try Unix.kill pid Sys.sigterm
+                with Unix.Unix_error (Unix.ESRCH, _, _) -> ())
+            | None -> ());
+            Sys.remove pidfile)
+          (fun () ->
+            let until = Unix.gettimeofday () +. 5. in
+            let rec wait () =
+              let pid, status = Unix.waitpid [ Unix.WNOHANG ] worker in
+              if pid <> 0 then assert (status = Unix.WEXITED 0)
+              else if Unix.gettimeofday () > until then (
+                Unix.kill worker Sys.sigkill;
+                ignore (Unix.waitpid [] worker);
+                failwith "Streaming watchdog expired")
+              else (
+                ignore (Unix.select [] [] [] 0.02);
+                wait ())
+            in
+            wait ()))
+      [ "hold-silent"; "hold-writing"; "early-eof" ];
+    List.iter
+      (fun mode ->
+        let r =
+          Process.run_stream
+            ~on_chunk:(fun _ -> ())
+            ~poll:(fun () -> ())
+            [ Sys.executable_name; mode ]
+        in
+        assert (
+          match r with
+          | Ok r -> (
+              match mode with
+              | "exit" -> r.status = Unix.WEXITED 7
+              | _ -> r.status = Unix.WSIGNALED Sys.sigterm)
+          | _ -> false))
+      [ "exit"; "signal" ];
+    let raised =
+      try
+        ignore
+          (Process.run_stream
+             ~on_chunk:(fun _ -> failwith "callback")
+             ~poll:(fun () -> ())
+             [ Sys.executable_name; "echo"; "output" ]);
+        false
+      with Failure message -> message = "callback"
+    in
+    assert raised)

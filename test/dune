@@ -17,6 +17,7 @@
   :standard
   \
   test_cli
+  test_assemble_cli
   test_init
   init_test_support
   test_embed_templates)
@@ -57,3 +58,11 @@
  (deps ../tools/embed_templates/embed_templates.exe)
  (action
   (run %{test} %{exe:../tools/embed_templates/embed_templates.exe})))
+
+(test
+ (name test_assemble_cli)
+ (modules test_assemble_cli)
+ (libraries unix yojson)
+ (deps ../bin/deco.exe)
+ (action
+  (run %{test} %{exe:../bin/deco.exe})))

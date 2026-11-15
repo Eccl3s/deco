@@ -42,6 +42,55 @@ let () =
     }
   in
   assert (Assemble.compatibility loaded image c = Ok ());
+  let mounted =
+    {
+      loaded with
+      effective =
+        {
+          loaded.effective with
+          mounts =
+            {
+              workspace =
+                Some
+                  {
+                    source = ".";
+                    target = "/workspace";
+                    relabel = Config.Private;
+                  };
+            };
+        };
+      host_paths = { loaded.host_paths with workspace_source = Some "/project" };
+    }
+  in
+  let mounted_c =
+    {
+      c with
+      mounts =
+        [
+          {
+            Podman.kind = "bind";
+            source = "/project";
+            destination = "/workspace";
+            options = [ "rbind" ];
+          };
+        ];
+    }
+  in
+  assert (
+    Assemble.compatibility ~selinux_enabled:false mounted image mounted_c
+    = Ok ());
+  assert (
+    Result.is_error
+      (Assemble.compatibility ~selinux_enabled:true mounted image mounted_c));
+  assert (Result.is_error (Assemble.compatibility mounted image mounted_c));
+  assert (
+    Result.is_error
+      (Assemble.compatibility ~selinux_enabled:false mounted image
+         {
+           mounted_c with
+           mounts = [ { (List.hd mounted_c.mounts) with options = [ "z" ] } ];
+         }));
+
   List.iter
     (fun c -> assert (Result.is_error (Assemble.compatibility loaded image c)))
     [
@@ -55,7 +104,7 @@ let () =
     calls := (output, argv) :: !calls;
     let stdout =
       match argv with
-      | [ "podman"; "info" ] -> ""
+      | [ "podman"; "info"; "--format"; "json" ] -> ""
       | [ "podman"; _; "exists"; "--"; _ ] -> ""
       | [ "podman"; "image"; "inspect"; "--"; _ ] ->
           {|[{"Id":"iid","Labels":{"dev.deco.managed":"true","dev.deco.project":"example","dev.deco.project-root":"/project"},"Config":{"User":"","WorkingDir":"/"}}]|}

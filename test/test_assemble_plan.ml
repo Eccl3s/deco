@@ -184,6 +184,25 @@ let () =
           };
       }
     = Error "Workspace configuration and resolved paths disagree");
+  assert (
+    Assemble_plan.render_multiline
+      [
+        Literal "podman";
+        Literal "build";
+        Literal "--file";
+        Literal "/some path/Containerfile";
+        Literal "--no-cache";
+        Literal "--";
+        Literal "/context";
+      ]
+    = String.concat
+        (" " ^ String.make 1 (Char.chr 92) ^ "\n      ")
+        [
+          "    podman build";
+          "--file '/some path/Containerfile'";
+          "--no-cache";
+          "-- /context";
+        ]);
   let rendered = Assemble_plan.render custom_plan in
   let contains text =
     let rec loop i =
@@ -195,16 +214,40 @@ let () =
   List.iter
     (fun text -> assert (contains text))
     [
-      "podman info";
+      "Assemble preview\nNo commands will be run.\n\n";
+      "1. Check for an existing Deco project environment.";
+      "2. Build image example-dev-image:latest if missing.";
+      "3. Create container example-dev-container if missing.";
+      "4. Start example-dev-container if needed.";
       "'<image-id>'";
-      "'<container-id>'";
-      "container example-dev-container is missing";
-      "container example-dev-container is new or stopped";
-      "image example-dev-image:latest is missing";
       "'VALUE=hello world'";
-      "After ownership and compatibility checks pass";
-      "resolved during execution";
+      "<image-id> is resolved when assembling the environment.";
     ];
+  List.iter
+    (fun text -> assert (not (contains text)))
+    [
+      "podman info";
+      "podman image exists";
+      "podman image inspect";
+      "podman container exists";
+      "podman container inspect";
+      "podman start";
+      "<container-id>";
+    ];
+  List.iter
+    (fun value ->
+      let command =
+        Assemble_plan.render_multiline
+          [ Literal "printf"; Literal "%s"; Literal value ]
+      in
+      let r =
+        get
+          (Result.map_error
+             (fun e -> e.Process.message)
+             (Process.run [ "/bin/sh"; "-c"; command ]))
+      in
+      assert (r.status = Unix.WEXITED 0 && r.stdout = value))
+    [ ""; "spaces and 'quotes'"; "$(echo bad); &"; "line one\nline two" ];
   assert (
     Assemble_plan.render custom_plan
     = Assemble_plan.render (get (Assemble_plan.make custom)))

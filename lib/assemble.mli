@@ -19,6 +19,10 @@ type outcome = {
 }
 
 val compatibility :
-  Config_loader.t -> Podman.image -> Podman.container -> (unit, string) result
+  ?selinux_enabled:bool ->
+  Config_loader.t ->
+  Podman.image ->
+  Podman.container ->
+  (unit, string) result
 
 val run : ?execute:runner -> Config_loader.t -> (outcome, error) result

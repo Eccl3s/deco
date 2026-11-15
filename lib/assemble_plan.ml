@@ -22,7 +22,14 @@ type step = {
   command : argument list;
 }
 
-type t = { build : string list; create : argument list; steps : step list }
+type t = {
+  image_name : string;
+  container_name : string;
+  build : string list;
+  create : argument list;
+  steps : step list;
+}
+
 type error = string
 
 let literals xs = List.map (fun s -> Literal s) xs
@@ -57,14 +64,49 @@ let render_command command =
          | Container_id -> "'<container-id>'")
        command)
 
+let render_multiline command =
+  let paired =
+    [
+      "--file";
+      "--tag";
+      "--target";
+      "--label";
+      "--build-arg";
+      "--name";
+      "--user";
+      "--workdir";
+      "--volume";
+      "--";
+    ]
+  in
+  let rec groups = function
+    | [] -> []
+    | (Literal flag as arg) :: value :: rest when List.mem flag paired ->
+        render_command [ arg; value ] :: groups rest
+    | arg :: rest -> render_command [ arg ] :: groups rest
+  in
+  match command with
+  | executable :: subcommand :: rest -> (
+      "    "
+      ^ render_command [ executable; subcommand ]
+      ^
+      match groups rest with
+      | [] -> ""
+      | xs -> " \\\n      " ^ String.concat " \\\n      " xs)
+  | _ -> "    " ^ render_command command
+
 let render t =
-  String.concat "\n"
-    (List.map
-       (fun step ->
-         (match step.condition with None -> "" | Some s -> s ^ ":\n  ")
-         ^ render_command step.command)
-       t.steps)
-  ^ "\n<image-id> and <container-id> are resolved during execution.\n"
+  let command operation =
+    (List.find (fun step -> step.operation = operation) t.steps).command
+  in
+  "Assemble preview\nNo commands will be run.\n\n"
+  ^ "1. Check for an existing Deco project environment.\n\n" ^ "2. Build image "
+  ^ t.image_name ^ " if missing.\n\n"
+  ^ render_multiline (command Build)
+  ^ "\n\n" ^ "3. Create container " ^ t.container_name ^ " if missing.\n\n"
+  ^ render_multiline (command Create)
+  ^ "\n\n" ^ "4. Start " ^ t.container_name ^ " if needed.\n\n"
+  ^ "<image-id> is resolved when assembling the environment.\n"
 
 let make (loaded : Config_loader.t) =
   let c = loaded.effective and paths = loaded.host_paths in
@@ -234,4 +276,12 @@ let make (loaded : Config_loader.t) =
               step.command)
           steps
       then Error "Command arguments cannot contain NUL bytes"
-      else Ok { build; create; steps }
+      else
+        Ok
+          {
+            image_name = image;
+            container_name = c.container.name;
+            build;
+            create;
+            steps;
+          }

@@ -17,7 +17,9 @@ let runner responses =
     fun () -> assert (!remaining = []) )
 
 let () =
-  let run, done_ = runner [ ([ "podman"; "info" ], Ok ok) ] in
+  let run, done_ =
+    runner [ ([ "podman"; "info"; "--format"; "json" ], Ok ok) ]
+  in
   assert (Podman.available ~run () = Ok ());
   done_ ();
   assert (
@@ -250,3 +252,11 @@ let () =
   assert (
     Result.is_error
       (Podman.decode_image {|[{"Id":"iid","Config":{"User":42}}]|}))
+
+let () =
+  let text =
+    {|[{"Id":"cid","Image":"iid","Config":{"Labels":{}},"State":{"Status":"created"},"HostConfig":{"Init":true,"UsernsMode":"private","Annotations":{"io.podman.annotations.userns":"keep-id:uid=1000,gid=1000"},"Binds":["/tmp/test:/workspace:Z,rprivate"]},"Mounts":[{"Type":"bind","Source":"/tmp/test","Destination":"/workspace","Options":["rw"]}]}]|}
+  in
+  let c = Result.get_ok (Podman.decode_container text) in
+  assert (c.userns = "keep-id:uid=1000,gid=1000");
+  assert (List.mem "Z" (List.hd c.mounts).options)

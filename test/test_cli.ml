@@ -90,13 +90,22 @@ let () =
             contains preview "Runtime: Podman"
             && contains preview "--- contents ---");
           assert (not (Sys.file_exists path));
-          ignore (run temp [ "init"; path; "--template=" ^ name ] 0);
+          assert (
+            run temp [ "init"; path; "--template=" ^ name ] 0
+            = Printf.sprintf
+                "Initialized Deco configuration using template '%s' in %s.\n"
+                name
+                (Filename.concat (Unix.realpath temp) ("generated-" ^ name)));
           ignore (run temp [ "validate"; "--project-dir"; path ] 2);
           let file = Filename.concat path ".deco/config.toml" in
           let original = In_channel.with_open_bin file In_channel.input_all in
           ignore (run temp [ "init"; path ] 2);
           assert (In_channel.with_open_bin file In_channel.input_all = original);
-          ignore (run temp [ "init"; path; "-R" ] 0))
+          assert (
+            run temp [ "init"; path; "-R" ] 0
+            = Printf.sprintf
+                "Initialized Deco configuration using template 'debian' in %s.\n"
+                (Filename.concat (Unix.realpath temp) ("generated-" ^ name))))
         names;
       List.iter
         (fun args -> ignore (run temp ("init" :: args) 2))
@@ -112,7 +121,11 @@ let () =
         ];
       let default_root = Filename.concat temp "default-init" in
       Unix.mkdir default_root 0o700;
-      ignore (run default_root [ "init" ] 0);
+      assert (
+        run default_root [ "init" ] 0
+        = Printf.sprintf
+            "Initialized Deco configuration using template 'debian' in %s.\n"
+            (Unix.realpath default_root));
       ignore (run default_root [ "validate" ] 2);
       let spaced = Filename.concat temp "Another Project" in
       ignore (run temp [ "init"; spaced ] 0);
