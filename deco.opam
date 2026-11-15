@@ -6,9 +6,9 @@ maintainer: ["Elliott K 354622239+Eccl3s@users.noreply.github.com"]
 authors: ["Elliott K 354622239+Eccl3s@users.noreply.github.com"]
 license: "GPL-3.0-or-later"
 tags: ["dev-tools" "podman"]
-homepage: "https://github.com/Eccl3s/deco.git"
+homepage: "https://github.com/Eccl3s/deco"
 doc: "https://github.com/Eccl3s/deco"
-bug-reports: "https://github.com/Eccl3s/deco.git/issues"
+bug-reports: "https://github.com/Eccl3s/deco/issues"
 depends: [
   "dune" {>= "3.24"}
   "ocaml"
@@ -28,5 +28,5 @@ build: [
     "@doc" {with-doc}
   ]
 ]
-dev-repo: "git+https://github.com/Eccl3s/deco.git.git"
+dev-repo: "git+https://github.com/Eccl3s/deco.git"
 x-maintenance-intent: ["(latest)"]

@@ -4,7 +4,7 @@
 
 (generate_opam_files true)
 
-(source (github Eccl3s/deco.git))
+(source (github Eccl3s/deco))
 
 (authors "Elliott K 354622239+Eccl3s@users.noreply.github.com")
 (maintainers "Elliott K 354622239+Eccl3s@users.noreply.github.com")

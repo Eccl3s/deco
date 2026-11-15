@@ -236,7 +236,7 @@ dune runtest
 Deco is developed against two specifications:
 
 - [CLI Specification](specs/deco-cli.md) — Defines commands, options, output formats, exit codes, and lifecycle behaviour.
-- [TOML Specification](specs/deco-toml.md) — Defines configuration fields, defaults, validation rules, and runtime settings.
+- [Config TOML Specification](specs/deco-config.md) — Defines configuration fields, defaults, validation rules, and runtime settings.
 
 ## License
 

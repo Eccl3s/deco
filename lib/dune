@@ -1,2 +1,3 @@
 (library
- (name deco))
+ (name deco)
+ (libraries config))
