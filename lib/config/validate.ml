@@ -6,6 +6,7 @@ let ascii_letter = function 'a' .. 'z' | 'A' .. 'Z' -> true | _ -> false
 let digit = function '0' .. '9' -> true | _ -> false
 let name_char c = ascii_letter c || digit c || List.mem c [ '.'; '_'; '-' ]
 let error_to_string = Diagnostic.to_string
+let valid_id n = n >= 0 && Int64.of_int n <= 4294967294L
 
 let check (config : Config_types.t) =
   let errors = ref [] in
@@ -114,6 +115,18 @@ let check (config : Config_types.t) =
     config.build;
   Option.iter
     (fun (user : user) ->
+      let mode = Option.value ~default:Image user.mode in
+      List.iter
+        (fun (key, value) ->
+          match value with
+          | None -> ()
+          | Some _ when mode = Image ->
+              error [ "user"; key ]
+                "Must be omitted in image mode (v0.1.0 restriction)"
+          | Some (Id n) when not (valid_id n) ->
+              error [ "user"; key ] "Expected an ID in 0-4294967294"
+          | Some _ -> ())
+        [ ("uid", user.uid); ("gid", user.gid) ];
       match (Option.value ~default:Image user.mode, user.name) with
       | Keep_id, None -> error [ "user"; "name" ] "Required for keep-id mode"
       | Keep_id, Some value -> ignore (nonblank [ "user"; "name" ] value)

@@ -7,5 +7,6 @@
   test_config_resolve
   test_project
   test_config_loader
-  test_host_paths)
+  test_host_paths
+  test_user_identity)
  (libraries deco config unix))

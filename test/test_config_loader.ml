@@ -221,3 +221,33 @@ let () =
             List.map (fun (e : Config.Validate.error) -> e.path) errors
             = [ [ "image"; "name" ]; [ "image"; "tag" ] ])
       | _ -> failwith "Expected image errors before filesystem checks")
+
+let () =
+  let temp = Filename.temp_file "deco-identity-" "" in
+  Unix.unlink temp;
+  Unix.mkdir temp 0o700;
+  Fun.protect
+    ~finally:(fun () -> cleanup temp)
+    (fun () ->
+      let deco = Filename.concat temp ".deco" in
+      Unix.mkdir deco 0o700;
+      let build = Filename.concat deco "build" in
+      Unix.mkdir build 0o700;
+      write (Filename.concat build "Containerfile") "FROM scratch";
+      let path = Filename.concat deco "config.toml" in
+      write path "project.name='demo'\nuser={mode='keep-id',name='dev'}";
+      let p = project (P.select ~directory:temp) in
+      let host_ids () = Ok Deco.User_identity.{ uid = 1000; gid = 1001 } in
+      (match L.load ~host_ids p with
+      | Ok { identity = Deco.User_identity.Keep_id { container; _ }; _ } ->
+          assert (container.uid = 1000)
+      | _ -> assert false);
+      (match L.load ~host_ids:(fun () -> Error "unavailable") p with
+      | Error (L.Identity_errors { config_path; errors } as e) ->
+          assert (config_path = p.config_path && errors <> []);
+          assert (L.error_to_string e = config_path ^ ": user: unavailable")
+      | _ -> assert false);
+      Unix.unlink (Filename.concat build "Containerfile");
+      match L.load ~host_ids:(fun () -> failwith "must not run") p with
+      | Error (L.Host_path_errors _) -> ()
+      | _ -> assert false)

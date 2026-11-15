@@ -68,12 +68,12 @@ let () =
     resolve
       (decode
          "image.tag='latest'\n\
-          user={mode='image',uid=-5,gid='host'}\n\
+          user={mode='keep-id',name='dev',uid=5,gid='host'}\n\
           build={pull=false,no_cache=false}")
   in
   assert (
     c.image.tag = "latest"
-    && c.user.uid = Some (Config.Id (-5))
+    && c.user.uid = Some (Config.Id 5)
     && c.user.gid = Some Config.Host);
   assert ((not c.build.pull) && not c.build.no_cache);
   let invalid = decode "user.mode='keep-id'\ncontainer.name='!'" in

@@ -243,3 +243,7 @@ Deco is developed against two specifications:
 Deco is licensed under the GNU General Public License version 3.0 or later (GPL-3.0-or-later).
 
 See [LICENSE](LICENSE) for details.
+
+For v0.1.0, `[user]` supports `keep-id` and `image`. Explicit UID/GID values
+must be in 0–4294967294 and fit an OCaml `int`. Image mode, including an
+omitted mode, forbids UID/GID settings; this is an additional v0.1.0 restriction.

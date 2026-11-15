@@ -18,7 +18,7 @@ let () =
   List.iter
     (fun suffix -> valid (config suffix))
     [
-      "user={mode='keep-id',name='dev',uid=-5}";
+      "user={mode='keep-id',name='dev',uid=5}";
       "container={shell='sh',workdir='/'}";
       "container={shell='/bin/sh',workdir='/workspace//src/'}";
       "mounts.workspace.target='/workspace'";
@@ -87,7 +87,7 @@ let () =
   ignore (errors (config "build.args.''='x'"));
   (* Image syntax is checked; identity bounds remain deferred. *)
   ignore (errors (config "image={tag=''}"));
-  valid (config "user={mode='image',uid=1000}");
+  ignore (errors (config "user={mode='image',uid=1000}"));
   (* Lexical paths need only be absolute and exclude dot components. *)
   valid (config "container={shell='/',workdir='/a//b/'}")
 
