@@ -3,5 +3,6 @@
   test_deco
   test_config_decode
   test_config_validate
-  test_config_diagnostic)
+  test_config_diagnostic
+  test_config_resolve)
  (libraries deco config))

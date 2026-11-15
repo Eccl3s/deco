@@ -48,7 +48,8 @@ let () =
     (fun name -> ignore (errors (decode ("project.name='" ^ name ^ "'"))))
     [ ""; "  "; "-bad"; "bad!"; "é"; String.make 129 'a' ];
   List.iter
-    (fun name -> valid (decode ("project.name='" ^ name ^ "'")))
+    (fun name ->
+      valid (decode ("project.name='" ^ name ^ "'\ncontainer.name='short'")))
     [ "a"; "0"; "A.b_c-d"; String.make 128 'a' ];
   let c = config "user={}\ncontainer={}\nmounts={}" in
   let before = Marshal.to_string c [] in
@@ -86,3 +87,28 @@ let () =
   valid (config "user={mode='image',uid=1000}");
   (* Lexical paths need only be absolute and exclude dot components. *)
   valid (config "container={shell='/',workdir='/a//b/'}")
+
+let () =
+  let named n suffix =
+    decode ("project.name='" ^ String.make n 'a' ^ "'\n" ^ suffix)
+  in
+  List.iter
+    (fun suffix ->
+      valid (named 114 suffix);
+      List.iter
+        (fun n ->
+          match errors (named n suffix) with
+          | [ e ] ->
+              assert (e.path = [ "container"; "name" ]);
+              assert (
+                String.starts_with
+                  ~prefix:"Derived container name exceeds 128 characters"
+                  e.message)
+          | _ -> failwith "Expected derived-name error")
+        [ 115; 128 ])
+    [ ""; "container={}"; "container.shell='sh'" ];
+  valid (named 128 "container.name='short'");
+  ignore (errors (named 128 "container.name='!'"));
+  match errors (decode "project.name='-invalid'") with
+  | [ e ] -> assert (e.path = [ "project"; "name" ])
+  | _ -> failwith "Unexpected cascading diagnostic"

@@ -17,13 +17,14 @@ let check (config : Config_types.t) =
       false)
     else true
   in
-  let name path value =
+  let valid_name value =
     let n = String.length value in
-    if
-      n < 1 || n > 128
-      || (not (ascii_letter value.[0] || digit value.[0]))
-      || not (String.for_all name_char value)
-    then
+    n >= 1 && n <= 128
+    && (ascii_letter value.[0] || digit value.[0])
+    && String.for_all name_char value
+  in
+  let name path value =
+    if not (valid_name value) then
       error path
         "Expected 1-128 ASCII name characters, starting with a letter or digit"
   in
@@ -37,6 +38,18 @@ let check (config : Config_types.t) =
       then error path "Container paths must not contain . or .. components"
   in
   name [ "project"; "name" ] config.project.name;
+  let explicit_container_name =
+    Option.bind config.container (fun container -> container.name)
+  in
+  if
+    explicit_container_name = None
+    && valid_name config.project.name
+    && not (valid_name (config.project.name ^ "-dev-container"))
+  then
+    error [ "container"; "name" ]
+      "Derived container name exceeds 128 characters; set an explicit shorter \
+       container.name";
+
   Option.iter
     (fun (container : container) ->
       optional [ "container"; "name" ] name container.name;
