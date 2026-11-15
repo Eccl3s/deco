@@ -31,7 +31,7 @@ See [specs/](specs/) for the full CLI and configuration specifications.
 
 ## Getting Started
 
-Deco currently implements `validate`, help, and version output. Other commands
+Deco currently implements `init`, `validate`, help, and version output. Other commands
 below describe the planned workflow.
 
 Validate an existing project with `deco validate` or select one explicitly with
@@ -271,3 +271,31 @@ and regenerate `deco.opam` in a disposable release checkout. Build and verify
 `deco --version` before archiving. Metadata-free archives without Git fail to
 build; raw GitHub source archives must first receive explicit version metadata.
 The existing release workflow does not prepare these archives automatically.
+
+### Initialize a project
+
+Run `deco init [PATH]` to create `.deco/config.toml` and
+`.deco/build/Containerfile`, using the Debian template by default.
+`deco init --list-templates` lists alpine, debian, fedora, go, podman, python,
+rust, and tumbleweed. Select one with `--template NAME` or `-t NAME`.
+The existing built-in Containerfiles are copied unchanged.
+
+Use `--dry-run` (`-d`) to preview generated files without writing, or
+`--replace` (`-R`) to replace the two target files while preserving unrelated
+content. Existing targets otherwise cause an error. Replacement is atomic per
+file, with rollback on ordinary failures; the pair is not crash-atomic and
+concurrent external edits are unsupported. Symlinks inside the output structure
+are rejected.
+
+Generated configuration explicitly selects keep-id and a workspace at
+`/workspace`; UID/GID keys are omitted. Init performs no host identity lookup,
+build-argument generation, image builds, or Podman operations. Generated config preserves the template settings, including active settings not
+yet supported by the decoder. Consequently, generated templates currently fail
+`deco validate` with unsupported-key errors. Init does not verify image builds.
+
+Each built-in template consists of `<name>.toml` and `<name>.Containerfile`
+in `lib/templates`, embedded at build time. Init substitutes `{{project_name}}`,
+`{{image_name}}`, and `{{container_name}}` in the TOML, preserving other text.
+These tokens belong inside quoted TOML values. Containerfiles remain unchanged;
+unsupported TOML settings are never silently stripped. Missing partners and
+unknown or unterminated placeholders fail the embedding build.

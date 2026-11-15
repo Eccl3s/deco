@@ -1,3 +1,13 @@
 (library
  (name deco)
  (libraries config unix))
+
+(rule
+ (target template_data.ml)
+ (deps
+  (glob_files templates/*.Containerfile)
+  (glob_files templates/*.toml))
+ (action
+  (with-stdout-to
+   %{target}
+   (run %{exe:../tools/embed_templates/embed_templates.exe} %{deps}))))

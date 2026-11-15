@@ -1,0 +1,57 @@
+[project]
+name = "{{project_name}}"
+description = "Deco OpenSUSE Tumbleweed development environment"
+
+[image]
+name = "{{image_name}}"
+
+[build]
+context = ".deco/build"
+containerfile = "Containerfile"
+pull = true
+no_cache = false
+
+[build.args]
+ADDITIONAL_PACKAGES = ""
+
+[user]
+name = "dev"
+mode = "keep-id"
+
+[container]
+name = "{{container_name}}"
+workdir = "/workspace"
+shell = "bash"
+cap_drop = ["ALL"]
+
+# OPTIONAL: Add environment variables only when they are safe to store here.
+# [container.environment]
+# LOG_LEVEL = "debug"
+
+# OPTIONAL: Podman-managed secrets are applied when the container is created.
+# [[container.secrets]]
+# name = "example-token"
+# type = "env"
+# target = "EXAMPLE_TOKEN"
+
+[network]
+mode = "pasta"
+
+# OPTIONAL: Publish a port only on loopback by default.
+# [[network.ports]]
+# host = 3000
+# container = 3000
+# bind = "127.0.0.1"
+
+[mounts.workspace]
+source = "."
+target = "/workspace"
+relabel = "private"
+
+# OPTIONAL: Add repeatable development commands, for example:
+# [actions]
+# test = "echo 'Hello from deco!'"
+
+# OPTIONAL: Extra bind mounts, devices, capabilities, privileged mode, and host
+# namespaces expand the environment's access to the host. Add them only after
+# reviewing the security implications in the Deco documentation.

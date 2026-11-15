@@ -9,8 +9,14 @@
   test_config_loader
   test_host_paths
   test_user_identity)
- (modules :standard \ test_cli)
- (libraries deco config unix))
+ (modules
+  :standard
+  \
+  test_cli
+  test_init
+  init_test_support
+  test_embed_templates)
+ (libraries deco config unix otoml))
 
 (test
  (name test_cli)
@@ -19,3 +25,31 @@
  (deps ../bin/deco.exe)
  (action
   (run %{test} %{exe:../bin/deco.exe} %{read:../lib/cli/build_version.txt})))
+
+(rule
+ (target init_test_support.ml)
+ (deps ../lib/init.ml)
+ (action
+  (with-stdout-to
+   %{target}
+   (progn
+    (echo "module Template = Deco.Template\n")
+    (cat %{deps})))))
+
+(test
+ (name test_init)
+ (modules test_init init_test_support)
+ (libraries deco config unix otoml)
+ (deps
+  (glob_files ../lib/templates/*.Containerfile)
+  (glob_files ../lib/templates/*.toml))
+ (action
+  (run %{test} %{workspace_root}/lib/templates)))
+
+(test
+ (name test_embed_templates)
+ (modules test_embed_templates)
+ (libraries unix)
+ (deps ../tools/embed_templates/embed_templates.exe)
+ (action
+  (run %{test} %{exe:../tools/embed_templates/embed_templates.exe})))

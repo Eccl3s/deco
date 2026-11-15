@@ -41,13 +41,83 @@ let () =
         let read p = In_channel.with_open_bin p In_channel.input_all in
         let output, errors = (read out, read err) in
         last_errors := errors;
-        assert (
-          (not (String.contains output '\027'))
-          && not (String.contains errors '\027'));
+        if String.contains output '\027' || String.contains errors '\027' then
+          failwith
+            (Printf.sprintf
+               "Unexpected ESC byte: cwd=%S argv=[%s]\nstdout=%S\nstderr=%S" cwd
+               (String.concat "; " (List.map (Printf.sprintf "%S") args))
+               output errors);
         if expected = 0 then assert (errors = "")
         else assert (output = "" && errors <> "");
         output
       in
+      let contains text fragment =
+        let rec loop i =
+          i + String.length fragment <= String.length text
+          && (String.sub text i (String.length fragment) = fragment
+             || loop (i + 1))
+        in
+        loop 0
+      in
+      let names =
+        [
+          "alpine";
+          "debian";
+          "fedora";
+          "go";
+          "podman";
+          "python";
+          "rust";
+          "tumbleweed";
+        ]
+      in
+      let listing = run temp [ "init"; "--list-templates" ] 0 in
+      assert (
+        listing
+        = "alpine      Alpine development container\n\
+           debian      Debian development container\n\
+           fedora      Fedora development container\n\
+           go          Go development container\n\
+           podman      Podman development container\n\
+           python      Python uv development container\n\
+           rust        Rust development container\n\
+           tumbleweed  Tumbleweed development container\n");
+      List.iter
+        (fun name ->
+          let path = Filename.concat temp ("generated-" ^ name) in
+          let preview = run temp [ "init"; path; "-t"; name; "-d" ] 0 in
+          assert (
+            contains preview "Runtime: Podman"
+            && contains preview "--- contents ---");
+          assert (not (Sys.file_exists path));
+          ignore (run temp [ "init"; path; "--template=" ^ name ] 0);
+          ignore (run temp [ "validate"; "--project-dir"; path ] 2);
+          let file = Filename.concat path ".deco/config.toml" in
+          let original = In_channel.with_open_bin file In_channel.input_all in
+          ignore (run temp [ "init"; path ] 2);
+          assert (In_channel.with_open_bin file In_channel.input_all = original);
+          ignore (run temp [ "init"; path; "-R" ] 0))
+        names;
+      List.iter
+        (fun args -> ignore (run temp ("init" :: args) 2))
+        [
+          [ "--list-templates"; "." ];
+          [ "--list-templates"; "-t"; "debian" ];
+          [ "--list-templates"; "-R" ];
+          [ "--list-templates"; "-d" ];
+          [ "--template"; "unknown" ];
+          [ "--template"; "-V" ];
+          [ "--templates"; "debian" ];
+          [ "--project-dir"; temp ];
+        ];
+      let default_root = Filename.concat temp "default-init" in
+      Unix.mkdir default_root 0o700;
+      ignore (run default_root [ "init" ] 0);
+      ignore (run default_root [ "validate" ] 2);
+      let spaced = Filename.concat temp "Another Project" in
+      ignore (run temp [ "init"; spaced ] 0);
+      ignore (run temp [ "validate"; "--project-dir"; spaced ] 2);
+      ignore (run temp [ "init"; "--help=plain" ] 0);
       let root = Filename.concat temp "project with spaces" in
       Unix.mkdir root 0o700;
       let deco = Filename.concat root ".deco" in
