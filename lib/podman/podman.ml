@@ -155,23 +155,45 @@ let inspect (run : runner) kind decode name =
     | Error e ->
         Error (Runtime { operation; message = e.operation ^ ": " ^ e.message })
   in
-  match invoke (Podman_command.exists kind name) with
+  match invoke (Podman_command.inspect kind name) with
   | Error e -> Error e
-  | Ok { status = Unix.WEXITED 1; _ } -> Ok Absent
-  | Ok { status = Unix.WEXITED 0; _ } -> (
-      match invoke (Podman_command.inspect kind name) with
-      | Error e -> Error e
-      | Ok ({ status = Unix.WEXITED 0; _ } as r) -> (
-          try
-            match Yojson.Basic.from_string r.stdout with
-            | `List [ json ] -> Ok (Present (decode json))
-            | _ ->
-                Error
-                  (Invalid_response
-                     { operation; message = "Expected one inspection object" })
-          with Failure message | Yojson.Json_error message ->
-            Error (Invalid_response { operation; message }))
-      | Ok r -> Error (Runtime { operation; message = message r }))
+  | Ok ({ status = Unix.WEXITED 0; _ } as r) -> (
+      try
+        match Yojson.Basic.from_string r.stdout with
+        | `List [ json ] -> Ok (Present (decode json))
+        | _ ->
+            Error
+              (Invalid_response
+                 { operation; message = "Expected one inspection object" })
+      with Failure message | Yojson.Json_error message ->
+        Error (Invalid_response { operation; message }))
+  | Ok ({ status = Unix.WEXITED _; _ } as original) -> (
+      match invoke (Podman_command.exists kind name) with
+      | Ok { status = Unix.WEXITED 1; _ } -> Ok Absent
+      | Ok { status = Unix.WEXITED 0; _ } ->
+          Error (Runtime { operation; message = message original })
+      | Ok diagnostic ->
+          Error
+            (Runtime
+               {
+                 operation;
+                 message =
+                   message original ^ "; existence check: " ^ message diagnostic;
+               })
+      | Error e ->
+          Error
+            (Runtime
+               {
+                 operation;
+                 message =
+                   (message original ^ "; existence check failed: "
+                   ^
+                   match e with
+                   | Runtime { message; _ }
+                   | Invalid_response { message; _ }
+                   | Unavailable message ->
+                       message);
+               }))
   | Ok r -> Error (Runtime { operation; message = message r })
 
 let inspect_image ?(run = default_run) name = inspect run "image" image name

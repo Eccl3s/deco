@@ -23,7 +23,7 @@ let () =
     }
   in
   let plan = get (Assemble_plan.make loaded) in
-  assert (List.length plan.steps = 14);
+  assert (List.length plan.steps = 9);
   assert (
     (List.hd plan.steps).command
     = List.map (fun s -> Assemble_plan.Literal s) Podman_command.version);

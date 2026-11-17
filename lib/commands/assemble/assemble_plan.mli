@@ -1,17 +1,12 @@
 type operation =
   | Availability
-  | Image_exists
   | Image_inspect
-  | Container_exists
   | Container_inspect
   | Build
-  | Built_exists
   | Built_inspect
   | Create
-  | Created_exists
   | Created_inspect
   | Start
-  | Started_exists
   | Started_inspect
       (** Pure planning from a successfully loaded configuration; no runtime
           queries. *)

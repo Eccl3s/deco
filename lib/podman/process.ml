@@ -175,3 +175,107 @@ let run_stream ~on_chunk ~poll argv =
             Ok { status = Option.get !status; stdout = ""; stderr = "" }
           with Unix.Unix_error (e, operation, _) ->
             Error { operation; message = Unix.error_message e })
+
+let run_many ?(poll = fun () -> ()) ?(forward_signals = false) commands =
+  let active = ref [] and paths = ref [] and pending = ref [] in
+  let kill pid signal =
+    try Unix.kill pid signal with Unix.Unix_error (Unix.ESRCH, _, _) -> ()
+  in
+  let rec wait flags pid =
+    try Unix.waitpid flags pid
+    with Unix.Unix_error (Unix.EINTR, _, _) -> wait flags pid
+  in
+  let handlers =
+    if forward_signals then
+      List.map
+        (fun signal ->
+          ( signal,
+            Sys.signal signal
+              (Sys.Signal_handle
+                 (fun signal ->
+                   pending := signal :: !pending;
+                   List.iter (fun pid -> kill pid signal) !active)) ))
+        [ Sys.sigint; Sys.sigterm ]
+    else []
+  in
+  Fun.protect
+    ~finally:(fun () ->
+      List.iter (fun pid -> kill pid Sys.sigkill) !active;
+      List.iter
+        (fun pid -> try ignore (wait [] pid) with Unix.Unix_error _ -> ())
+        !active;
+      List.iter
+        (fun (signal, handler) -> Sys.set_signal signal handler)
+        handlers;
+      List.iter
+        (fun path -> try Sys.remove path with Sys_error _ -> ())
+        !paths)
+    (fun () ->
+      let launch argv =
+        try
+          match argv with
+          | [] ->
+              Error { operation = "launch"; message = "Empty argument vector" }
+          | program :: _ ->
+              let temporary () =
+                let path = Filename.temp_file "deco-batch-" ".out" in
+                paths := path :: !paths;
+                path
+              in
+              let out = temporary () and err = temporary () in
+              let fd path =
+                Unix.openfile path [ Unix.O_WRONLY; Unix.O_CLOEXEC ] 0o600
+              in
+              let o = fd out in
+              let pid =
+                Fun.protect
+                  ~finally:(fun () -> Unix.close o)
+                  (fun () ->
+                    let e = fd err in
+                    Fun.protect
+                      ~finally:(fun () -> Unix.close e)
+                      (fun () ->
+                        Unix.create_process program (Array.of_list argv)
+                          Unix.stdin o e))
+              in
+              active := pid :: !active;
+              List.iter (kill pid) !pending;
+              Ok (pid, out, err, ref None)
+        with
+        | Unix.Unix_error (e, operation, _) ->
+            Error { operation; message = Unix.error_message e }
+        | Sys_error message -> Error { operation = "capture"; message }
+      in
+      let children = List.map launch commands in
+      let rec drain () =
+        List.iter
+          (function
+            | Error _ -> ()
+            | Ok (pid, _, _, status) ->
+                if !status = None then
+                  let child, value = wait [ Unix.WNOHANG ] pid in
+                  if child <> 0 then (
+                    status := Some value;
+                    active := List.filter (( <> ) pid) !active))
+          children;
+        if !active <> [] then (
+          poll ();
+          (try ignore (Unix.select [] [] [] 0.005)
+           with Unix.Unix_error (Unix.EINTR, _, _) -> ());
+          drain ())
+      in
+      drain ();
+      List.map
+        (function
+          | Error e -> Error e
+          | Ok (_, out, err, status) ->
+              let read path =
+                In_channel.with_open_bin path In_channel.input_all
+              in
+              Ok
+                {
+                  status = Option.get !status;
+                  stdout = read out;
+                  stderr = read err;
+                })
+        children)

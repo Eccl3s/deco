@@ -1,17 +1,12 @@
 type operation =
   | Availability
-  | Image_exists
   | Image_inspect
-  | Container_exists
   | Container_inspect
   | Build
-  | Built_exists
   | Built_inspect
   | Create
-  | Created_exists
   | Created_inspect
   | Start
-  | Started_exists
   | Started_inspect
 
 type argument = Command_plan.argument =
@@ -152,18 +147,13 @@ let make (loaded : Config_loader.t) =
       let roles =
         [
           Availability;
-          Image_exists;
           Image_inspect;
-          Container_exists;
           Container_inspect;
           Build;
-          Built_exists;
           Built_inspect;
           Create;
-          Created_exists;
           Created_inspect;
           Start;
-          Started_exists;
           Started_inspect;
         ]
       in
@@ -173,19 +163,13 @@ let make (loaded : Config_loader.t) =
       let steps =
         [
           step (literals Podman_command.version);
-          step (literals (Podman_command.exists "image" image));
-          step ~condition:"If the image exists"
-            (literals (Podman_command.inspect "image" image));
-          step (literals (Podman_command.exists "container" c.container.name));
-          step ~condition:"If the container exists"
-            (literals (Podman_command.inspect "container" c.container.name));
+          step (literals (Podman_command.inspect "image" image));
+          step (literals (Podman_command.inspect "container" c.container.name));
           step
             ~condition:
               ("After ownership and compatibility checks pass, if image "
              ^ quote image ^ " is missing")
             (literals build);
-          step ~condition:"After building the missing image"
-            (literals (Podman_command.exists "image" image));
           step ~condition:"After building the missing image"
             (literals (Podman_command.inspect "image" image));
           step
@@ -195,10 +179,6 @@ let make (loaded : Config_loader.t) =
             create;
           step ~condition:"After creating the missing container"
             (literals
-               [ "podman"; "--remote=false"; "container"; "exists"; "--" ]
-            @ [ Container_id ]);
-          step ~condition:"After creating the missing container"
-            (literals
                [ "podman"; "--remote=false"; "container"; "inspect"; "--" ]
             @ [ Container_id ]);
           step
@@ -206,10 +186,6 @@ let make (loaded : Config_loader.t) =
               ("After ownership and compatibility checks pass, if container "
              ^ quote c.container.name ^ " is new or stopped")
             (literals [ "podman"; "--remote=false"; "start"; "--" ]
-            @ [ Container_id ]);
-          step ~condition:"After starting the container"
-            (literals
-               [ "podman"; "--remote=false"; "container"; "exists"; "--" ]
             @ [ Container_id ]);
           step ~condition:"After starting the container"
             (literals

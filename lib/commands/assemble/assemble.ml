@@ -20,14 +20,32 @@ type outcome = {
 
 let compatibility = Container_runtime.compatibility
 
-let run ?(execute = fun output argv -> Process.run ~output argv)
+let run ?execute ?read_many
     ?(probe = fun () -> Container_runtime.local_selinux ()) loaded =
+  let concurrent = Option.is_some read_many || Option.is_none execute in
+  let injected = execute in
+  let execute =
+    Option.value ~default:(fun output argv -> Process.run ~output argv) execute
+  in
+  let read_many =
+    match (read_many, injected) with
+    | Some batch, _ -> batch
+    | None, Some _ -> List.map (execute Process.Capture)
+    | None, None -> fun commands -> Process.run_many commands
+  in
+  let prefetched = ref [] in
   let completed = ref [] in
   let fail cause = Error { cause; completed = List.rev !completed } in
   let ( let* ) result f =
     match result with Ok x -> f x | Error e -> Error e
   in
-  let read argv = execute Process.Capture argv in
+  let read argv =
+    match List.assoc_opt argv !prefetched with
+    | Some r ->
+        prefetched := List.remove_assoc argv !prefetched;
+        r
+    | None -> execute Process.Capture argv
+  in
   let selinux = Container_runtime.make_selinux_resolver ~run:read ~probe () in
   let check image container =
     match
@@ -64,7 +82,6 @@ let run ?(execute = fun output argv -> Process.run ~output argv)
   in
   let image : Podman.image option ref = ref None in
   let container : Podman.container option ref = ref None in
-  let image_exists = ref false and container_exists = ref false in
   let built = ref false and created = ref false and started = ref false in
   let ready () =
     let* () =
@@ -91,12 +108,7 @@ let run ?(execute = fun output argv -> Process.run ~output argv)
     | (step : Assemble_plan.step) :: rest ->
         let index = step.operation in
         let read_failure message =
-          if
-            List.mem index
-              [
-                Image_exists; Image_inspect; Container_exists; Container_inspect;
-              ]
-          then
+          if List.mem index [ Image_inspect; Container_inspect ] then
             match Podman.info ~run:read () with
             | Error e -> fail (Podman e)
             | Ok _ -> fail (Runtime message)
@@ -105,18 +117,16 @@ let run ?(execute = fun output argv -> Process.run ~output argv)
         let* () = if index = Build then ready () else Ok () in
         let active =
           match index with
-          | Availability | Image_exists | Container_exists -> true
-          | Image_inspect -> !image_exists
-          | Container_inspect -> !container_exists
+          | Availability | Image_inspect | Container_inspect -> true
           | Build -> !image = None
-          | Built_exists | Built_inspect -> !built
+          | Built_inspect -> !built
           | Create -> !container = None
-          | Created_exists | Created_inspect -> !created
+          | Created_inspect -> !created
           | Start -> (
               match !container with
               | Some c -> c.state <> "running"
               | None -> false)
-          | Started_exists | Started_inspect -> !started
+          | Started_inspect -> !started
         in
         let* () =
           if not active then Ok ()
@@ -141,27 +151,49 @@ let run ?(execute = fun output argv -> Process.run ~output argv)
                 | Ok r -> Ok r
             in
             let success = r.Process.status = Unix.WEXITED 0 in
-            if
+            let absent = ref false in
+            let inspecting =
               List.mem index
                 [
-                  Image_exists;
-                  Container_exists;
-                  Built_exists;
-                  Created_exists;
-                  Started_exists;
+                  Image_inspect;
+                  Container_inspect;
+                  Built_inspect;
+                  Created_inspect;
+                  Started_inspect;
                 ]
-            then
-              if index = Image_exists && r.status = Unix.WEXITED 1 then (
-                image_exists := false;
-                Ok ())
-              else if index = Container_exists && r.status = Unix.WEXITED 1 then (
-                container_exists := false;
-                Ok ())
-              else if not success then read_failure (Podman.message r)
-              else (
-                if index = Image_exists then image_exists := true;
-                if index = Container_exists then container_exists := true;
-                Ok ())
+            in
+            let* () =
+              if inspecting && not success then
+                let kind =
+                  if List.mem index [ Image_inspect; Built_inspect ] then
+                    "image"
+                  else "container"
+                in
+                let name = List.hd (List.rev argv) in
+                let run command =
+                  if command = argv then Ok r else read command
+                in
+                let result =
+                  if kind = "image" then
+                    Result.map
+                      (function Podman.Absent -> true | Present _ -> false)
+                      (Podman.inspect_image ~run name)
+                  else
+                    Result.map
+                      (function Podman.Absent -> true | Present _ -> false)
+                      (Podman.inspect_container ~run name)
+                in
+                match result with
+                | Ok true
+                  when List.mem index [ Image_inspect; Container_inspect ] ->
+                    absent := true;
+                    Ok ()
+                | Ok _ -> read_failure "Resource missing after mutation"
+                | Error (Podman.Runtime { message; _ }) -> read_failure message
+                | Error e -> fail (Podman e)
+              else Ok ()
+            in
+            if !absent then Ok ()
             else if not success then
               if index = Availability then
                 fail (Podman (Unavailable (Podman.message r)))
@@ -204,7 +236,23 @@ let run ?(execute = fun output argv -> Process.run ~output argv)
                   if index = Started_inspect && c.state <> "running" then
                     fail (Runtime "Container is not running after start")
                   else Ok ()
-              | Availability -> Ok ()
+              | Availability ->
+                  let commands =
+                    List.filter_map
+                      (fun step ->
+                        if
+                          List.mem step.operation
+                            [ Image_inspect; Container_inspect ]
+                        then
+                          Some
+                            (Assemble_plan.resolve ~image_id:"" ~container_id:""
+                               step.command)
+                        else None)
+                      plan.steps
+                  in
+                  if concurrent then
+                    prefetched := List.combine commands (read_many commands);
+                  Ok ()
               | Build ->
                   built := true;
                   Ok ()
@@ -237,7 +285,6 @@ let run ?(execute = fun output argv -> Process.run ~output argv)
               | Start ->
                   started := true;
                   Ok ()
-              | _ -> Ok ()
         in
         loop rest
   in

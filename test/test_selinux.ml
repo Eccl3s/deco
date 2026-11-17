@@ -140,13 +140,21 @@ let () =
         in
         Ok { Process.status = Unix.WEXITED 0; stdout; stderr = "" }
       in
-      let result = Exec.run ~execute ~probe loaded ~tty:false [ "true" ] in
+      let result =
+        Exec.run ~execute
+          ~read_many:(List.map (execute Process.Capture))
+          ~probe loaded ~tty:false [ "true" ]
+      in
       assert (Result.is_ok result = success);
       assert (!probes = expected_probes && !infos = expected_info);
       probes := 0;
       infos := 0;
       started := false;
-      let assembled = Assemble.run ~execute ~probe loaded in
+      let assembled =
+        Assemble.run ~execute
+          ~read_many:(List.map (execute Process.Capture))
+          ~probe loaded
+      in
       assert (Result.is_ok assembled = success);
       assert (!probes = expected_probes && !infos = expected_info))
     [

@@ -30,6 +30,9 @@ let assemble project_dir dry_run =
         let result =
           try
             Deco.Assemble.run
+              ~read_many:(fun commands ->
+                Deco.Process.run_many ~forward_signals:true
+                  ~poll:status.Build_output.tick commands)
               ~execute:(fun output argv ->
                 match output with
                 | Deco.Process.Inherit ->

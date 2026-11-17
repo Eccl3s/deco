@@ -19,6 +19,8 @@ let execute arguments project_dir dry_run =
           else
             match
               Deco.Exec.run
+                ~read_many:(fun commands ->
+                  Deco.Process.run_many ~forward_signals:true commands)
                 ~execute:(fun output argv ->
                   Deco.Process.run ~output ~forward_signals:true argv)
                 loaded ~tty arguments

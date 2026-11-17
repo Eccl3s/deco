@@ -123,7 +123,7 @@ let () =
           created = false;
           started = false;
         });
-  assert (List.length !calls = 5);
+  assert (List.length !calls = 3);
   let error =
     Assemble.run
       ~execute:(fun _ _ ->
@@ -282,6 +282,25 @@ let () =
   in
   let start r = read [ "podman"; "--remote=false"; "start"; "--"; id ] r in
   let run script =
+    (* Expand resource-presence fixtures into the inspect-first protocol. *)
+    let rec inspection_script = function
+      | ((mode, [ p; flag; kind; "exists"; sep; name ], _) as original) :: rest
+        -> (
+          let command = [ p; flag; kind; "inspect"; sep; name ] in
+          match rest with
+          | (next_mode, expected, _) :: tail when expected = command ->
+              ( next_mode,
+                expected,
+                let _, _, r = List.hd rest in
+                r )
+              :: inspection_script tail
+          | _ ->
+              (mode, command, response ~code:125 "")
+              :: original :: inspection_script rest)
+      | item :: rest -> item :: inspection_script rest
+      | [] -> []
+    in
+    let script = inspection_script script in
     let pending = ref script in
     let execute output argv =
       match !pending with

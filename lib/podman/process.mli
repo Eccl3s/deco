@@ -21,3 +21,10 @@ val run_stream :
     the direct child exits, drain for at most one second, even if a descendant
     retains the pipe. Later descendant output is discarded. The direct child is
     reaped once; descendants are never killed by the runner. *)
+
+val run_many :
+  ?poll:(unit -> unit) ->
+  ?forward_signals:bool ->
+  string list list ->
+  (result, error) Stdlib.result list
+(** Launch captured commands concurrently, returning results in input order. *)

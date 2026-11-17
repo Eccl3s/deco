@@ -129,9 +129,17 @@ let check_compatibility ~selinux loaded image container =
   | Ok (Ok ()) -> Ok ()
   | Ok (Error e) -> Error (Conflict e)
 
-let inspect ?(run = fun argv -> Process.run argv)
-    ?(probe = fun () -> local_selinux ()) ?selinux ?container_id
-    (loaded : Config_loader.t) =
+let inspect ?run ?read_many ?(probe = fun () -> local_selinux ()) ?selinux
+    ?container_id (loaded : Config_loader.t) =
+  let concurrent = Option.is_some read_many || Option.is_none run in
+  let injected = run in
+  let run = Option.value ~default:(fun argv -> Process.run argv) run in
+  let read_many =
+    match (read_many, injected) with
+    | Some batch, _ -> batch
+    | None, Some _ -> List.map run
+    | None, None -> fun commands -> Process.run_many commands
+  in
   let ( let* ) r f = match r with Ok x -> f x | Error e -> Error e in
   let wrap = function
     | Ok x -> Ok x
@@ -150,6 +158,24 @@ let inspect ?(run = fun argv -> Process.run argv)
     | Error _ -> Error (Conflict "Resource ownership differs")
   in
   let* () = wrap (Podman.available ~run ()) in
+  let image_command =
+    Podman_command.inspect "image"
+      (loaded.effective.image.name ^ ":" ^ loaded.effective.image.tag)
+  in
+  let container_command =
+    Podman_command.inspect "container"
+      (Option.value ~default:loaded.effective.container.name container_id)
+  in
+  let responses =
+    if concurrent then
+      List.combine
+        [ image_command; container_command ]
+        (read_many [ image_command; container_command ])
+    else []
+  in
+  let run argv =
+    match List.assoc_opt argv responses with Some r -> r | None -> run argv
+  in
   let* image =
     wrap
       (Podman.inspect_image ~run

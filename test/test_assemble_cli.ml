@@ -129,9 +129,9 @@ let () =
          ^ image
          ^ "';;\n\
             'container exists') test -f \"$DECO_TEST_LOG.created\";;\n\
-            'container inspect') if test -f \"$DECO_TEST_LOG.started\"; then \
-            printf '%s' '" ^ body "running" ^ "'; else printf '%s' '"
-         ^ body "created"
+            'container inspect') test -f \"$DECO_TEST_LOG.created\" || exit \
+            125; if test -f \"$DECO_TEST_LOG.started\"; then printf '%s' '"
+         ^ body "running" ^ "'; else printf '%s' '" ^ body "created"
          ^ "'; fi;;\n\
             create*) printf x > \"$DECO_TEST_LOG.created\"; printf '%s' '" ^ id
          ^ "';;\nstart*) "

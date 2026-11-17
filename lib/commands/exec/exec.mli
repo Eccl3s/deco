@@ -19,6 +19,7 @@ type outcome = {
 
 val run :
   ?execute:runner ->
+  ?read_many:(string list list -> (Process.result, Process.error) result list) ->
   ?probe:(unit -> bool option) ->
   Config_loader.t ->
   tty:bool ->

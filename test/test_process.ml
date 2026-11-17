@@ -11,7 +11,7 @@ let () =
         done
     | "exit" -> exit 7
     | "signal" -> Unix.kill (Unix.getpid ()) Sys.sigterm
-    | "hold-silent" | "hold-writing" | "early-eof" -> ()
+    | "hold-silent" | "hold-writing" | "early-eof" | "barrier" -> ()
     | _ -> assert false
   else
     let run args =
@@ -182,3 +182,73 @@ let () =
             let restored = Sys.signal signal Sys.Signal_ignore in
             assert (restored = Sys.Signal_ignore)))
       [ Sys.sigint; Sys.sigterm ]
+
+let () =
+  if Array.length Sys.argv > 1 && Sys.argv.(1) = "barrier" then (
+    Out_channel.with_open_bin Sys.argv.(2) (fun ch -> output_string ch "ready");
+    let deadline = Unix.gettimeofday () +. 2. in
+    while
+      (not (Sys.file_exists Sys.argv.(3))) && Unix.gettimeofday () < deadline
+    do
+      ignore (Unix.select [] [] [] 0.005)
+    done;
+    if not (Sys.file_exists Sys.argv.(3)) then exit 99;
+    print_string Sys.argv.(4))
+  else if Array.length Sys.argv = 1 then (
+    let root = Filename.temp_file "deco-batch-barrier" "" in
+    Unix.unlink root;
+    Unix.mkdir root 0o700;
+    Fun.protect
+      ~finally:(fun () ->
+        Array.iter
+          (fun name -> Unix.unlink (Filename.concat root name))
+          (Sys.readdir root);
+        Unix.rmdir root)
+      (fun () ->
+        let a = Filename.concat root "a" and b = Filename.concat root "b" in
+        let results =
+          Process.run_many
+            [
+              [ Sys.executable_name; "barrier"; a; b; "first" ];
+              [ Sys.executable_name; "barrier"; b; a; "second" ];
+              [ "/nonexistent/deco-batch-test" ];
+              [ Sys.executable_name; "large" ];
+            ]
+        in
+        match results with
+        | [ Ok first; Ok second; Error _; Ok large ] ->
+            assert (first.status = Unix.WEXITED 0 && first.stdout = "first");
+            assert (second.status = Unix.WEXITED 0 && second.stdout = "second");
+            assert (
+              String.length large.stdout = 100000
+              && String.length large.stderr = 100000)
+        | _ -> assert false);
+    let sent = ref false in
+    let results =
+      Process.run_many ~forward_signals:true
+        ~poll:(fun () ->
+          if not !sent then (
+            sent := true;
+            Unix.kill (Unix.getpid ()) Sys.sigterm))
+        [ [ "/bin/sleep"; "2" ]; [ "/bin/sleep"; "2" ] ]
+    in
+    List.iter
+      (function
+        | Ok r -> assert (r.Process.status = Unix.WSIGNALED Sys.sigterm)
+        | Error _ -> assert false)
+      results;
+    let raised =
+      try
+        ignore
+          (Process.run_many
+             ~poll:(fun () -> failwith "batch poll")
+             [ [ "/bin/sleep"; "2" ] ]);
+        false
+      with Failure message -> message = "batch poll"
+    in
+    assert raised;
+    assert (
+      try
+        ignore (Unix.waitpid [ Unix.WNOHANG ] (-1));
+        false
+      with Unix.Unix_error (Unix.ECHILD, _, _) -> true))

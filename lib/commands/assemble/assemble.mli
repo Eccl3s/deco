@@ -27,6 +27,7 @@ val compatibility :
 
 val run :
   ?execute:runner ->
+  ?read_many:(string list list -> (Process.result, Process.error) result list) ->
   ?probe:(unit -> bool option) ->
   Config_loader.t ->
   (outcome, error) result

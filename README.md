@@ -353,3 +353,9 @@ SELinux status only when it affects workspace relabel compatibility. It checks
 local sysfs first and falls back to Podman info when the result is unknown.
 Permissive SELinux is treated as enabled. Detection is reused within one command
 invocation; ownership and compatibility checks still run on every invocation.
+
+Successful resource inspections avoid separate existence checks. Assemble and
+exec inspect the configured image and container concurrently before ownership
+and compatibility validation. Failed inspections use an existence check to
+distinguish missing resources from runtime errors. Mutations and subsequent
+verification remain sequential.

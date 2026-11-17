@@ -18,6 +18,7 @@ val availability : ?run:Podman.runner -> unit -> (bool, Podman.error) result
 
 val inspect :
   ?run:Podman.runner ->
+  ?read_many:(string list list -> (Process.result, Process.error) result list) ->
   ?probe:(unit -> bool option) ->
   ?selinux:(unit -> (bool, Podman.error) result) ->
   ?container_id:string ->

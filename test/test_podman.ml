@@ -6,6 +6,25 @@ let result ?(stdout = "") ?(stderr = "") status : Process.result =
 let ok = result (Unix.WEXITED 0)
 
 let runner responses =
+  (* Expand resource-presence fixtures into the inspect-first protocol. *)
+  let rec inspection_script = function
+    | (([ p; flag; kind; "exists"; sep; name ], response) as original) :: rest
+      -> (
+        let command = [ p; flag; kind; "inspect"; sep; name ] in
+        match (response, rest) with
+        | Error e, _ -> (command, Error e) :: inspection_script rest
+        | _, (expected, (Ok r as inspected)) :: tail when expected = command ->
+            (expected, inspected)
+            ::
+            (if r.Process.status = Unix.WEXITED 0 then inspection_script tail
+             else original :: inspection_script tail)
+        | _, _ ->
+            (command, Ok (result (Unix.WEXITED 125)))
+            :: original :: inspection_script rest)
+    | item :: rest -> item :: inspection_script rest
+    | [] -> []
+  in
+  let responses = inspection_script responses in
   let remaining = ref responses in
   ( (fun argv ->
       match !remaining with
