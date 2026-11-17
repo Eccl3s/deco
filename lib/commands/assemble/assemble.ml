@@ -20,14 +20,23 @@ type outcome = {
 
 let compatibility = Container_runtime.compatibility
 
-let run ?(execute = fun output argv -> Process.run ~output argv) loaded =
-  let selinux_enabled = ref true in
+let run ?(execute = fun output argv -> Process.run ~output argv)
+    ?(probe = fun () -> Container_runtime.local_selinux ()) loaded =
   let completed = ref [] in
   let fail cause = Error { cause; completed = List.rev !completed } in
   let ( let* ) result f =
     match result with Ok x -> f x | Error e -> Error e
   in
   let read argv = execute Process.Capture argv in
+  let selinux = Container_runtime.make_selinux_resolver ~run:read ~probe () in
+  let check image container =
+    match
+      Container_runtime.check_compatibility ~selinux loaded image container
+    with
+    | Ok () -> Ok ()
+    | Error (Container_runtime.Conflict e) -> fail (Conflict e)
+    | Error (Container_runtime.Podman e) -> fail (Podman e)
+  in
   let own labels =
     match
       Ownership.verify ~project:loaded.Config_loader.effective.project.name
@@ -43,7 +52,7 @@ let run ?(execute = fun output argv -> Process.run ~output argv) loaded =
         match r.status with
         | Unix.WEXITED 0 ->
             completed :=
-              String.concat " " (List.filteri (fun i _ -> i < 2) argv)
+              String.concat " " (List.filteri (fun i _ -> i < 3) argv)
               :: !completed;
             Ok r
         | _ -> fail (Runtime (Podman.message r)))
@@ -68,11 +77,7 @@ let run ?(execute = fun output argv -> Process.run ~output argv) loaded =
     | None, Some _ ->
         fail (Conflict "Existing container has no configured image")
     | Some i, Some c ->
-        let* () =
-          match compatibility ~selinux_enabled:!selinux_enabled loaded i c with
-          | Ok () -> Ok ()
-          | Error e -> fail (Conflict e)
-        in
+        let* () = check i c in
         if Container_runtime.supported_state c.state then Ok ()
         else fail (Conflict "Unsupported container state")
     | _ -> Ok ()
@@ -85,6 +90,18 @@ let run ?(execute = fun output argv -> Process.run ~output argv) loaded =
     | [] -> Ok ()
     | (step : Assemble_plan.step) :: rest ->
         let index = step.operation in
+        let read_failure message =
+          if
+            List.mem index
+              [
+                Image_exists; Image_inspect; Container_exists; Container_inspect;
+              ]
+          then
+            match Podman.info ~run:read () with
+            | Error e -> fail (Podman e)
+            | Ok _ -> fail (Runtime message)
+          else fail (Runtime message)
+        in
         let* () = if index = Build then ready () else Ok () in
         let active =
           match index with
@@ -120,7 +137,7 @@ let run ?(execute = fun output argv -> Process.run ~output argv) loaded =
                     if index = Availability then
                       fail
                         (Podman (Unavailable (e.operation ^ ": " ^ e.message)))
-                    else fail (Runtime (e.operation ^ ": " ^ e.message))
+                    else read_failure (e.operation ^ ": " ^ e.message)
                 | Ok r -> Ok r
             in
             let success = r.Process.status = Unix.WEXITED 0 in
@@ -140,7 +157,7 @@ let run ?(execute = fun output argv -> Process.run ~output argv) loaded =
               else if index = Container_exists && r.status = Unix.WEXITED 1 then (
                 container_exists := false;
                 Ok ())
-              else if not success then fail (Runtime (Podman.message r))
+              else if not success then read_failure (Podman.message r)
               else (
                 if index = Image_exists then image_exists := true;
                 if index = Container_exists then container_exists := true;
@@ -148,7 +165,7 @@ let run ?(execute = fun output argv -> Process.run ~output argv) loaded =
             else if not success then
               if index = Availability then
                 fail (Podman (Unavailable (Podman.message r)))
-              else fail (Runtime (Podman.message r))
+              else read_failure (Podman.message r)
             else
               match index with
               | Image_inspect | Built_inspect ->
@@ -181,23 +198,13 @@ let run ?(execute = fun output argv -> Process.run ~output argv) loaded =
                     else Ok ()
                   in
                   let* () =
-                    match !image with
-                    | Some i -> (
-                        match
-                          compatibility ~selinux_enabled:!selinux_enabled loaded
-                            i c
-                        with
-                        | Ok () -> Ok ()
-                        | Error e -> fail (Conflict e))
-                    | None -> Ok ()
+                    match !image with Some i -> check i c | None -> Ok ()
                   in
                   container := Some c;
                   if index = Started_inspect && c.state <> "running" then
                     fail (Runtime "Container is not running after start")
                   else Ok ()
-              | Availability ->
-                  selinux_enabled := Container_runtime.selinux_enabled r.stdout;
-                  Ok ()
+              | Availability -> Ok ()
               | Build ->
                   built := true;
                   Ok ()

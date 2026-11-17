@@ -85,10 +85,62 @@ let availability ?run () = Result.map selinux_enabled (Podman.info ?run ())
 let supported_state state =
   List.mem state [ "running"; "created"; "configured"; "exited"; "stopped" ]
 
-let inspect ?(run = fun argv -> Process.run argv) ?container_id
+let local_selinux ?(root = "/sys/fs/selinux") () =
+  try
+    ignore (Unix.stat root);
+    let value =
+      In_channel.with_open_bin
+        (Filename.concat root "enforce")
+        In_channel.input_all
+      |> String.trim
+    in
+    if value = "0" || value = "1" then Some true else None
+  with
+  | Unix.Unix_error (Unix.ENOENT, _, _) -> Some false
+  | Unix.Unix_error _ | Sys_error _ -> None
+
+let make_selinux_resolver ?(run = fun argv -> Process.run argv)
+    ?(probe = fun () -> local_selinux ()) () =
+  let cached = ref None in
+  fun () ->
+    match !cached with
+    | Some result -> result
+    | None ->
+        let result =
+          match probe () with
+          | Some enabled -> Ok enabled
+          | None -> availability ~run ()
+        in
+        cached := Some result;
+        result
+
+let check_compatibility ~selinux loaded image container =
+  let strict = compatibility loaded image container in
+  let relaxed = compatibility ~selinux_enabled:false loaded image container in
+  let result =
+    if strict = relaxed || Result.is_error relaxed then Ok strict
+    else
+      match selinux () with
+      | Error e -> Error (Podman e)
+      | Ok enabled -> Ok (if enabled then strict else relaxed)
+  in
+  match result with
+  | Error e -> Error e
+  | Ok (Ok ()) -> Ok ()
+  | Ok (Error e) -> Error (Conflict e)
+
+let inspect ?(run = fun argv -> Process.run argv)
+    ?(probe = fun () -> local_selinux ()) ?selinux ?container_id
     (loaded : Config_loader.t) =
   let ( let* ) r f = match r with Ok x -> f x | Error e -> Error e in
-  let wrap = function Ok x -> Ok x | Error e -> Error (Podman e) in
+  let wrap = function
+    | Ok x -> Ok x
+    | Error (Podman.Runtime _ as original) -> (
+        match Podman.info ~run () with
+        | Error e -> Error (Podman e)
+        | Ok _ -> Error (Podman original))
+    | Error e -> Error (Podman e)
+  in
   let own labels =
     match
       Ownership.verify ~project:loaded.effective.project.name
@@ -97,7 +149,7 @@ let inspect ?(run = fun argv -> Process.run argv) ?container_id
     | Ok () -> Ok ()
     | Error _ -> Error (Conflict "Resource ownership differs")
   in
-  let* selinux_enabled = wrap (availability ~run ()) in
+  let* () = wrap (Podman.available ~run ()) in
   let* image =
     wrap
       (Podman.inspect_image ~run
@@ -121,10 +173,11 @@ let inspect ?(run = fun argv -> Process.run argv) ?container_id
     | Present c -> Ok c
   in
   let* () = own container.labels in
-  let* () =
-    match compatibility ~selinux_enabled loaded image container with
-    | Ok () -> Ok ()
-    | Error e -> Error (Conflict e)
+  let selinux =
+    match selinux with
+    | Some resolve -> resolve
+    | None -> make_selinux_resolver ~run ~probe ()
   in
+  let* () = check_compatibility ~selinux loaded image container in
   if supported_state container.state then Ok { image; container }
   else Error (Conflict "Unsupported container state")

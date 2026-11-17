@@ -104,11 +104,11 @@ let () =
     calls := (output, argv) :: !calls;
     let stdout =
       match argv with
-      | [ "podman"; "info"; "--format"; "json" ] -> ""
-      | [ "podman"; _; "exists"; "--"; _ ] -> ""
-      | [ "podman"; "image"; "inspect"; "--"; _ ] ->
+      | [ "podman"; "--remote=false"; "version" ] -> ""
+      | [ "podman"; "--remote=false"; _; "exists"; "--"; _ ] -> ""
+      | [ "podman"; "--remote=false"; "image"; "inspect"; "--"; _ ] ->
           {|[{"Id":"iid","Labels":{"dev.deco.managed":"true","dev.deco.project":"example","dev.deco.project-root":"/project"},"Config":{"User":"","WorkingDir":"/"}}]|}
-      | [ "podman"; "container"; "inspect"; "--"; _ ] ->
+      | [ "podman"; "--remote=false"; "container"; "inspect"; "--"; _ ] ->
           {|[{"Id":"cid","Image":"iid","Config":{"Labels":{"dev.deco.managed":"true","dev.deco.project":"example","dev.deco.project-root":"/project"},"User":"","WorkingDir":"/"},"HostConfig":{"Init":true,"UsernsMode":""},"State":{"Status":"running"},"Mounts":[]}]|}
       | _ -> failwith "Unexpected mutation"
     in
@@ -138,7 +138,7 @@ let () =
   let stopped = ref true in
   let restart output argv =
     match argv with
-    | [ "podman"; "start"; "--"; "cid" ] ->
+    | [ "podman"; "--remote=false"; "start"; "--"; "cid" ] ->
         stopped := false;
         Ok { Process.status = Unix.WEXITED 0; stdout = "cid"; stderr = "" }
     | _ -> (
@@ -167,7 +167,7 @@ let () =
     | _ -> false);
   let fail_start output argv =
     match argv with
-    | [ "podman"; "start"; "--"; "cid" ] ->
+    | [ "podman"; "--remote=false"; "start"; "--"; "cid" ] ->
         Ok
           {
             Process.status = Unix.WSIGNALED Sys.sigterm;
@@ -251,7 +251,7 @@ let () =
     Ok { Process.status = Unix.WEXITED code; stdout; stderr = "" }
   in
   let read args r = (Process.Capture, args, r) in
-  let info = read Podman_command.info (response "") in
+  let info = read Podman_command.version (response "") in
   let ie r =
     read (Podman_command.exists "image" "example-dev-image:latest") r
   in
@@ -280,7 +280,7 @@ let () =
         (response (container ~state ()));
     ]
   in
-  let start r = read [ "podman"; "start"; "--"; id ] r in
+  let start r = read [ "podman"; "--remote=false"; "start"; "--"; id ] r in
   let run script =
     let pending = ref script in
     let execute output argv =
@@ -342,7 +342,12 @@ let () =
     (fun bad ->
       assert (
         match run (existing @ [ create (response bad) ]) with
-        | Error { cause = Runtime _; completed = [ "podman create" ] } -> true
+        | Error
+            {
+              cause = Runtime _;
+              completed = [ "podman --remote=false create" ];
+            } ->
+            true
         | _ -> false))
     [ ""; "short"; String.make 64 'z' ];
   assert (
@@ -351,7 +356,9 @@ let () =
     | _ -> false);
   assert (
     match run (built @ [ create (response ~code:125 "") ]) with
-    | Error { cause = Runtime _; completed = [ "podman build" ] } -> true
+    | Error { cause = Runtime _; completed = [ "podman --remote=false build" ] }
+      ->
+        true
     | _ -> false);
   assert (
     match
@@ -361,7 +368,9 @@ let () =
         @ post "created"
         @ [ start (response ~code:125 "") ])
     with
-    | Error { cause = Runtime _; completed = [ "podman create" ] } -> true
+    | Error
+        { cause = Runtime _; completed = [ "podman --remote=false create" ] } ->
+        true
     | _ -> false);
   let parsed_image = Result.get_ok (Podman.decode_image (image ())) in
   let base = Result.get_ok (Podman.decode_container (container ())) in

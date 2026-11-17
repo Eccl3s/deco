@@ -344,3 +344,12 @@ missing containers require `deco assemble`. Hooks remain unsupported.
 Stdin is inherited; a TTY is allocated when stdin and stdout are both terminals.
 Command exit codes pass through unchanged; abnormal termination returns 1.
 Use `deco exec --dry-run -- COMMAND` to preview without invoking Podman.
+
+### Local runtime and SELinux detection
+
+Deco v0.1.0 explicitly uses local Podman (`--remote=false`), ignoring implicit
+remote connection selection. Assemble and exec use a lightweight version check and resolves
+SELinux status only when it affects workspace relabel compatibility. It checks
+local sysfs first and falls back to Podman info when the result is unknown.
+Permissive SELinux is treated as enabled. Detection is reused within one command
+invocation; ownership and compatibility checks still run on every invocation.

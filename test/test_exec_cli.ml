@@ -57,7 +57,9 @@ let () =
       in
       write fake
         {|#!/bin/sh
+shift
 case "$1 $2" in
+  'version ') exit 0;;
   'info --format') printf '{}';;
   'image exists'|'container exists') exit 0;;
   'image inspect') printf '%s' '[{"Id":"iid","Labels":{"dev.deco.managed":"true","dev.deco.project":"example","dev.deco.project-root":"ROOT"},"Config":{"WorkingDir":"/"}}]';;

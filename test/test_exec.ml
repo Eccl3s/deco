@@ -67,20 +67,39 @@ let () =
           let execute output argv =
             let stdout =
               match argv with
-              | [ "podman"; "info"; "--format"; "json" ] -> "{}"
-              | [ "podman"; "image"; "inspect"; "--"; _ ] -> image
-              | [ "podman"; "container"; "inspect"; "--"; target ] ->
+              | [ "podman"; "--remote=false"; "version" ] -> "{}"
+              | [ "podman"; "--remote=false"; "image"; "inspect"; "--"; _ ] ->
+                  image
+              | [
+               "podman"; "--remote=false"; "container"; "inspect"; "--"; target;
+              ] ->
                   if !started then assert (target = "cid");
                   json (if !started then "running" else state)
-              | [ "podman"; "start"; "--"; "cid" ] ->
+              | [ "podman"; "--remote=false"; "start"; "--"; "cid" ] ->
                   assert (output = Process.Capture);
                   started := true;
                   ""
-              | [ "podman"; "exec"; "--interactive"; "--"; "cid"; "true" ] ->
+              | [
+               "podman";
+               "--remote=false";
+               "exec";
+               "--interactive";
+               "--";
+               "cid";
+               "true";
+              ] ->
                   assert (output = Process.Inherit);
                   executed := true;
                   ""
-              | [ "podman"; ("image" | "container"); "exists"; "--"; _ ] -> ""
+              | [
+               "podman";
+               "--remote=false";
+               ("image" | "container");
+               "exists";
+               "--";
+               _;
+              ] ->
+                  ""
               | _ -> failwith "Unexpected command"
             in
             Ok

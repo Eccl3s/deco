@@ -45,7 +45,11 @@ let info ?(run = default_run) () =
   | Ok r -> Error (Unavailable (message r))
   | Error e -> Error (Unavailable (e.operation ^ ": " ^ e.message))
 
-let available ?run () = Result.map (fun _ -> ()) (info ?run ())
+let available ?(run = default_run) () =
+  match run Podman_command.version with
+  | Ok r when r.Process.status = Unix.WEXITED 0 -> Ok ()
+  | Ok r -> Error (Unavailable (message r))
+  | Error e -> Error (Unavailable (e.operation ^ ": " ^ e.message))
 
 let field name = function
   | `Assoc xs -> (

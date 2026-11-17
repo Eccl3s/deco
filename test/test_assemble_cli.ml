@@ -56,7 +56,7 @@ let () =
         loop 0
       in
       write fake
-        "#!/bin/sh\nprintf 'called\\n' >> \"$DECO_TEST_LOG\"\nexit 125\n";
+        "#!/bin/sh\nshift\nprintf 'called\\n' >> \"$DECO_TEST_LOG\"\nexit 125\n";
       Unix.chmod fake 0o700;
       let out, err = run [ "assemble"; "--help" ] 0 in
       assert (contains out "--dry-run" && err = "");
@@ -64,7 +64,7 @@ let () =
         (fun args ->
           let out, err = run args 0 in
           assert (
-            contains out "podman build"
+            contains out "podman --remote=false build"
             && contains out "'<image-id>'"
             && err = ""))
         [
@@ -96,6 +96,7 @@ let () =
       let script c =
         write fake
           ("#!/bin/sh\n\
+            shift\n\
             printf 'called\\n' >> \"$DECO_TEST_LOG\"\n\
             case \"$1 $2\" in\n\
             'image inspect') printf '%s' '" ^ image
@@ -124,7 +125,7 @@ let () =
       in
       let creation fail =
         write fake
-          ("#!/bin/sh\ncase \"$1 $2\" in\n'image inspect') printf '%s' '"
+          ("#!/bin/sh\nshift\ncase \"$1 $2\" in\n'image inspect') printf '%s' '"
          ^ image
          ^ "';;\n\
             'container exists') test -f \"$DECO_TEST_LOG.created\";;\n\
@@ -146,5 +147,8 @@ let () =
       creation true;
       let _, err = run [ "assemble" ] 1 in
       assert (contains err "was created" && contains err "could not be prepared");
-      write fake "#!/bin/sh\ncase \"$1\" in info) exit 0;; *) exit 125;; esac\n";
+      write fake
+        "#!/bin/sh\n\
+         shift\n\
+         case \"$1\" in version|info) exit 0;; *) exit 125;; esac\n";
       ignore (run [ "assemble" ] 1))

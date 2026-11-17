@@ -25,4 +25,8 @@ val compatibility :
   Podman.container ->
   (unit, string) result
 
-val run : ?execute:runner -> Config_loader.t -> (outcome, error) result
+val run :
+  ?execute:runner ->
+  ?probe:(unit -> bool option) ->
+  Config_loader.t ->
+  (outcome, error) result

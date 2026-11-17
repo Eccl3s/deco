@@ -51,12 +51,18 @@ let render_multiline command =
         render_command [ arg; value ] :: groups rest
     | arg :: rest -> render_command [ arg ] :: groups rest
   in
-  match command with
-  | executable :: subcommand :: rest -> (
-      "    "
-      ^ render_command [ executable; subcommand ]
+  let prefix, rest =
+    match command with
+    | executable :: Literal "--remote=false" :: subcommand :: rest ->
+        ([ executable; Literal "--remote=false"; subcommand ], rest)
+    | executable :: subcommand :: rest -> ([ executable; subcommand ], rest)
+    | rest -> ([], rest)
+  in
+  match prefix with
+  | _ :: _ -> (
+      "    " ^ render_command prefix
       ^
       match groups rest with
       | [] -> ""
       | xs -> " \\\n      " ^ String.concat " \\\n      " xs)
-  | _ -> "    " ^ render_command command
+  | [] -> "    " ^ render_command rest

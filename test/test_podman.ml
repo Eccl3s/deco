@@ -17,9 +17,7 @@ let runner responses =
     fun () -> assert (!remaining = []) )
 
 let () =
-  let run, done_ =
-    runner [ ([ "podman"; "info"; "--format"; "json" ], Ok ok) ]
-  in
+  let run, done_ = runner [ (Podman_command.version, Ok ok) ] in
   assert (Podman.available ~run () = Ok ());
   done_ ();
   assert (
@@ -41,8 +39,10 @@ let () =
     let run, done_ =
       runner
         [
-          ([ "podman"; "image"; "exists"; "--"; "test" ], Ok ok);
-          ([ "podman"; "image"; "inspect"; "--"; "test" ], Ok response);
+          ( [ "podman"; "--remote=false"; "image"; "exists"; "--"; "test" ],
+            Ok ok );
+          ( [ "podman"; "--remote=false"; "image"; "inspect"; "--"; "test" ],
+            Ok response );
         ]
     in
     let value = Podman.inspect_image ~run "test" in
@@ -75,7 +75,7 @@ let () =
       let run, done_ =
         runner
           [
-            ( [ "podman"; "container"; "exists"; "--"; "test" ],
+            ( [ "podman"; "--remote=false"; "container"; "exists"; "--"; "test" ],
               Ok (result (Unix.WEXITED code)) );
           ]
       in
@@ -97,8 +97,9 @@ let () =
       let run, done_ =
         runner
           [
-            ([ "podman"; "container"; "exists"; "--"; "c" ], Ok ok);
-            ( [ "podman"; "container"; "inspect"; "--"; "c" ],
+            ( [ "podman"; "--remote=false"; "container"; "exists"; "--"; "c" ],
+              Ok ok );
+            ( [ "podman"; "--remote=false"; "container"; "inspect"; "--"; "c" ],
               Ok (result ~stdout:(fixture state) (Unix.WEXITED 0)) );
           ]
       in
@@ -113,8 +114,9 @@ let () =
     let run, done_ =
       runner
         [
-          ([ "podman"; "container"; "exists"; "--"; "c" ], Ok ok);
-          ( [ "podman"; "container"; "inspect"; "--"; "c" ],
+          ( [ "podman"; "--remote=false"; "container"; "exists"; "--"; "c" ],
+            Ok ok );
+          ( [ "podman"; "--remote=false"; "container"; "inspect"; "--"; "c" ],
             Ok (result ~stdout (Unix.WEXITED 0)) );
         ]
     in
@@ -164,7 +166,7 @@ let () =
       let run, done_ =
         runner
           [
-            ( [ "podman"; kind; "exists"; "--"; "test" ],
+            ( [ "podman"; "--remote=false"; kind; "exists"; "--"; "test" ],
               Error
                 { Process.operation = "launch"; message = "missing executable" }
             );
@@ -294,3 +296,39 @@ let () =
   List.iter
     (fun state -> assert (not (Container_runtime.supported_state state)))
     [ ""; "paused"; "unknown"; "removing" ]
+
+let () =
+  let root = Filename.temp_file "deco-selinux" "" in
+  Unix.unlink root;
+  assert (Container_runtime.local_selinux ~root () = Some false);
+  Unix.mkdir root 0o700;
+  Fun.protect
+    ~finally:(fun () ->
+      (try Unix.unlink (Filename.concat root "enforce")
+       with Unix.Unix_error _ -> ());
+      Unix.rmdir root)
+    (fun () ->
+      assert (Container_runtime.local_selinux ~root () = None);
+      List.iter
+        (fun (text, expected) ->
+          Out_channel.with_open_bin (Filename.concat root "enforce") (fun ch ->
+              output_string ch text);
+          assert (Container_runtime.local_selinux ~root () = expected))
+        [ ("0\n", Some true); ("1\n", Some true); ("bad", None) ])
+
+let () =
+  let probes = ref 0 and calls = ref 0 in
+  let resolve =
+    Container_runtime.make_selinux_resolver
+      ~probe:(fun () ->
+        incr probes;
+        None)
+      ~run:(fun argv ->
+        assert (argv = Podman_command.info);
+        incr calls;
+        Ok (result (Unix.WEXITED 125)))
+      ()
+  in
+  assert (Result.is_error (resolve ()));
+  assert (Result.is_error (resolve ()));
+  assert (!probes = 1 && !calls = 1)

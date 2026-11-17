@@ -90,6 +90,7 @@ let make (loaded : Config_loader.t) =
   let build =
     [
       "podman";
+      "--remote=false";
       "build";
       "--file";
       paths.containerfile;
@@ -133,6 +134,7 @@ let make (loaded : Config_loader.t) =
         literals
           ([
              "podman";
+             "--remote=false";
              "create";
              "--name";
              c.container.name;
@@ -170,7 +172,7 @@ let make (loaded : Config_loader.t) =
       in
       let steps =
         [
-          step (literals Podman_command.info);
+          step (literals Podman_command.version);
           step (literals (Podman_command.exists "image" image));
           step ~condition:"If the image exists"
             (literals (Podman_command.inspect "image" image));
@@ -192,21 +194,26 @@ let make (loaded : Config_loader.t) =
              ^ quote c.container.name ^ " is missing")
             create;
           step ~condition:"After creating the missing container"
-            (literals [ "podman"; "container"; "exists"; "--" ]
+            (literals
+               [ "podman"; "--remote=false"; "container"; "exists"; "--" ]
             @ [ Container_id ]);
           step ~condition:"After creating the missing container"
-            (literals [ "podman"; "container"; "inspect"; "--" ]
+            (literals
+               [ "podman"; "--remote=false"; "container"; "inspect"; "--" ]
             @ [ Container_id ]);
           step
             ~condition:
               ("After ownership and compatibility checks pass, if container "
              ^ quote c.container.name ^ " is new or stopped")
-            (literals [ "podman"; "start"; "--" ] @ [ Container_id ]);
-          step ~condition:"After starting the container"
-            (literals [ "podman"; "container"; "exists"; "--" ]
+            (literals [ "podman"; "--remote=false"; "start"; "--" ]
             @ [ Container_id ]);
           step ~condition:"After starting the container"
-            (literals [ "podman"; "container"; "inspect"; "--" ]
+            (literals
+               [ "podman"; "--remote=false"; "container"; "exists"; "--" ]
+            @ [ Container_id ]);
+          step ~condition:"After starting the container"
+            (literals
+               [ "podman"; "--remote=false"; "container"; "inspect"; "--" ]
             @ [ Container_id ]);
         ]
       in

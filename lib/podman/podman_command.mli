@@ -13,3 +13,5 @@ val exec :
   string list ->
   string list
 (** Construct an exec argument vector without evaluating command arguments. *)
+
+val version : string list

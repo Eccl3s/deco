@@ -26,7 +26,7 @@ let () =
   assert (List.length plan.steps = 14);
   assert (
     (List.hd plan.steps).command
-    = List.map (fun s -> Assemble_plan.Literal s) Podman_command.info);
+    = List.map (fun s -> Assemble_plan.Literal s) Podman_command.version);
   assert (List.mem "--pull=missing" plan.build);
   let create =
     Assemble_plan.resolve ~image_id:"sha256:abc" ~container_id:"cid" plan.create
@@ -188,6 +188,7 @@ let () =
     Assemble_plan.render_multiline
       [
         Literal "podman";
+        Literal "--remote=false";
         Literal "build";
         Literal "--file";
         Literal "/some path/Containerfile";
@@ -198,7 +199,7 @@ let () =
     = String.concat
         (" " ^ String.make 1 (Char.chr 92) ^ "\n      ")
         [
-          "    podman build";
+          "    podman --remote=false build";
           "--file '/some path/Containerfile'";
           "--no-cache";
           "-- /context";
@@ -226,12 +227,12 @@ let () =
   List.iter
     (fun text -> assert (not (contains text)))
     [
-      "podman info";
-      "podman image exists";
-      "podman image inspect";
-      "podman container exists";
-      "podman container inspect";
-      "podman start";
+      "podman --remote=false info";
+      "podman --remote=false image exists";
+      "podman --remote=false image inspect";
+      "podman --remote=false container exists";
+      "podman --remote=false container inspect";
+      "podman --remote=false start";
       "<container-id>";
     ];
   List.iter

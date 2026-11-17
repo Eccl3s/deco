@@ -29,10 +29,12 @@ let () =
       let resolve =
         Command_plan.resolve ~image_id:"unused" ~container_id:"cid"
       in
-      assert (resolve plan.start = [ "podman"; "start"; "--"; "cid" ]);
+      assert (
+        resolve plan.start
+        = [ "podman"; "--remote=false"; "start"; "--"; "cid" ]);
       assert (
         resolve plan.exec
-        = [ "podman"; "exec"; "--interactive" ]
+        = [ "podman"; "--remote=false"; "exec"; "--interactive" ]
           @ (if tty then [ "--tty" ] else [])
           @ [ "--"; "cid" ] @ args);
       assert (Exec_plan.render plan = Exec_plan.render plan);
@@ -57,7 +59,7 @@ let () =
       let plan = get (Exec_plan.make loaded ~tty [ "true" ]) in
       assert (
         resolve plan.exec
-        = [ "podman"; "exec"; "--interactive" ]
+        = [ "podman"; "--remote=false"; "exec"; "--interactive" ]
           @ (if tty then [ "--tty" ] else [])
           @ [ "--user"; "dev"; "--workdir"; "/workspace"; "--"; "cid"; "true" ]))
     [ false; true ];

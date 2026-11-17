@@ -48,7 +48,8 @@ let assemble project_dir dry_run =
                     result
                 | Deco.Process.Capture ->
                     (match argv with
-                    | "podman" :: ("create" | "start") :: _ ->
+                    | "podman" :: "--remote=false" :: ("create" | "start") :: _
+                      ->
                         status.Build_output.begin_stage ()
                     | _ -> ());
                     Deco.Process.run ~output ~poll:status.Build_output.tick argv)
@@ -84,7 +85,7 @@ let assemble project_dir dry_run =
               prerr_endline
                 ("deco: "
                 ^
-                if List.mem "podman create" error.completed then
+                if List.mem "podman --remote=false create" error.completed then
                   "Container " ^ loaded.effective.container.name
                   ^ " was created but could not be prepared."
                 else

@@ -19,6 +19,7 @@ type outcome = {
 
 val run :
   ?execute:runner ->
+  ?probe:(unit -> bool option) ->
   Config_loader.t ->
   tty:bool ->
   string list ->

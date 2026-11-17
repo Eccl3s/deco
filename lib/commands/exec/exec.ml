@@ -15,15 +15,20 @@ type outcome = {
   status : Unix.process_status;
 }
 
-let run ?(execute = fun output argv -> Process.run ~output argv) loaded ~tty
-    command =
+let run ?(execute = fun output argv -> Process.run ~output argv)
+    ?(probe = fun () -> Container_runtime.local_selinux ()) loaded ~tty command
+    =
   let started = ref false in
   let fail cause = Error { cause; started = !started } in
   let ( let* ) r f = match r with Ok x -> f x | Error e -> Error e in
+  let selinux =
+    Container_runtime.make_selinux_resolver ~run:(execute Process.Capture)
+      ~probe ()
+  in
   let inspect ?container_id () =
     match
-      Container_runtime.inspect ~run:(execute Process.Capture) ?container_id
-        loaded
+      Container_runtime.inspect ~selinux ~run:(execute Process.Capture)
+        ?container_id loaded
     with
     | Ok env -> Ok env
     | Error (Container_runtime.Podman e) -> fail (Podman e)

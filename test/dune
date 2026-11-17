@@ -5,6 +5,7 @@
   test_assemble_plan
   test_exec_plan
   test_exec
+  test_selinux
   test_assemble
   test_podman
   test_config_decode
