@@ -36,7 +36,7 @@
 
 (rule
  (target init_test_support.ml)
- (deps ../lib/init.ml)
+ (deps ../lib/commands/init/init.ml)
  (action
   (with-stdout-to
    %{target}

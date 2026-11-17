@@ -16,7 +16,10 @@ type operation =
       (** Pure planning from a successfully loaded configuration; no runtime
           queries. *)
 
-type argument = Literal of string | Image_id | Container_id
+type argument = Command_plan.argument =
+  | Literal of string
+  | Image_id
+  | Container_id
 
 type step = {
   operation : operation;

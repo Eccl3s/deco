@@ -1,6 +1,6 @@
 type t = private {
-  start : Assemble_plan.argument list;
-  exec : Assemble_plan.argument list;
+  start : Command_plan.argument list;
+  exec : Command_plan.argument list;
 }
 (** Pure exec planning; performs no terminal detection or runtime queries. *)
 

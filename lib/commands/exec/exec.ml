@@ -41,9 +41,7 @@ let run ?(execute = fun output argv -> Process.run ~output argv) loaded ~tty
   in
   let* initial = inspect () in
   let container_id = initial.container.id in
-  let resolve =
-    Assemble_plan.resolve ~image_id:initial.image.id ~container_id
-  in
+  let resolve = Command_plan.resolve ~image_id:initial.image.id ~container_id in
   let* () =
     if initial.container.state = "running" then Ok ()
     else

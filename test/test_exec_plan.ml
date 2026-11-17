@@ -27,7 +27,7 @@ let () =
       let args = [ "printf"; ""; "a b"; "'"; "$(touch nope)"; "--help" ] in
       let plan = get (Exec_plan.make loaded ~tty args) in
       let resolve =
-        Assemble_plan.resolve ~image_id:"unused" ~container_id:"cid"
+        Command_plan.resolve ~image_id:"unused" ~container_id:"cid"
       in
       assert (resolve plan.start = [ "podman"; "start"; "--"; "cid" ]);
       assert (
