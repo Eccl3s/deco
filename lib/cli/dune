@@ -10,7 +10,8 @@
   validate_command
   assemble_command
   exec_command
-  shell_command)
+  shell_command
+  stop_command)
  (libraries deco cmdliner unix)
  (flags
   (:standard -w +a -warn-error +a)))

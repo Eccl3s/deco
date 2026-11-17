@@ -31,7 +31,7 @@ See [specs/](specs/) for the full CLI and configuration specifications.
 
 ## Getting Started
 
-Deco currently implements `init`, `validate`, `assemble`, `exec`, `shell`, help, and version output. Other commands
+Deco currently implements `init`, `validate`, `assemble`, `exec`, `shell`, `stop`, help, and version output. Other commands
 below describe the planned workflow.
 
 Validate an existing project with `deco validate` or select one explicitly with
@@ -372,3 +372,20 @@ Use `deco shell --dry-run` (or `-d`) without a terminal to preview entry.
 The `post_start` and `pre_enter` hooks remain deferred and are not executed.
 Run `dune build @test-shell-pty` for opt-in Linux PTY tests using Python 3's
 standard library and fake Podman; ordinary tests require no Python.
+
+### Stop the development container
+
+Run `deco stop` to stop a running managed container, or `deco stop --dry-run`
+(`-d`) to preview without Podman. Success prints `Stopped <name>` or
+`Already stopped: <name>`. Normal configuration validation is required, followed
+by container ownership and state checks; image and environment compatibility
+are not required. Missing/unmanaged containers and unsupported states return 4;
+invalid configuration/usage returns 2, unavailable Podman 3, and runtime failure 1.
+The `pre_stop` hook remains deferred. Stop does not remove resources.
+
+Run the opt-in disposable integration check with an existing local image that
+supports `sleep` (no images are pulled):
+
+```sh
+DECO_TEST_IMAGE=your-local-image python3 test/stop_podman.py _build/default/bin/deco.exe
+```
