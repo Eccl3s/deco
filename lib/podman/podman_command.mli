@@ -3,3 +3,13 @@ val info : string list
 
 val exists : string -> string -> string list
 val inspect : string -> string -> string list
+val start : string -> string list
+
+val exec :
+  tty:bool ->
+  user:string option ->
+  workdir:string option ->
+  container:string ->
+  string list ->
+  string list
+(** Construct an exec argument vector without evaluating command arguments. *)
