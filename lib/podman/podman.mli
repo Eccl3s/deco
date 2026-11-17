@@ -41,3 +41,10 @@ val decode_container : string -> (container, string) result
 
 val info : ?run:runner -> unit -> (string, error) result
 (** Check availability and return the raw Podman info response. *)
+
+type container_summary = { id : string; image_id : string; names : string list }
+
+val list_containers :
+  ?run:runner -> unit -> (container_summary list, error) result
+(** List all Podman containers with full IDs, including non-running ones.
+    Malformed summaries fail instead of omitting possible dependents. *)

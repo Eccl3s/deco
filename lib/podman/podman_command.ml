@@ -23,3 +23,15 @@ let remove_container id =
 
 let remove_image id =
   [ "podman"; "--remote=false"; "image"; "rm"; "--no-prune"; "--"; id ]
+
+let list_containers =
+  [
+    "podman";
+    "--remote=false";
+    "container";
+    "ls";
+    "--all";
+    "--no-trunc";
+    "--format";
+    "json";
+  ]

@@ -227,3 +227,26 @@ let inspect_owned_container ?(run = fun argv -> Process.run argv) ?container_id
       with
       | Ok () -> Ok (Podman.Present container)
       | Error _ -> Error (Conflict "Resource ownership differs"))
+
+let inspect_owned_image ?(run = fun argv -> Process.run argv) ?image_id
+    (loaded : Config_loader.t) =
+  match
+    Podman.inspect_image ~run
+      (Option.value
+         ~default:
+           (loaded.effective.image.name ^ ":" ^ loaded.effective.image.tag)
+         image_id)
+  with
+  | Error (Podman.Runtime _ as original) -> (
+      match Podman.info ~run () with
+      | Error e -> Error (Podman e)
+      | Ok _ -> Error (Podman original))
+  | Error e -> Error (Podman e)
+  | Ok Podman.Absent -> Ok Podman.Absent
+  | Ok (Podman.Present container) -> (
+      match
+        Ownership.verify ~project:loaded.effective.project.name
+          ~project_root:loaded.project.root container.labels
+      with
+      | Ok () -> Ok (Podman.Present container)
+      | Error _ -> Error (Conflict "Resource ownership differs"))

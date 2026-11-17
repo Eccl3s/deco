@@ -214,3 +214,29 @@ let decode_container text =
     | `List [ json ] -> Ok (container json)
     | _ -> Error "Expected one container"
   with Failure e | Yojson.Json_error e -> Error e
+
+type container_summary = { id : string; image_id : string; names : string list }
+
+let list_containers ?(run = default_run) () =
+  let operation = "container list" in
+  match run Podman_command.list_containers with
+  | Error e ->
+      Error (Runtime { operation; message = e.operation ^ ": " ^ e.message })
+  | Ok r when r.Process.status <> Unix.WEXITED 0 ->
+      Error (Runtime { operation; message = message r })
+  | Ok r -> (
+      try
+        let decode json =
+          let nonempty key =
+            let value = string (field key json) in
+            if value = "" then failwith ("Empty " ^ key) else value
+          in
+          {
+            id = nonempty "Id";
+            image_id = nonempty "ImageID";
+            names = List.map string (list (field "Names" json));
+          }
+        in
+        Ok (List.map decode (list (Yojson.Basic.from_string r.stdout)))
+      with Failure message | Yojson.Json_error message ->
+        Error (Invalid_response { operation; message }))

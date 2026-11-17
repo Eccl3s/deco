@@ -8,7 +8,8 @@ type cause =
 
 type error = { cause : cause; stop_completed : bool }
 
-let run ?(run = fun argv -> Process.run argv) loaded =
+let run ?(run = fun argv -> Process.run argv) ?container_id
+    ?(check_availability = true) loaded =
   let stop_completed = ref false in
   let fail cause = Error { cause; stop_completed = !stop_completed } in
   let ( let* ) r f = match r with Ok x -> f x | Error e -> Error e in
@@ -26,17 +27,22 @@ let run ?(run = fun argv -> Process.run argv) loaded =
     | Error e -> fail (Planning e)
   in
   let* () =
-    match Podman.available ~run () with
+    match if check_availability then Podman.available ~run () else Ok () with
     | Ok () -> Ok ()
     | Error e -> fail (Podman e)
   in
-  let* initial = inspect () in
+  let* initial = inspect ?container_id () in
   let* container =
     match initial with
     | Podman.Absent -> fail (Conflict "Container is missing")
     | Present container -> Ok container
   in
-  if not (Container_runtime.supported_state container.state) then
+  if
+    match container_id with
+    | Some expected -> expected <> container.id
+    | None -> false
+  then fail (Conflict "Container ID differs from selected ID")
+  else if not (Container_runtime.supported_state container.state) then
     fail (Conflict "Unsupported container state")
   else if container.state <> "running" then
     Ok { container_id = container.id; stopped = false }

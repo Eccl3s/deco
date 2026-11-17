@@ -11,7 +11,15 @@ type error = { cause : cause; stop_completed : bool }
 (** [stop_completed] records successful Podman stop, even if verification fails.
 *)
 
-val run : ?run:Podman.runner -> Config_loader.t -> (outcome, error) result
-(** Stop only an owned running container, by inspected ID. No printing, exit
+val run :
+  ?run:Podman.runner ->
+  ?container_id:string ->
+  ?check_availability:bool ->
+  Config_loader.t ->
+  (outcome, error) result
+(** Stop only an owned running container, by inspected ID. [container_id]
+    selects an explicit ID instead of the configured name. No printing, exit
     mapping, hooks, or signal handling; callers may supply a signal-aware
-    runner. *)
+    runner. [check_availability] defaults to [true]; callers may set it to
+    [false] after checking the same runtime within the current operation.
+    Ownership, state, and post-stop verification always run. *)

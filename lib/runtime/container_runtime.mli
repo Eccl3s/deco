@@ -60,3 +60,11 @@ val inspect_owned_container :
 (** Inspect by configured name or supplied ID and verify project ownership.
     Preserve absence; do not check availability, image, compatibility, or
     SELinux. *)
+
+val inspect_owned_image :
+  ?run:Podman.runner ->
+  ?image_id:string ->
+  Config_loader.t ->
+  (Podman.image Podman.presence, error) result
+(** Inspect the configured image or supplied [image_id], preserving absence and
+    verifying project ownership without environment compatibility checks. *)

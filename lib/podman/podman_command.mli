@@ -24,3 +24,5 @@ val remove_container : string -> string list
 
 val remove_image : string -> string list
 (** Remove one image without force or pruning dangling parents. *)
+
+val list_containers : string list
