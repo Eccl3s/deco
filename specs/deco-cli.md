@@ -28,7 +28,6 @@ Commands:
   assemble                    Build, create, and start the environment
   refresh                     Rebuild the image and recreate the container
   remove                      Remove the environment
-  rm                          Alias for remove
   start                       Start an existing container
   stop                        Stop a running container
   info                        Show project and environment information
@@ -344,14 +343,11 @@ existing owned named volumes are reused.
 `-d, --dry-run` displays the complete ordered operation without invoking
 Podman or hooks.
 
-### `deco remove` and `deco rm`
+### `deco remove`
 
 ```text
 deco remove [--keep-image] [--force] [--keep-volumes] [--dry-run]
-deco rm [--keep-image] [--force] [--keep-volumes] [--dry-run]
 ```
-
-`rm` is an exact alias for `remove`.
 
 By default, Deco removes the current project's container, configured owned
 named volumes, and configured image. If the container is running, Deco runs

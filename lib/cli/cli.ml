@@ -44,6 +44,7 @@ let command exec_arguments =
       Exec_command.command exec_arguments;
       Shell_command.command;
       Stop_command.command;
+      Remove_command.command;
     ]
 
 let run () =

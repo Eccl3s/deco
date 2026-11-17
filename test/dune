@@ -30,6 +30,7 @@
   test_exec_cli
   test_shell_cli
   test_stop_cli
+  test_remove_cli
   test_init
   init_test_support
   test_embed_templates)
@@ -104,6 +105,14 @@
 (test
  (name test_stop_cli)
  (modules test_stop_cli)
+ (libraries unix yojson)
+ (deps ../bin/deco.exe)
+ (action
+  (run %{test} %{exe:../bin/deco.exe})))
+
+(test
+ (name test_remove_cli)
+ (modules test_remove_cli)
  (libraries unix yojson)
  (deps ../bin/deco.exe)
  (action

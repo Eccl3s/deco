@@ -31,7 +31,7 @@ See [specs/](specs/) for the full CLI and configuration specifications.
 
 ## Getting Started
 
-Deco currently implements `init`, `validate`, `assemble`, `exec`, `shell`, `stop`, help, and version output. Other commands
+Deco currently implements `init`, `validate`, `assemble`, `exec`, `shell`, `stop`, `remove`, help, and version output. Other commands
 below describe the planned workflow.
 
 Validate an existing project with `deco validate` or select one explicitly with
@@ -389,3 +389,30 @@ supports `sleep` (no images are pulled):
 ```sh
 DECO_TEST_IMAGE=your-local-image python3 test/stop_podman.py _build/default/bin/deco.exe
 ```
+
+### Remove the development environment
+
+Run `deco remove` to stop and remove the owned project container and remove its
+owned configured image. Missing resources are successful no-ops. Use
+`--keep-image` to skip all image operations, or `-d`/`--dry-run` for a conditional
+preview without Podman queries or live dependency enumeration.
+
+Success reports removed or already-absent resources. An image with remaining
+container dependents is retained; all dependent IDs/names are reported with exit
+code 4. Unmanaged resources and unsupported states also return 4. Invalid
+configuration/usage returns 2, unavailable Podman 3, and runtime failures 1.
+Failures report completed commands without claiming verification succeeded.
+
+Unlike the full v1 specification, v0.1.0 does not implement `--force`,
+`--keep-volumes`, named-volume removal, or lifecycle hooks. Removal never changes
+unrelated dependent containers or prunes parent images. Only `deco remove` is
+supported as the removal command.
+
+Run the opt-in live test with an existing local base image supporting `sleep`:
+
+```sh
+DECO_TEST_IMAGE=your-local-image python3 test/remove_podman.py _build/default/bin/deco.exe
+```
+
+The test builds disposable ownership-labelled child images without pulling,
+cleans up only its test resources, and preserves the supplied base image.
