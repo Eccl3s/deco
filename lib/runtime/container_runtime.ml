@@ -207,3 +207,23 @@ let inspect ?run ?read_many ?(probe = fun () -> local_selinux ()) ?selinux
   let* () = check_compatibility ~selinux loaded image container in
   if supported_state container.state then Ok { image; container }
   else Error (Conflict "Unsupported container state")
+
+let inspect_owned_container ?(run = fun argv -> Process.run argv) ?container_id
+    (loaded : Config_loader.t) =
+  match
+    Podman.inspect_container ~run
+      (Option.value ~default:loaded.effective.container.name container_id)
+  with
+  | Error (Podman.Runtime _ as original) -> (
+      match Podman.info ~run () with
+      | Error e -> Error (Podman e)
+      | Ok _ -> Error (Podman original))
+  | Error e -> Error (Podman e)
+  | Ok Podman.Absent -> Ok Podman.Absent
+  | Ok (Podman.Present container) -> (
+      match
+        Ownership.verify ~project:loaded.effective.project.name
+          ~project_root:loaded.project.root container.labels
+      with
+      | Ok () -> Ok (Podman.Present container)
+      | Error _ -> Error (Conflict "Resource ownership differs"))

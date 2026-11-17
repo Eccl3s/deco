@@ -51,3 +51,12 @@ val check_compatibility :
   Podman.image ->
   Podman.container ->
   (unit, error) result
+
+val inspect_owned_container :
+  ?run:Podman.runner ->
+  ?container_id:string ->
+  Config_loader.t ->
+  (Podman.container Podman.presence, error) result
+(** Inspect by configured name or supplied ID and verify project ownership.
+    Preserve absence; do not check availability, image, compatibility, or
+    SELinux. *)
