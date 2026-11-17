@@ -18,3 +18,9 @@ val version : string list
 
 val stop : string -> string list
 (** Stop the selected local container using Podman's default timeout. *)
+
+val remove_container : string -> string list
+(** Remove one container without force or volume removal. *)
+
+val remove_image : string -> string list
+(** Remove one image without force or pruning dangling parents. *)

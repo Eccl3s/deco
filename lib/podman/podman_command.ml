@@ -17,3 +17,9 @@ let exec ~tty ~user ~workdir ~container command =
 
 let version = [ "podman"; "--remote=false"; "version" ]
 let stop container = [ "podman"; "--remote=false"; "stop"; "--"; container ]
+
+let remove_container id =
+  [ "podman"; "--remote=false"; "container"; "rm"; "--"; id ]
+
+let remove_image id =
+  [ "podman"; "--remote=false"; "image"; "rm"; "--no-prune"; "--"; id ]
