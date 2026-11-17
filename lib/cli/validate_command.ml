@@ -10,6 +10,11 @@ let validate project_dir =
   | Ok loaded ->
       Printf.printf "Configuration valid: %s\n"
         loaded.Deco.Config_loader.project.Deco.Project.config_path;
+      if loaded.Deco.Config_loader.ignored_paths <> [] then (
+        print_endline "Ignored planned settings (not applied in v0.1.0):";
+        List.iter
+          (fun path -> Printf.printf "  %s\n" (String.concat "." path))
+          loaded.Deco.Config_loader.ignored_paths);
       0
 
 let command =

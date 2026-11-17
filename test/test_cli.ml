@@ -100,7 +100,27 @@ let () =
                 "Initialized Deco configuration using template '%s' in %s.\n"
                 name
                 (Filename.concat (Unix.realpath temp) ("generated-" ^ name)));
-          ignore (run temp [ "validate"; "--project-dir"; path ] 2);
+          let validation = run temp [ "validate"; "--project-dir"; path ] 0 in
+          assert (
+            contains validation "Ignored planned settings"
+            && contains validation "network.mode");
+          List.iter
+            (fun value -> assert (not (contains validation value)))
+            [ "pasta"; "SYS_ADMIN"; "label=disable" ];
+          let preview =
+            run temp [ "assemble"; "-d"; "--project-dir"; path ] 0
+          in
+          List.iter
+            (fun flag -> assert (not (contains preview flag)))
+            [
+              "--cap-drop";
+              "--cap-add";
+              "--device";
+              "--security-opt";
+              "--network";
+              "--env";
+            ];
+
           let file = Filename.concat path ".deco/config.toml" in
           let original = In_channel.with_open_bin file In_channel.input_all in
           ignore (run temp [ "init"; path ] 2);
@@ -130,10 +150,10 @@ let () =
         = Printf.sprintf
             "Initialized Deco configuration using template 'debian' in %s.\n"
             (Unix.realpath default_root));
-      ignore (run default_root [ "validate" ] 2);
+      ignore (run default_root [ "validate" ] 0);
       let spaced = Filename.concat temp "Another Project" in
       ignore (run temp [ "init"; spaced ] 0);
-      ignore (run temp [ "validate"; "--project-dir"; spaced ] 2);
+      ignore (run temp [ "validate"; "--project-dir"; spaced ] 0);
       ignore (run temp [ "init"; "--help=plain" ] 0);
       let root = Filename.concat temp "project with spaces" in
       Unix.mkdir root 0o700;
@@ -242,9 +262,7 @@ let () =
       assert (
         !last_errors
         = header
-          ^ "  actions    Unknown or unsupported key\n\
-            \  network    Unknown or unsupported key\n\
-            \  user.mode  Unsupported value \"host-user\" (expected one of: \
+          ^ "  user.mode  Unsupported value \"host-user\" (expected one of: \
              \"keep-id\", \"image\")\n");
       write file "project = ";
       ignore (run root [ "validate" ] 2);

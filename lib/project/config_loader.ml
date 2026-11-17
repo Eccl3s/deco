@@ -1,4 +1,5 @@
 type t = {
+  ignored_paths : string list list;
   project : Project.t;
   source : Config.t;
   effective : Config.Effective.t;
@@ -54,9 +55,9 @@ let load ?host_ids ?home_dir (project : Project.t) =
   match contents with
   | Error error -> Error error
   | Ok contents -> (
-      match Config.Decode.from_string contents with
+      match Config.Decode.from_string_with_ignored contents with
       | Error errors -> Error (Decode_errors { config_path; errors })
-      | Ok source -> (
+      | Ok (source, ignored_paths) -> (
           match Config.Resolve.apply source with
           | Error errors -> Error (Validation_errors { config_path; errors })
           | Ok effective -> (
@@ -67,5 +68,12 @@ let load ?host_ids ?home_dir (project : Project.t) =
                   | Error errors ->
                       Error (Identity_errors { config_path; errors })
                   | Ok identity ->
-                      Ok { project; source; effective; host_paths; identity })))
-      )
+                      Ok
+                        {
+                          project;
+                          source;
+                          effective;
+                          host_paths;
+                          identity;
+                          ignored_paths;
+                        }))))

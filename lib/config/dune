@@ -2,5 +2,5 @@
 
 (library
  (name config)
- (private_modules image_reference)
+ (private_modules image_reference planned)
  (libraries otoml))

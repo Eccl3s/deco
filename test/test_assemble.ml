@@ -7,6 +7,7 @@ let () =
   let effective = Result.get_ok (Config.Resolve.apply source) in
   let loaded : Config_loader.t =
     {
+      ignored_paths = [];
       source;
       effective;
       project =
@@ -189,6 +190,7 @@ let () =
   in
   let loaded : Config_loader.t =
     {
+      ignored_paths = [];
       source;
       effective = Result.get_ok (Config.Resolve.apply source);
       project =

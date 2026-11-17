@@ -1,4 +1,5 @@
-(** Strict TOML decoding without defaults or semantic validation. *)
+(** TOML decoding of supported and recognized planned settings without defaults
+    or semantic validation. *)
 
 type error =
   | Syntax_error of { message : string; location : (int * int) option }
@@ -10,3 +11,6 @@ val from_string : string -> (Config_types.t, error list) result
     programming exceptions are not suppressed. *)
 
 val error_to_string : error -> string
+
+val from_string_with_ignored :
+  string -> (Config_types.t * string list list, error list) result

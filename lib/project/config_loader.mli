@@ -1,4 +1,5 @@
 type t = {
+  ignored_paths : string list list;
   project : Project.t;
   source : Config.t;
   effective : Config.Effective.t;

@@ -289,22 +289,25 @@ are rejected.
 
 Generated configuration explicitly selects keep-id and a workspace at
 `/workspace`; UID/GID keys are omitted. Init performs no host identity lookup,
-build-argument generation, image builds, or Podman operations. Generated config preserves the template settings, including active settings not
-yet supported by the decoder. Consequently, generated templates currently fail
-`deco validate` with unsupported-key errors. Init does not verify image builds.
+build-argument generation, image builds, or Podman operations. Generated
+configuration preserves template settings unchanged. Recognized planned
+settings are accepted and structurally checked but not applied. `deco validate`
+lists ignored key paths without values; other commands do not report them.
+Acceptance is not full v1 validation or implementation of those features.
 
 Each built-in template consists of `<name>.toml` and `<name>.Containerfile`
 in `lib/templates`, embedded at build time. Init substitutes `{{project_name}}`,
 `{{image_name}}`, and `{{container_name}}` in the TOML, preserving other text.
 These tokens belong inside quoted TOML values. Containerfiles remain unchanged;
-unsupported TOML settings are never silently stripped. Missing partners and
+init never strips planned settings from generated TOML. Missing partners and
 unknown or unterminated placeholders fail the embedding build.
 
 ### Assemble a supported configuration
 
 `deco assemble` builds a missing image, creates a missing container, and starts
 it. Compatible running containers are reused. Configuration must validate first;
-generated templates still contain unsupported settings and require manual editing.
+all eight built-in templates are accepted,
+with recognized planned settings ignored as described below.
 For a minimal supported setup, use `.deco/config.toml`:
 
 ```toml
@@ -416,3 +419,32 @@ DECO_TEST_IMAGE=your-local-image python3 test/remove_podman.py _build/default/bi
 
 The test builds disposable ownership-labelled child images without pulling,
 cleans up only its test resources, and preserves the supplied base image.
+
+### Planned configuration compatibility in v0.1.0
+
+All eight built-in templates can be initialized, validated, and previewed without
+editing their files. `deco validate` prints ignored paths under
+`Ignored planned settings (not applied in v0.1.0):` on stdout and succeeds.
+Other commands silently ignore those settings. Values are not printed.
+
+Only documented v1 keys are tolerated. Unknown keys, nested typos, wrong types,
+invalid TOML, and errors in implemented fields still fail. Planned fields receive
+structural/type checks only: semantic constraints such as port ranges, capability
+names, namespace conflicts, and host path existence are deferred.
+
+Capabilities, network settings, environment injection, devices/security options,
+additional mounts, secrets, actions, and hooks remain inactive. In particular,
+accepting the Podman template does not enable its nested-Podman setup, and
+accepting capability-drop settings does not apply capability restrictions.
+This compatibility policy is specific to v0.1.0; the v1 specification continues
+to describe implemented behavior expected from future releases.
+
+Run the opt-in default-template workflow check with:
+
+```sh
+python3 test/template_podman.py _build/default/bin/deco.exe
+```
+
+This builds the unchanged Debian template (including image pulls and package
+installation), exercises validate/assemble/exec/stop/remove in a temporary project,
+and cleans up only its owned resources without pruning parent images.

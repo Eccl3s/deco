@@ -54,14 +54,9 @@ let () =
           assert (Otoml.find tree Otoml.get_boolean [ "build"; "pull" ]);
           assert (not (String.contains text '{'));
           (match Deco.Config_loader.load p with
-          | Error (Deco.Config_loader.Decode_errors { errors; _ }) ->
-              assert (
-                List.exists
-                  (function
-                    | Config.Decode.Schema_error e -> e.path = [ "network" ]
-                    | _ -> false)
-                  errors)
-          | _ -> failwith "Expected preserved unsupported fields");
+          | Ok loaded ->
+              assert (List.mem [ "network"; "mode" ] loaded.ignored_paths)
+          | Error e -> failwith (Deco.Config_loader.error_to_string e));
           assert (
             read (Filename.concat path ".deco/build/Containerfile")
             = template.containerfile);

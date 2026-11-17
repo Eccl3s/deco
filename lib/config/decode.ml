@@ -35,7 +35,8 @@ let parse input =
             };
         ]
 
-let from_string input =
+let from_string_with_ignored input =
+  let ignored = ref [] in
   let errors = ref [] in
   let sorted_errors () =
     List.map
@@ -174,6 +175,9 @@ let from_string input =
   match parse input with
   | Error errors -> Error errors
   | Ok tree -> (
+      let tree, paths, planned_errors = Planned.strip tree in
+      ignored := paths;
+      errors := planned_errors @ !errors;
       match
         table []
           [ "project"; "image"; "build"; "user"; "container"; "mounts" ]
@@ -189,7 +193,9 @@ let from_string input =
           let mounts = field [] fields "mounts" mounts in
           match (!errors, project) with
           | [], Some project ->
-              Ok { project; image; build; user; container; mounts }
+              Ok ({ project; image; build; user; container; mounts }, !ignored)
           | [], None ->
               invalid_arg "Config.Decode: missing project without schema error"
           | _ -> Error (sorted_errors ())))
+
+let from_string input = Result.map fst (from_string_with_ignored input)

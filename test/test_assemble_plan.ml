@@ -9,6 +9,7 @@ let () =
   let effective = Result.get_ok (Config.Resolve.apply source) in
   let loaded : Config_loader.t =
     {
+      ignored_paths = [];
       project =
         { root = "/project"; config_path = "/project/.deco/config.toml" };
       source;

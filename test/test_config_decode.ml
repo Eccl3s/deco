@@ -32,7 +32,7 @@ let () =
       "project={name=1}";
       "project={name='x',extra=true}";
       "project.name='x'\nuser.mode='root'";
-      "project.name='x'\nnetwork.mode='host'";
+      "project.name='x'\nnetwork.mdoe='host'";
       "project.name='x'\nmounts.workspace={}";
       "project.name='x'\nbuild.args.X=1";
       "project.name='x'\nproject.name='y'";
