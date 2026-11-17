@@ -13,6 +13,7 @@ type error = { cause : cause; stop_completed : bool }
 
 val run :
   ?run:Podman.runner ->
+  ?read_many:(string list list -> (Process.result, Process.error) result list) ->
   ?container_id:string ->
   ?check_availability:bool ->
   Config_loader.t ->
@@ -22,4 +23,6 @@ val run :
     mapping, hooks, or signal handling; callers may supply a signal-aware
     runner. [check_availability] defaults to [true]; callers may set it to
     [false] after checking the same runtime within the current operation.
-    Ownership, state, and post-stop verification always run. *)
+    [read_many] batches initial availability and inspection only; it is unused
+    when [check_availability] is false. Ownership, state, and post-stop
+    verification always run. *)

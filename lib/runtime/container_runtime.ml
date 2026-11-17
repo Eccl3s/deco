@@ -129,17 +129,39 @@ let check_compatibility ~selinux loaded image container =
   | Ok (Ok ()) -> Ok ()
   | Ok (Error e) -> Error (Conflict e)
 
+let preflight ?run ?read_many commands =
+  let base = Option.value ~default:(fun argv -> Process.run argv) run in
+  let batch =
+    match (read_many, run) with
+    | Some batch, _ -> Some batch
+    | None, Some _ -> None
+    | None, None -> Some (fun commands -> Process.run_many commands)
+  in
+  match batch with
+  | None -> Ok base
+  | Some batch ->
+      let results = batch commands in
+      if List.length results <> List.length commands then
+        Error
+          (Podman.Invalid_response
+             {
+               operation = "preflight";
+               message = "Batch result count does not match command count";
+             })
+      else
+        let remaining = ref (List.combine commands results) in
+        Ok
+          (fun argv ->
+            match List.assoc_opt argv !remaining with
+            | None -> base argv
+            | Some result ->
+                remaining := List.remove_assoc argv !remaining;
+                result)
+
 let inspect ?run ?read_many ?(probe = fun () -> local_selinux ()) ?selinux
     ?container_id (loaded : Config_loader.t) =
-  let concurrent = Option.is_some read_many || Option.is_none run in
-  let injected = run in
+  let injected_run = run in
   let run = Option.value ~default:(fun argv -> Process.run argv) run in
-  let read_many =
-    match (read_many, injected) with
-    | Some batch, _ -> batch
-    | None, Some _ -> List.map run
-    | None, None -> fun commands -> Process.run_many commands
-  in
   let ( let* ) r f = match r with Ok x -> f x | Error e -> Error e in
   let wrap = function
     | Ok x -> Ok x
@@ -157,7 +179,6 @@ let inspect ?run ?read_many ?(probe = fun () -> local_selinux ()) ?selinux
     | Ok () -> Ok ()
     | Error _ -> Error (Conflict "Resource ownership differs")
   in
-  let* () = wrap (Podman.available ~run ()) in
   let image_command =
     Podman_command.inspect "image"
       (loaded.effective.image.name ^ ":" ^ loaded.effective.image.tag)
@@ -166,16 +187,12 @@ let inspect ?run ?read_many ?(probe = fun () -> local_selinux ()) ?selinux
     Podman_command.inspect "container"
       (Option.value ~default:loaded.effective.container.name container_id)
   in
-  let responses =
-    if concurrent then
-      List.combine
-        [ image_command; container_command ]
-        (read_many [ image_command; container_command ])
-    else []
+  let* run =
+    wrap
+      (preflight ?run:injected_run ?read_many
+         [ Podman_command.version; image_command; container_command ])
   in
-  let run argv =
-    match List.assoc_opt argv responses with Some r -> r | None -> run argv
-  in
+  let* () = wrap (Podman.available ~run ()) in
   let* image =
     wrap
       (Podman.inspect_image ~run

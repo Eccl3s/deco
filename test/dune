@@ -2,6 +2,7 @@
  (names
   test_deco
   test_process
+  test_preflight
   test_assemble_plan
   test_exec_plan
   test_shell_plan

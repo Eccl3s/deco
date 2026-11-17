@@ -23,7 +23,7 @@ let () =
       identity = User_identity.Image;
     }
   in
-  let test mode keep_image =
+  let test mode keep_image batch =
     let c_exists = ref (mode <> "missing" && mode <> "container-missing")
     and i_exists = ref (mode <> "missing" && mode <> "image-missing") in
     let stopped = ref false
@@ -131,7 +131,23 @@ let () =
               {|[{"Id":"other","ImageID":"child-image","Names":["unrelated"]}]|}
       | _ -> failwith ("Unexpected remove command " ^ String.concat " " argv)
     in
-    let result = Remove.run ~run loaded ~keep_image in
+    let read_many commands =
+      assert (
+        commands
+        = [
+            Podman_command.version;
+            Podman_command.inspect "container" "example-dev-container";
+          ]
+          @
+          if keep_image then []
+          else [ Podman_command.inspect "image" "example-dev-image:latest" ]);
+      List.map run commands
+    in
+    let result =
+      Remove.run ~run
+        ?read_many:(if batch then Some read_many else None)
+        loaded ~keep_image
+    in
     assert (List.length (List.filter (( = ) Podman_command.version) !calls) = 1);
     (if
        (keep_image && mode = "image-owner")
@@ -167,7 +183,7 @@ let () =
         !calls
   in
   List.iter
-    (fun mode -> test mode false)
+    (fun mode -> List.iter (test mode false) [ false; true ])
     [
       "ok";
       "stopped";
@@ -186,7 +202,9 @@ let () =
       "image-failure";
       "image-verification";
     ];
-  List.iter (fun mode -> test mode true) [ "ok"; "missing"; "image-owner" ];
+  List.iter
+    (fun mode -> List.iter (test mode true) [ false; true ])
+    [ "ok"; "missing"; "image-owner" ];
   let invalid =
     {
       loaded with

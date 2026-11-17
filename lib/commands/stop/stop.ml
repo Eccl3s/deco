@@ -8,8 +8,9 @@ type cause =
 
 type error = { cause : cause; stop_completed : bool }
 
-let run ?(run = fun argv -> Process.run argv) ?container_id
-    ?(check_availability = true) loaded =
+let run ?run ?read_many ?container_id ?(check_availability = true) loaded =
+  let injected_run = run in
+  let run = Option.value ~default:(fun argv -> Process.run argv) run in
   let stop_completed = ref false in
   let fail cause = Error { cause; stop_completed = !stop_completed } in
   let ( let* ) r f = match r with Ok x -> f x | Error e -> Error e in
@@ -26,12 +27,38 @@ let run ?(run = fun argv -> Process.run argv) ?container_id
     | Ok plan -> Ok plan
     | Error e -> fail (Planning e)
   in
+  let* initial_run =
+    if not check_availability then Ok run
+    else
+      match
+        Container_runtime.preflight ?run:injected_run ?read_many
+          [
+            Podman_command.version;
+            Podman_command.inspect "container"
+              (Option.value
+                 ~default:loaded.Config_loader.effective.container.name
+                 container_id);
+          ]
+      with
+      | Ok reader -> Ok reader
+      | Error e -> fail (Podman e)
+  in
   let* () =
-    match if check_availability then Podman.available ~run () else Ok () with
+    match
+      if check_availability then Podman.available ~run:initial_run () else Ok ()
+    with
     | Ok () -> Ok ()
     | Error e -> fail (Podman e)
   in
-  let* initial = inspect ?container_id () in
+  let* initial =
+    match
+      Container_runtime.inspect_owned_container ~run:initial_run ?container_id
+        loaded
+    with
+    | Ok value -> Ok value
+    | Error (Container_runtime.Podman e) -> fail (Podman e)
+    | Error (Container_runtime.Conflict e) -> fail (Conflict e)
+  in
   let* container =
     match initial with
     | Podman.Absent -> fail (Conflict "Container is missing")

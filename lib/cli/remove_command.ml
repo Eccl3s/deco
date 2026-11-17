@@ -14,6 +14,8 @@ let[@warning "-42"] execute project_dir dry_run keep_image =
       else
         match
           Deco.Remove.run
+            ~read_many:(fun commands ->
+              Deco.Process.run_many ~forward_signals:true commands)
             ~run:(fun argv -> Deco.Process.run ~forward_signals:true argv)
             loaded ~keep_image
         with

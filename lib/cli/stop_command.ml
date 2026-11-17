@@ -14,6 +14,8 @@ let execute project_dir dry_run =
       else
         match
           Deco.Stop.run
+            ~read_many:(fun commands ->
+              Deco.Process.run_many ~forward_signals:true commands)
             ~run:(fun argv -> Deco.Process.run ~forward_signals:true argv)
             loaded
         with

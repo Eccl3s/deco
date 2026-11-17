@@ -153,7 +153,7 @@ let () =
         ~probe:(fun () -> failwith "Unexpected SELinux probe")
         loaded ~tty:true
     in
-    assert (!batches = if batch then 1 else 0);
+    assert (!batches = if batch then if !started then 2 else 1 else 0);
     if failure = "" then
       let outcome = Result.get_ok result in
       assert (

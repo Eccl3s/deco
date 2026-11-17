@@ -24,9 +24,9 @@ let run ?execute ?read_many
   in
   let read_many =
     match (read_many, injected) with
-    | Some batch, _ -> batch
-    | None, Some _ -> List.map (execute Process.Capture)
-    | None, None -> fun commands -> Process.run_many commands
+    | Some batch, _ -> Some batch
+    | None, Some _ -> None
+    | None, None -> Some (fun commands -> Process.run_many commands)
   in
   let started = ref false in
   let fail cause = Error { cause; started = !started } in
@@ -37,12 +37,8 @@ let run ?execute ?read_many
   in
   let inspect ?container_id () =
     match
-      Container_runtime.inspect
-        ~read_many:
-          (if Option.is_some container_id then
-             List.map (execute Process.Capture)
-           else read_many)
-        ~selinux ~run:(execute Process.Capture) ?container_id loaded
+      Container_runtime.inspect ?read_many ~selinux
+        ~run:(execute Process.Capture) ?container_id loaded
     with
     | Ok env -> Ok env
     | Error (Container_runtime.Podman e) -> fail (Podman e)

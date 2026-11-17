@@ -68,3 +68,11 @@ val inspect_owned_image :
   (Podman.image Podman.presence, error) result
 (** Inspect the configured image or supplied [image_id], preserving absence and
     verifying project ownership without environment compatibility checks. *)
+
+val preflight :
+  ?run:Podman.runner ->
+  ?read_many:(string list list -> (Process.result, Process.error) result list) ->
+  string list list ->
+  (Podman.runner, Podman.error) result
+(** Prefetch independent reads when batching is enabled. Results are consumed
+    once; injected single runners retain sequential fail-fast execution. *)

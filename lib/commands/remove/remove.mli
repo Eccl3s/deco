@@ -19,8 +19,10 @@ type error = { cause : cause; completed : mutation list }
 
 val run :
   ?run:Podman.runner ->
+  ?read_many:(string list list -> (Process.result, Process.error) result list) ->
   Config_loader.t ->
   keep_image:bool ->
   (outcome, error) result
 (** Ownership-only removal by inspected IDs. No force, rollback, output, or
-    hooks. *)
+    hooks. [read_many] batches initial version and selected resource inspections
+    only. All later reads and mutations remain sequential and fresh. *)

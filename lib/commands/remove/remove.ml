@@ -15,7 +15,9 @@ type cause =
 
 type error = { cause : cause; completed : mutation list }
 
-let run ?(run = fun argv -> Process.run argv) loaded ~keep_image =
+let run ?run ?read_many loaded ~keep_image =
+  let injected_run = run in
+  let run = Option.value ~default:(fun argv -> Process.run argv) run in
   let completed = ref [] in
   let fail cause = Error { cause; completed = List.rev !completed } in
   let ( let* ) r f = match r with Ok x -> f x | Error e -> Error e in
@@ -42,9 +44,27 @@ let run ?(run = fun argv -> Process.run argv) loaded ~keep_image =
     | Ok p -> Ok p
     | Error e -> fail (Planning e)
   in
-  let* () = wrap (Podman.available ~run ()) in
-  let* initial_container = container () in
-  let* initial_image = if keep_image then Ok Podman.Absent else image () in
+  let commands =
+    [
+      Podman_command.version;
+      Podman_command.inspect "container" plan.container_name;
+    ]
+    @
+    match plan.image_reference with
+    | None -> []
+    | Some reference -> [ Podman_command.inspect "image" reference ]
+  in
+  let* initial_run =
+    wrap (Container_runtime.preflight ?run:injected_run ?read_many commands)
+  in
+  let* () = wrap (Podman.available ~run:initial_run ()) in
+  let* initial_container =
+    owned (Container_runtime.inspect_owned_container ~run:initial_run loaded)
+  in
+  let* initial_image =
+    if keep_image then Ok Podman.Absent
+    else owned (Container_runtime.inspect_owned_image ~run:initial_run loaded)
+  in
   let* stopped, container_removed =
     match initial_container with
     | Podman.Absent -> Ok (false, false)

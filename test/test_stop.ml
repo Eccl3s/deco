@@ -51,17 +51,23 @@ let () =
   let inspect target = Podman_command.inspect "container" target in
   let initial = inspect "example-dev-container" in
   let version = (Podman_command.version, response "") in
-  let run script =
+  let run ?(batch = false) script =
     let remaining = ref script in
+    let read argv =
+      match !remaining with
+      | (expected, result) :: rest ->
+          assert (argv = expected);
+          remaining := rest;
+          result
+      | [] -> failwith "Unexpected operation"
+    in
+    let read_many commands =
+      assert (commands = [ Podman_command.version; initial ]);
+      List.map read commands
+    in
     let result =
-      Stop.run
-        ~run:(fun argv ->
-          match !remaining with
-          | (expected, result) :: rest ->
-              assert (argv = expected);
-              remaining := rest;
-              result
-          | [] -> failwith "Unexpected operation")
+      Stop.run ~run:read
+        ?read_many:(if batch then Some read_many else None)
         loaded
     in
     assert (!remaining = []);
@@ -77,7 +83,8 @@ let () =
   List.iter
     (fun state ->
       let outcome =
-        Result.get_ok (run [ version; (initial, response (container state)) ])
+        Result.get_ok
+          (run ~batch:true [ version; (initial, response (container state)) ])
       in
       assert (outcome.container_id = "cid" && not outcome.stopped))
     [ "created"; "configured"; "exited"; "stopped" ];
@@ -85,7 +92,8 @@ let () =
   let stopped = prefix @ [ (Podman_command.stop "cid", response "") ] in
   let outcome =
     Result.get_ok
-      (run (stopped @ [ (inspect "cid", response (container "exited")) ]))
+      (run ~batch:true
+         (stopped @ [ (inspect "cid", response (container "exited")) ]))
   in
   assert (outcome.stopped && outcome.container_id = "cid");
   List.iter
@@ -177,6 +185,16 @@ let () =
               ( Podman_command.info,
                 response ~status:(Unix.WEXITED 125) "unavailable" );
             ])));
+  let outcome =
+    Result.get_ok
+      (Stop.run ~container_id:"cid" ~check_availability:false
+         ~read_many:(fun _ -> failwith "Unexpected batch without availability")
+         ~run:(fun argv ->
+           assert (argv = inspect "cid");
+           response (container "exited"))
+         loaded)
+  in
+  assert (not outcome.Stop.stopped);
   let invalid =
     {
       loaded with

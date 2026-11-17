@@ -206,8 +206,12 @@ let () =
         Unix.rmdir root)
       (fun () ->
         let a = Filename.concat root "a" and b = Filename.concat root "b" in
+        let prefetched commands =
+          let reader = Result.get_ok (Container_runtime.preflight commands) in
+          List.map reader commands
+        in
         let results =
-          Process.run_many
+          prefetched
             [
               [ Sys.executable_name; "barrier"; a; b; "first" ];
               [ Sys.executable_name; "barrier"; b; a; "second" ];
