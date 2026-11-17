@@ -16,3 +16,4 @@ let exec ~tty ~user ~workdir ~container command =
   @ [ "--"; container ] @ command
 
 let version = [ "podman"; "--remote=false"; "version" ]
+let stop container = [ "podman"; "--remote=false"; "stop"; "--"; container ]

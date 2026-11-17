@@ -15,3 +15,6 @@ val exec :
 (** Construct an exec argument vector without evaluating command arguments. *)
 
 val version : string list
+
+val stop : string -> string list
+(** Stop the selected local container using Podman's default timeout. *)
