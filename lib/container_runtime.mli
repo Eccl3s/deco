@@ -17,8 +17,13 @@ val availability : ?run:Podman.runner -> unit -> (bool, Podman.error) result
 (** Check Podman and return its SELinux setting. *)
 
 val inspect :
-  ?run:Podman.runner -> Config_loader.t -> (environment, error) result
+  ?run:Podman.runner ->
+  ?container_id:string ->
+  Config_loader.t ->
+  (environment, error) result
 (** Require existing owned, compatible resources in an assemble-supported state.
+    When supplied, [container_id] selects the container by ID instead of its
+    configured name; the image is still selected from project configuration.
     Never mutate resources or print output. *)
 
 val supported_state : string -> bool

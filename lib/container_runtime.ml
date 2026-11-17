@@ -85,7 +85,8 @@ let availability ?run () = Result.map selinux_enabled (Podman.info ?run ())
 let supported_state state =
   List.mem state [ "running"; "created"; "configured"; "exited"; "stopped" ]
 
-let inspect ?(run = fun argv -> Process.run argv) (loaded : Config_loader.t) =
+let inspect ?(run = fun argv -> Process.run argv) ?container_id
+    (loaded : Config_loader.t) =
   let ( let* ) r f = match r with Ok x -> f x | Error e -> Error e in
   let wrap = function Ok x -> Ok x | Error e -> Error (Podman e) in
   let own labels =
@@ -109,7 +110,9 @@ let inspect ?(run = fun argv -> Process.run argv) (loaded : Config_loader.t) =
   in
   let* () = own image.labels in
   let* container =
-    wrap (Podman.inspect_container ~run loaded.effective.container.name)
+    wrap
+      (Podman.inspect_container ~run
+         (Option.value ~default:loaded.effective.container.name container_id))
   in
   let* container =
     match container with

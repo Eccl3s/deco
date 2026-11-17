@@ -4,6 +4,7 @@
   test_process
   test_assemble_plan
   test_exec_plan
+  test_exec
   test_assemble
   test_podman
   test_config_decode
