@@ -4,6 +4,7 @@
   test_process
   test_assemble_plan
   test_exec_plan
+  test_shell_plan
   test_exec
   test_selinux
   test_assemble
