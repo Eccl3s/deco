@@ -31,7 +31,19 @@ See [specs/](specs/) for the full CLI and configuration specifications.
 
 ## Getting Started
 
-Once implemented, Deco's intended workflow will be:
+Deco currently implements `init`, `validate`, `assemble`, `exec`, `shell`, `stop`, `remove`, help, and version output. Other commands
+below describe the planned workflow.
+
+Validate an existing project with `deco validate` or select one explicitly with
+`deco --project-dir PATH validate` (the option also works after the command).
+Use `deco --help` for details and `deco --version` for the development version.
+Validation checks configuration, defaults, host paths and identity without Podman.
+Podman-backed `--project` lookup, runtime compatibility, namespace feasibility,
+and image account/executable checks remain deferred; this is not full v1
+validation conformance. Errors go to stderr with exit code 2; success identifies
+the config path on stdout with exit code 0.
+
+The intended full workflow will be:
 
 Initialize a project:
 
@@ -159,7 +171,7 @@ Deco is written in OCaml and uses Dune as its build system and OPAM for dependen
 
 ### Prerequisites
 
-- OCaml
+- OCaml 5.5.2 or newer; CI tests 5.5.2.
 - OPAM
 - Dune
 - [Podman](https://podman.io/docs/installation)
@@ -236,10 +248,203 @@ dune runtest
 Deco is developed against two specifications:
 
 - [CLI Specification](specs/deco-cli.md) — Defines commands, options, output formats, exit codes, and lifecycle behaviour.
-- [TOML Specification](specs/deco-toml.md) — Defines configuration fields, defaults, validation rules, and runtime settings.
+- [Config TOML Specification](specs/deco-config.md) — Defines configuration fields, defaults, validation rules, and runtime settings.
 
 ## License
 
 Deco is licensed under the GNU General Public License version 3.0 or later (GPL-3.0-or-later).
 
 See [LICENSE](LICENSE) for details.
+
+For v0.1.0, `[user]` supports `keep-id` and `image`. Explicit UID/GID values
+must be in 0–4294967294 and fit an OCaml `int`. Image mode, including an
+omitted mode, forbids UID/GID settings; this is an additional v0.1.0 restriction.
+
+### Build and release versions
+
+The CLI derives its version during the build from Dune package metadata, or
+from Git (including an untagged commit identifier). There is no runtime Git
+dependency and no hardcoded development version.
+
+Before preparing a release archive, embed the release version in `dune-project`
+and regenerate `deco.opam` in a disposable release checkout. Build and verify
+`deco --version` before archiving. Metadata-free archives without Git fail to
+build; raw GitHub source archives must first receive explicit version metadata.
+The existing release workflow does not prepare these archives automatically.
+
+### Initialize a project
+
+Run `deco init [PATH]` to create `.deco/config.toml` and
+`.deco/build/Containerfile`, using the Debian template by default.
+`deco init --list-templates` lists alpine, debian, fedora, go, podman, python,
+rust, and tumbleweed. Select one with `--template NAME` or `-t NAME`.
+The existing built-in Containerfiles are copied unchanged.
+
+Use `--dry-run` (`-d`) to preview generated files without writing, or
+`--replace` (`-R`) to replace the two target files while preserving unrelated
+content. Existing targets otherwise cause an error. Replacement is atomic per
+file, with rollback on ordinary failures; the pair is not crash-atomic and
+concurrent external edits are unsupported. Symlinks inside the output structure
+are rejected.
+
+Generated configuration explicitly selects keep-id and a workspace at
+`/workspace`; UID/GID keys are omitted. Init performs no host identity lookup,
+build-argument generation, image builds, or Podman operations. Generated
+configuration preserves template settings unchanged. Recognized planned
+settings are accepted and structurally checked but not applied. `deco validate`
+lists ignored key paths without values; other commands do not report them.
+Acceptance is not full v1 validation or implementation of those features.
+
+Each built-in template consists of `<name>.toml` and `<name>.Containerfile`
+in `lib/templates`, embedded at build time. Init substitutes `{{project_name}}`,
+`{{image_name}}`, and `{{container_name}}` in the TOML, preserving other text.
+These tokens belong inside quoted TOML values. Containerfiles remain unchanged;
+init never strips planned settings from generated TOML. Missing partners and
+unknown or unterminated placeholders fail the embedding build.
+
+### Assemble a supported configuration
+
+`deco assemble` builds a missing image, creates a missing container, and starts
+it. Compatible running containers are reused. Configuration must validate first;
+all eight built-in templates are accepted,
+with recognized planned settings ignored as described below.
+For a minimal supported setup, use `.deco/config.toml`:
+
+```toml
+[project]
+name = "example"
+```
+
+And `.deco/build/Containerfile`:
+
+```dockerfile
+FROM alpine:3.23
+CMD ["sleep", "infinity"]
+```
+
+Run `deco assemble --dry-run` (or `-d`) to preview four high-level steps and complete,
+multiline Podman build/create commands without invoking Podman or writing files.
+The image ID appears as a placeholder resolved during execution. Use `--project-dir PATH` before or after `assemble` to select a project.
+
+Exit codes are 0 for success, 1 for runtime failure, 2 for invalid configuration or
+usage, 3 for unavailable Podman, and 4 for ownership, compatibility, or state
+conflicts. Failed operations retain partial resources; inspect them with Podman
+before retrying. Assemble never automatically rebuilds or replaces resources.
+Hooks and advanced configuration remain unsupported. Automated CLI tests use fake
+Podman responses; disposable live integration coverage is a separate step.
+
+Compact build output requires both stdin and stdout to be terminals. Press `t`
+to expand the full log permanently. Redirected output, `NO_COLOR`, and
+`TERM=dumb` use normal full-log streaming instead.
+
+### Execute a command
+
+Run `deco exec -- COMMAND ARG...` in an assembled environment, for example
+`deco exec -- cargo test`. The separator is required. Arguments are passed
+without shell evaluation. Compatible stopped containers start automatically;
+missing containers require `deco assemble`. Hooks remain unsupported.
+
+Stdin is inherited; a TTY is allocated when stdin and stdout are both terminals.
+Command exit codes pass through unchanged; abnormal termination returns 1.
+Use `deco exec --dry-run -- COMMAND` to preview without invoking Podman.
+
+### Local runtime and SELinux detection
+
+Deco v0.1.0 explicitly uses local Podman (`--remote=false`), ignoring implicit
+remote connection selection. Assemble and exec use a lightweight version check and resolves
+SELinux status only when it affects workspace relabel compatibility. It checks
+local sysfs first and falls back to Podman info when the result is unknown.
+Permissive SELinux is treated as enabled. Detection is reused within one command
+invocation; ownership and compatibility checks still run on every invocation.
+
+Successful resource inspections avoid separate existence checks. Assemble and
+exec inspect the configured image and container concurrently before ownership
+and compatibility validation. Failed inspections use an existence check to
+distinguish missing resources from runtime errors. Mutations and subsequent
+verification remain sequential.
+
+### Enter the development shell
+
+Run `deco shell` to enter `container.shell` as the configured user and workdir.
+Both stdin and stdout must be terminals. Compatible stopped containers start
+first; exiting the shell leaves the container running. Normal exit codes pass
+through; abnormal termination returns 1. Podman retains its existing container
+environment behavior; arbitrary host environment variables are not copied.
+
+Use `deco shell --dry-run` (or `-d`) without a terminal to preview entry.
+The `post_start` and `pre_enter` hooks remain deferred and are not executed.
+Run `dune build @test-shell-pty` for opt-in Linux PTY tests using Python 3's
+standard library and fake Podman; ordinary tests require no Python.
+
+### Stop the development container
+
+Run `deco stop` to stop a running managed container, or `deco stop --dry-run`
+(`-d`) to preview without Podman. Success prints `Stopped <name>` or
+`Already stopped: <name>`. Normal configuration validation is required, followed
+by container ownership and state checks; image and environment compatibility
+are not required. Missing/unmanaged containers and unsupported states return 4;
+invalid configuration/usage returns 2, unavailable Podman 3, and runtime failure 1.
+The `pre_stop` hook remains deferred. Stop does not remove resources.
+
+Run the opt-in disposable integration check with an existing local image that
+supports `sleep` (no images are pulled):
+
+```sh
+DECO_TEST_IMAGE=your-local-image python3 test/stop_podman.py _build/default/bin/deco.exe
+```
+
+### Remove the development environment
+
+Run `deco remove` to stop and remove the owned project container and remove its
+owned configured image. Missing resources are successful no-ops. Use
+`--keep-image` to skip all image operations, or `-d`/`--dry-run` for a conditional
+preview without Podman queries or live dependency enumeration.
+
+Success reports removed or already-absent resources. An image with remaining
+container dependents is retained; all dependent IDs/names are reported with exit
+code 4. Unmanaged resources and unsupported states also return 4. Invalid
+configuration/usage returns 2, unavailable Podman 3, and runtime failures 1.
+Failures report completed commands without claiming verification succeeded.
+
+Unlike the full v1 specification, v0.1.0 does not implement `--force`,
+`--keep-volumes`, named-volume removal, or lifecycle hooks. Removal never changes
+unrelated dependent containers or prunes parent images. Only `deco remove` is
+supported as the removal command.
+
+Run the opt-in live test with an existing local base image supporting `sleep`:
+
+```sh
+DECO_TEST_IMAGE=your-local-image python3 test/remove_podman.py _build/default/bin/deco.exe
+```
+
+The test builds disposable ownership-labelled child images without pulling,
+cleans up only its test resources, and preserves the supplied base image.
+
+### Planned configuration compatibility in v0.1.0
+
+All eight built-in templates can be initialized, validated, and previewed without
+editing their files. `deco validate` prints ignored paths under
+`Ignored planned settings (not applied in v0.1.0):` on stdout and succeeds.
+Other commands silently ignore those settings. Values are not printed.
+
+Only documented v1 keys are tolerated. Unknown keys, nested typos, wrong types,
+invalid TOML, and errors in implemented fields still fail. Planned fields receive
+structural/type checks only: semantic constraints such as port ranges, capability
+names, namespace conflicts, and host path existence are deferred.
+
+Capabilities, network settings, environment injection, devices/security options,
+additional mounts, secrets, actions, and hooks remain inactive. In particular,
+accepting the Podman template does not enable its nested-Podman setup, and
+accepting capability-drop settings does not apply capability restrictions.
+This compatibility policy is specific to v0.1.0; the v1 specification continues
+to describe implemented behavior expected from future releases.
+
+Run the opt-in default-template workflow check with:
+
+```sh
+python3 test/template_podman.py _build/default/bin/deco.exe
+```
+
+This builds the unchanged Debian template (including image pulls and package
+installation), exercises validate/assemble/exec/stop/remove in a temporary project,
+and cleans up only its owned resources without pruning parent images.

@@ -1,0 +1,29 @@
+(include_subdirs no)
+
+(library
+ (name cli)
+ (private_modules
+  build_output
+  error_report
+  cli_common
+  init_command
+  validate_command
+  assemble_command
+  exec_command
+  shell_command
+  stop_command
+  remove_command)
+ (libraries deco cmdliner unix)
+ (flags
+  (:standard -w +a -warn-error +a)))
+
+(rule
+ (targets generated_version.ml build_version.txt)
+ (deps (universe))
+ (action
+  (with-stdout-to
+   generated_version.ml
+   (run
+    %{exe:../../tools/gen_version/gen_version.exe}
+    %{version:deco}
+    build_version.txt))))

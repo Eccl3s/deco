@@ -2,9 +2,11 @@
 
 (name deco)
 
+(version 0.1.0)
+
 (generate_opam_files true)
 
-(source (github Eccl3s/deco.git))
+(source (github Eccl3s/deco))
 
 (authors "Elliott K 354622239+Eccl3s@users.noreply.github.com")
 (maintainers "Elliott K 354622239+Eccl3s@users.noreply.github.com")
@@ -16,5 +18,5 @@
  (synopsis "Repeatable, project-local development containers in Podman")
  (description "Repeatable, project-local development containers in Podman") 
  (license "GPL-3.0-or-later")
- (depends ocaml) 
+ (depends (ocaml (>= 5.5.2)) (otoml (>= 1.0.5)) (cmdliner (>= 1.3.0)) (yojson (>= 2.0)))
  (tags ("dev-tools" "podman")))

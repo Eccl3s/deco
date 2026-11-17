@@ -1,3 +1,139 @@
+(tests
+ (names
+  test_deco
+  test_process
+  test_preflight
+  test_assemble_plan
+  test_exec_plan
+  test_shell_plan
+  test_stop_plan
+  test_remove_plan
+  test_remove
+  test_stop
+  test_shell
+  test_exec
+  test_selinux
+  test_assemble
+  test_podman
+  test_config_decode
+  test_planned
+  test_config_validate
+  test_config_diagnostic
+  test_config_resolve
+  test_project
+  test_config_loader
+  test_host_paths
+  test_user_identity)
+ (modules
+  :standard
+  \
+  test_cli
+  test_assemble_cli
+  test_exec_cli
+  test_shell_cli
+  test_stop_cli
+  test_remove_cli
+  test_init
+  init_test_support
+  test_embed_templates)
+ (libraries deco config unix otoml yojson))
+
 (test
- (name test_deco)
- (libraries deco))
+ (name test_cli)
+ (modules test_cli)
+ (libraries unix)
+ (deps ../bin/deco.exe)
+ (action
+  (run %{test} %{exe:../bin/deco.exe} %{read:../lib/cli/build_version.txt})))
+
+(rule
+ (target init_test_support.ml)
+ (deps ../lib/commands/init/init.ml)
+ (action
+  (with-stdout-to
+   %{target}
+   (progn
+    (echo "module Template = Deco.Template\n")
+    (cat %{deps})))))
+
+(test
+ (name test_init)
+ (modules test_init init_test_support)
+ (libraries deco config unix otoml)
+ (deps
+  (glob_files ../lib/templates/*.Containerfile)
+  (glob_files ../lib/templates/*.toml))
+ (action
+  (run %{test} %{workspace_root}/lib/templates)))
+
+(test
+ (name test_embed_templates)
+ (modules test_embed_templates)
+ (libraries unix)
+ (deps ../tools/embed_templates/embed_templates.exe)
+ (action
+  (run %{test} %{exe:../tools/embed_templates/embed_templates.exe})))
+
+(test
+ (name test_assemble_cli)
+ (modules test_assemble_cli)
+ (libraries unix yojson)
+ (deps ../bin/deco.exe)
+ (action
+  (run %{test} %{exe:../bin/deco.exe})))
+
+(test
+ (name test_exec_cli)
+ (modules test_exec_cli)
+ (libraries unix)
+ (deps ../bin/deco.exe)
+ (action
+  (run %{test} %{exe:../bin/deco.exe})))
+
+(test
+ (name test_shell_cli)
+ (modules test_shell_cli)
+ (libraries unix)
+ (deps ../bin/deco.exe)
+ (action
+  (run %{test} %{exe:../bin/deco.exe})))
+
+(rule
+ (alias test-shell-pty)
+ (deps shell_pty.py ../bin/deco.exe)
+ (action
+  (run python3 %{dep:shell_pty.py} %{exe:../bin/deco.exe})))
+
+(test
+ (name test_stop_cli)
+ (modules test_stop_cli)
+ (libraries unix yojson)
+ (deps ../bin/deco.exe)
+ (action
+  (run %{test} %{exe:../bin/deco.exe})))
+
+(test
+ (name test_remove_cli)
+ (modules test_remove_cli)
+ (libraries unix yojson)
+ (deps ../bin/deco.exe)
+ (action
+  (run %{test} %{exe:../bin/deco.exe})))
+
+(rule
+ (alias test-release)
+ (deps test_release_version.py ../tools/gen_version/gen_version.exe)
+ (action
+  (run
+   python3
+   %{dep:test_release_version.py}
+   %{exe:../tools/gen_version/gen_version.exe})))
+
+(rule
+ (alias test-release)
+ (deps test_release_packaging.py ../tools/release/prepare.py)
+ (action
+  (run
+   python3
+   %{dep:test_release_packaging.py}
+   %{dep:../tools/release/prepare.py})))

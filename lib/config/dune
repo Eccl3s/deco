@@ -1,0 +1,6 @@
+(include_subdirs no)
+
+(library
+ (name config)
+ (private_modules image_reference planned)
+ (libraries otoml))
