@@ -24,6 +24,7 @@
   test_cli
   test_assemble_cli
   test_exec_cli
+  test_shell_cli
   test_init
   init_test_support
   test_embed_templates)
@@ -80,3 +81,17 @@
  (deps ../bin/deco.exe)
  (action
   (run %{test} %{exe:../bin/deco.exe})))
+
+(test
+ (name test_shell_cli)
+ (modules test_shell_cli)
+ (libraries unix)
+ (deps ../bin/deco.exe)
+ (action
+  (run %{test} %{exe:../bin/deco.exe})))
+
+(rule
+ (alias test-shell-pty)
+ (deps shell_pty.py ../bin/deco.exe)
+ (action
+  (run python3 %{dep:shell_pty.py} %{exe:../bin/deco.exe})))

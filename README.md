@@ -31,7 +31,7 @@ See [specs/](specs/) for the full CLI and configuration specifications.
 
 ## Getting Started
 
-Deco currently implements `init`, `validate`, `assemble`, `exec`, help, and version output. Other commands
+Deco currently implements `init`, `validate`, `assemble`, `exec`, `shell`, help, and version output. Other commands
 below describe the planned workflow.
 
 Validate an existing project with `deco validate` or select one explicitly with
@@ -359,3 +359,16 @@ exec inspect the configured image and container concurrently before ownership
 and compatibility validation. Failed inspections use an existence check to
 distinguish missing resources from runtime errors. Mutations and subsequent
 verification remain sequential.
+
+### Enter the development shell
+
+Run `deco shell` to enter `container.shell` as the configured user and workdir.
+Both stdin and stdout must be terminals. Compatible stopped containers start
+first; exiting the shell leaves the container running. Normal exit codes pass
+through; abnormal termination returns 1. Podman retains its existing container
+environment behavior; arbitrary host environment variables are not copied.
+
+Use `deco shell --dry-run` (or `-d`) without a terminal to preview entry.
+The `post_start` and `pre_enter` hooks remain deferred and are not executed.
+Run `dune build @test-shell-pty` for opt-in Linux PTY tests using Python 3's
+standard library and fake Podman; ordinary tests require no Python.

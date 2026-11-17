@@ -42,6 +42,7 @@ let command exec_arguments =
       Init_command.command;
       Assemble_command.command;
       Exec_command.command exec_arguments;
+      Shell_command.command;
     ]
 
 let run () =
