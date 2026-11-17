@@ -44,6 +44,12 @@ jobs:
       - name: Run tests
         run: opam exec -- dune runtest
 
+      - name: Run shell PTY tests
+        timeout-minutes: 2
+        run: |
+          python3 --version
+          opam exec -- dune build @test-shell-pty
+
   formatting:
     name: OCamlFormat (OCaml 5.5.2)
     runs-on: ubuntu-latest
