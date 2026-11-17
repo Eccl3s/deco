@@ -119,3 +119,21 @@
  (deps ../bin/deco.exe)
  (action
   (run %{test} %{exe:../bin/deco.exe})))
+
+(rule
+ (alias test-release)
+ (deps test_release_version.py ../tools/gen_version/gen_version.exe)
+ (action
+  (run
+   python3
+   %{dep:test_release_version.py}
+   %{exe:../tools/gen_version/gen_version.exe})))
+
+(rule
+ (alias test-release)
+ (deps test_release_packaging.py ../tools/release/prepare.py)
+ (action
+  (run
+   python3
+   %{dep:test_release_packaging.py}
+   %{dep:../tools/release/prepare.py})))
