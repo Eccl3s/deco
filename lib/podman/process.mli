@@ -8,6 +8,7 @@ type error = { operation : string; message : string }
 val run :
   ?output:output ->
   ?poll:(unit -> unit) ->
+  ?forward_signals:bool ->
   string list ->
   (result, error) Stdlib.result
 

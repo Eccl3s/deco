@@ -28,7 +28,7 @@ let normalize argv =
   | [] -> argv
   | executable :: args -> Array.of_list (executable :: reorder [] (aliases args))
 
-let command =
+let command exec_arguments =
   let module Term = Cmdliner.Term in
   let module Cmd = Cmdliner.Cmd in
   let default =
@@ -37,14 +37,32 @@ let command =
   Cmd.group ~default
     (Cmd.info "deco" ~version ~exits:Cli_common.exits
        ~doc:"Manage project-local development container configuration.")
-    [ Validate_command.command; Init_command.command; Assemble_command.command ]
+    [
+      Validate_command.command;
+      Init_command.command;
+      Assemble_command.command;
+      Exec_command.command exec_arguments;
+    ]
 
 let run () =
   (* Plain output also keeps parser/help diagnostics free of terminal styling. *)
+  let argv = normalize Sys.argv in
+  let argv, exec_arguments =
+    if Array.length argv > 1 && argv.(1) = "exec" then
+      let rec split prefix = function
+        | ("--project-dir" as option) :: value :: rest ->
+            split (value :: option :: prefix) rest
+        | "--" :: rest -> (Array.of_list (List.rev prefix), Some rest)
+        | value :: rest -> split (value :: prefix) rest
+        | [] -> (argv, None)
+      in
+      split [] (Array.to_list argv)
+    else (argv, None)
+  in
   let status =
     try
       match
-        Cmdliner.Cmd.eval_value ~catch:false ~argv:(normalize Sys.argv) command
+        Cmdliner.Cmd.eval_value ~catch:false ~argv (command exec_arguments)
       with
       | Ok (`Ok status) -> status
       | Ok (`Help | `Version) -> 0

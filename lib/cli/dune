@@ -8,7 +8,8 @@
   cli_common
   init_command
   validate_command
-  assemble_command)
+  assemble_command
+  exec_command)
  (libraries deco cmdliner unix)
  (flags
   (:standard -w +a -warn-error +a)))

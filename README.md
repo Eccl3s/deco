@@ -31,7 +31,7 @@ See [specs/](specs/) for the full CLI and configuration specifications.
 
 ## Getting Started
 
-Deco currently implements `init`, `validate`, `assemble`, help, and version output. Other commands
+Deco currently implements `init`, `validate`, `assemble`, `exec`, help, and version output. Other commands
 below describe the planned workflow.
 
 Validate an existing project with `deco validate` or select one explicitly with
@@ -333,3 +333,14 @@ Podman responses; disposable live integration coverage is a separate step.
 Compact build output requires both stdin and stdout to be terminals. Press `t`
 to expand the full log permanently. Redirected output, `NO_COLOR`, and
 `TERM=dumb` use normal full-log streaming instead.
+
+### Execute a command
+
+Run `deco exec -- COMMAND ARG...` in an assembled environment, for example
+`deco exec -- cargo test`. The separator is required. Arguments are passed
+without shell evaluation. Compatible stopped containers start automatically;
+missing containers require `deco assemble`. Hooks remain unsupported.
+
+Stdin is inherited; a TTY is allocated when stdin and stdout are both terminals.
+Command exit codes pass through unchanged; abnormal termination returns 1.
+Use `deco exec --dry-run -- COMMAND` to preview without invoking Podman.

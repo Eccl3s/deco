@@ -59,6 +59,10 @@ let () =
         in
         loop 0
       in
+      ignore (run temp [ "exec"; "--help" ] 0);
+      ignore (run temp [ "exec" ] 2);
+      ignore (run temp [ "exec"; "echo" ] 2);
+      ignore (run temp [ "exec"; "--" ] 2);
       let names =
         [
           "alpine";

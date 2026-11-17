@@ -2,7 +2,7 @@ type output = Capture | Inherit
 type result = { status : Unix.process_status; stdout : string; stderr : string }
 type error = { operation : string; message : string }
 
-let run ?(output = Capture) ?poll argv =
+let run ?(output = Capture) ?poll ?(forward_signals = false) argv =
   match argv with
   | [] -> Error { operation = "launch"; message = "Empty argument vector" }
   | program :: _ ->
@@ -40,33 +40,62 @@ let run ?(output = Capture) ?poll argv =
                 Fun.protect
                   ~finally:(fun () -> if capture then Unix.close err_fd)
                   (fun () ->
-                    let pid =
-                      Unix.create_process program (Array.of_list argv)
-                        Unix.stdin out_fd err_fd
+                    let child = ref None and pending = ref [] in
+                    let relay signal =
+                      match !child with
+                      | None -> pending := signal :: !pending
+                      | Some pid -> (
+                          try Unix.kill pid signal
+                          with Unix.Unix_error (Unix.ESRCH, _, _) -> ())
                     in
-                    let rec wait () =
-                      try
-                        match poll with
-                        | None -> snd (Unix.waitpid [] pid)
-                        | Some tick ->
-                            tick ();
-                            let child, status =
-                              Unix.waitpid [ Unix.WNOHANG ] pid
-                            in
-                            if child = 0 then (
-                              ignore (Unix.select [] [] [] 0.1);
-                              wait ())
-                            else status
-                      with Unix.Unix_error (Unix.EINTR, _, _) -> wait ()
+                    let handlers =
+                      if forward_signals then
+                        List.map
+                          (fun signal ->
+                            (signal, Sys.signal signal (Sys.Signal_handle relay)))
+                          [ Sys.sigint; Sys.sigterm ]
+                      else []
                     in
-                    let status = wait () in
-                    let read path =
-                      if capture then
-                        In_channel.with_open_bin path In_channel.input_all
-                      else ""
-                    in
-                    Ok
-                      { status; stdout = read out_path; stderr = read err_path }))
+                    Fun.protect
+                      ~finally:(fun () ->
+                        List.iter
+                          (fun (signal, handler) ->
+                            Sys.set_signal signal handler)
+                          handlers)
+                      (fun () ->
+                        let pid =
+                          Unix.create_process program (Array.of_list argv)
+                            Unix.stdin out_fd err_fd
+                        in
+                        child := Some pid;
+                        List.iter relay (List.rev !pending);
+                        let rec wait () =
+                          try
+                            match poll with
+                            | None -> snd (Unix.waitpid [] pid)
+                            | Some tick ->
+                                tick ();
+                                let child, status =
+                                  Unix.waitpid [ Unix.WNOHANG ] pid
+                                in
+                                if child = 0 then (
+                                  ignore (Unix.select [] [] [] 0.1);
+                                  wait ())
+                                else status
+                          with Unix.Unix_error (Unix.EINTR, _, _) -> wait ()
+                        in
+                        let status = wait () in
+                        let read path =
+                          if capture then
+                            In_channel.with_open_bin path In_channel.input_all
+                          else ""
+                        in
+                        Ok
+                          {
+                            status;
+                            stdout = read out_path;
+                            stderr = read err_path;
+                          })))
           with
           | Unix.Unix_error (e, operation, _) ->
               Error { operation; message = Unix.error_message e }

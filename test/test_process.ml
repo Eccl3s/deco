@@ -157,3 +157,28 @@ let () =
       with Failure message -> message = "callback"
     in
     assert raised)
+
+let () =
+  if Array.length Sys.argv = 1 then
+    List.iter
+      (fun signal ->
+        let previous = Sys.signal signal Sys.Signal_ignore in
+        Fun.protect
+          ~finally:(fun () -> Sys.set_signal signal previous)
+          (fun () ->
+            let sent = ref false in
+            let result =
+              Process.run ~forward_signals:true
+                ~poll:(fun () ->
+                  if not !sent then (
+                    sent := true;
+                    Unix.kill (Unix.getpid ()) signal))
+                [ "/bin/sleep"; "10" ]
+            in
+            assert (
+              match result with
+              | Ok r -> r.status = Unix.WSIGNALED signal
+              | Error _ -> false);
+            let restored = Sys.signal signal Sys.Signal_ignore in
+            assert (restored = Sys.Signal_ignore)))
+      [ Sys.sigint; Sys.sigterm ]
