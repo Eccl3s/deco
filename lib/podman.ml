@@ -39,11 +39,13 @@ let message (r : Process.result) =
   in
   status ^ if r.stderr = "" then "" else ": " ^ String.trim r.stderr
 
-let available ?(run = default_run) () =
+let info ?(run = default_run) () =
   match run Podman_command.info with
-  | Ok { status = Unix.WEXITED 0; _ } -> Ok ()
+  | Ok ({ status = Unix.WEXITED 0; _ } as r) -> Ok r.stdout
   | Ok r -> Error (Unavailable (message r))
   | Error e -> Error (Unavailable (e.operation ^ ": " ^ e.message))
+
+let available ?run () = Result.map (fun _ -> ()) (info ?run ())
 
 let field name = function
   | `Assoc xs -> (

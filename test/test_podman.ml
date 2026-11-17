@@ -260,3 +260,37 @@ let () =
   let c = Result.get_ok (Podman.decode_container text) in
   assert (c.userns = "keep-id:uid=1000,gid=1000");
   assert (List.mem "Z" (List.hd c.mounts).options)
+
+let () =
+  List.iter
+    (fun text -> assert (Container_runtime.selinux_enabled text))
+    [ ""; "{}"; "null"; "{\"host\":{\"security\":{\"selinuxEnabled\":true}}}" ];
+  assert (
+    not
+      (Container_runtime.selinux_enabled
+         "{\"host\":{\"security\":{\"selinuxEnabled\":false}}}"));
+  let run, done_ =
+    runner
+      [
+        ( Podman_command.info,
+          Ok
+            (result
+               ~stdout:"{\"host\":{\"security\":{\"selinuxEnabled\":false}}}"
+               (Unix.WEXITED 0)) );
+      ]
+  in
+  assert (Container_runtime.availability ~run () = Ok false);
+  done_ ();
+  assert (
+    Result.is_error
+      (Container_runtime.availability
+         ~run:(fun _ -> Ok (result (Unix.WEXITED 1)))
+         ()))
+
+let () =
+  List.iter
+    (fun state -> assert (Container_runtime.supported_state state))
+    [ "running"; "created"; "configured"; "exited"; "stopped" ];
+  List.iter
+    (fun state -> assert (not (Container_runtime.supported_state state)))
+    [ ""; "paused"; "unknown"; "removing" ]

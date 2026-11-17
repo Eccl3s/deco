@@ -18,73 +18,7 @@ type outcome = {
   started : bool;
 }
 
-let compatibility ?(selinux_enabled = true) (loaded : Config_loader.t)
-    (image : Podman.image) (c : Podman.container) =
-  let expected = loaded.effective in
-  let failures = ref [] in
-  let check b message = if not b then failures := message :: !failures in
-  check (c.image_id = image.id) "Container image differs";
-  check c.init "Container init is disabled";
-  check
-    (c.workdir = Option.value ~default:image.workdir expected.container.workdir)
-    "Working directory differs";
-  (match loaded.identity with
-  | User_identity.Image ->
-      check
-        (c.user = image.user
-        && (c.userns = "" || c.userns = "private" || c.userns = "host"))
-        "Image user strategy differs";
-      check (Ownership.identity c.labels = Ok None) "Unexpected identity label"
-  | Keep_id { name; container; _ } ->
-      check (c.user = name) "Container user differs";
-      check
-        (Ownership.identity c.labels
-        = Ok (Some { Ownership.uid = container.uid; gid = container.gid }))
-        "Identity label differs";
-      let prefix = "keep-id:" in
-      let actual =
-        if String.starts_with ~prefix c.userns then
-          String.sub c.userns (String.length prefix)
-            (String.length c.userns - String.length prefix)
-          |> String.split_on_char ',' |> List.sort compare
-        else []
-      in
-      let wanted =
-        List.sort compare
-          [
-            "uid=" ^ string_of_int container.uid;
-            "gid=" ^ string_of_int container.gid;
-          ]
-      in
-      check (actual = wanted)
-        "User namespace mapping differs or cannot be verified");
-  (match (expected.mounts.workspace, loaded.host_paths.workspace_source) with
-  | None, None ->
-      check
-        (not (List.exists (fun (m : Podman.mount) -> m.kind = "bind") c.mounts))
-        "Unexpected bind mount"
-  | Some w, Some source -> (
-      let matches =
-        List.filter
-          (fun (m : Podman.mount) -> m.destination = w.target)
-          c.mounts
-      in
-      match matches with
-      | [ m ] ->
-          check (m.kind = "bind" && m.source = source) "Workspace mount differs";
-          let has x = List.mem x m.options in
-          check
-            (match w.relabel with
-            | Config.Shared ->
-                has "z" || ((not selinux_enabled) && not (has "Z"))
-            | Private -> has "Z" || ((not selinux_enabled) && not (has "z"))
-            | No_relabel -> not (has "z" || has "Z"))
-            "Mount relabel policy differs or cannot be verified"
-      | _ -> check false "Workspace mount missing or duplicated")
-  | _ -> check false "Workspace paths disagree");
-  match List.rev !failures with
-  | [] -> Ok ()
-  | xs -> Error (String.concat "; " xs)
+let compatibility = Container_runtime.compatibility
 
 let run ?(execute = fun output argv -> Process.run ~output argv) loaded =
   let selinux_enabled = ref true in
@@ -139,10 +73,7 @@ let run ?(execute = fun output argv -> Process.run ~output argv) loaded =
           | Ok () -> Ok ()
           | Error e -> fail (Conflict e)
         in
-        if
-          List.mem c.state
-            [ "running"; "created"; "configured"; "exited"; "stopped" ]
-        then Ok ()
+        if Container_runtime.supported_state c.state then Ok ()
         else fail (Conflict "Unsupported container state")
     | _ -> Ok ()
   in
@@ -265,19 +196,7 @@ let run ?(execute = fun output argv -> Process.run ~output argv) loaded =
                     fail (Runtime "Container is not running after start")
                   else Ok ()
               | Availability ->
-                  (try
-                     let open Yojson.Basic.Util in
-                     let value =
-                       Yojson.Basic.from_string r.stdout
-                       |> member "host" |> member "security"
-                       |> member "selinuxEnabled"
-                     in
-                     match value with
-                     | `Bool enabled -> selinux_enabled := enabled
-                     | _ -> ()
-                   with
-                   | Yojson.Json_error _ | Yojson.Basic.Util.Type_error _ ->
-                     ());
+                  selinux_enabled := Container_runtime.selinux_enabled r.stdout;
                   Ok ()
               | Build ->
                   built := true;

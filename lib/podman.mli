@@ -38,3 +38,6 @@ val inspect_container :
 val message : Process.result -> string
 val decode_image : string -> (image, string) result
 val decode_container : string -> (container, string) result
+
+val info : ?run:runner -> unit -> (string, error) result
+(** Check availability and return the raw Podman info response. *)
