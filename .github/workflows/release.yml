@@ -40,6 +40,7 @@ jobs:
         env:
           TAG: ${{ github.ref_name }}
         run: |
+          export OPAMSWITCH="$(opam var switch)"
           version="${TAG#v}"
           unpack="$RUNNER_TEMP/source"
           mkdir -p "$unpack"
