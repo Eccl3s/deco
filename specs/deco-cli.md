@@ -326,17 +326,24 @@ container from the existing configured image.
 The operation is:
 
 1. Validate the project and verify Podman is available.
-2. If the existing container is running, run `pre_stop` and stop it.
-3. Remove the existing container.
-4. Unless `--keep-image` is set, rebuild the configured image.
-5. With `--keep-image`, require the configured image to exist.
+2. Unless `--keep-image` is set, rebuild the configured image.
+3. With `--keep-image`, require the configured image to exist.
+4. If the existing container is running, run `pre_stop` and stop it.
+5. Remove the existing container.
 6. Create any missing configured named volumes.
 7. With `--volumes`, remove and recreate configured owned named volumes.
 8. Create and start the replacement container.
 9. Run `post_create`, then `post_start`.
 
-If no project container exists, `refresh` continues from the image step and
+The image is rebuilt before the existing container is stopped. A container
+remains tied to the image it was created from, so the old container keeps
+running during the build, and a failed build leaves it unchanged.
+
+If no project container exists, `refresh` skips the stop and removal steps and
 creates one. With `--keep-image`, a missing image is a resource-state error.
+If a container with the configured name appears after the old container has
+been removed, `refresh` fails with a resource-state error instead of reusing
+it.
 Configured named volumes are recreated only with `--volumes`; otherwise
 existing owned named volumes are reused.
 

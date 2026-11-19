@@ -10,3 +10,21 @@ type status = {
 }
 
 val status : label:string -> image:string -> status
+
+type runners = {
+  execute :
+    Deco.Process.output ->
+    string list ->
+    (Deco.Process.result, Deco.Process.error) result;
+      (** Inherited output is a build, shown with {!run}. Captured [create] and
+          [start] commands begin the status stage, so nothing is drawn between a
+          build and those commands. *)
+  read_many :
+    string list list -> (Deco.Process.result, Deco.Process.error) result list;
+      (** Concurrent read-only commands, forwarding signals. *)
+  close : bool -> unit;  (** Close the status line; call exactly once. *)
+}
+(** Process runners for commands that build an image and then create and start a
+    container, such as [assemble] and [refresh]. *)
+
+val runners : label:string -> image:string -> runners

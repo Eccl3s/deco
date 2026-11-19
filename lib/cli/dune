@@ -9,6 +9,7 @@
   init_command
   validate_command
   assemble_command
+  refresh_command
   exec_command
   shell_command
   stop_command
