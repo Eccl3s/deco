@@ -5,6 +5,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import tomllib
 
 binary=str(pathlib.Path(sys.argv[1]).resolve())
 prefix=['podman','--remote=false']
@@ -18,9 +19,11 @@ with tempfile.TemporaryDirectory(prefix='deco-debian-workflow-') as directory:
     def deco(*args):
         return subprocess.run([binary]+list(args),check=True,capture_output=True,text=True,timeout=600)
     deco('init',str(root))
-    # Init generates these names from the already-safe temporary basename.
-    name=root.name
-    container=name+'-dev-container';image=name+'-dev-image:latest'
+    # Init normalises the basename differently per resource, so read the names it wrote.
+    config=tomllib.loads((root/'.deco/config.toml').read_text())
+    name=config['project']['name']
+    container=config['container']['name']
+    image=config['image']['name']+':'+config['image'].get('tag','latest')
     originals={p:p.read_bytes() for p in (root/'.deco/config.toml',root/'.deco/build/Containerfile')}
     try:
         result=deco('--project-dir',str(root),'validate')
