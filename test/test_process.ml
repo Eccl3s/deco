@@ -256,3 +256,50 @@ let () =
         ignore (Unix.waitpid [ Unix.WNOHANG ] (-1));
         false
       with Unix.Unix_error (Unix.ECHILD, _, _) -> true))
+
+(* A program that cannot be started is named in the error, by every runner. *)
+let () =
+  if Array.length Sys.argv = 1 then (
+    let dir = Filename.temp_dir "deco-process-" "" in
+    let missing = Filename.concat dir "missing-program" in
+    let blocked = Filename.concat dir "not-executable" in
+    Out_channel.with_open_bin blocked (fun c -> output_string c "#!/bin/sh\n");
+    Unix.chmod blocked 0o600;
+    let expect message = function
+      | Error { Process.operation = "launch"; message = actual }
+        when actual = message ->
+          ()
+      | Error e ->
+          failwith ("Unexpected error: " ^ e.operation ^ ": " ^ e.message)
+      | Ok _ -> failwith "Expected a launch error"
+    in
+    Fun.protect
+      ~finally:(fun () ->
+        Sys.remove blocked;
+        Unix.rmdir dir)
+      (fun () ->
+        List.iter
+          (fun (program, reason) ->
+            let message = program ^ ": " ^ reason in
+            (match Process.run [ program ] with
+            | Error e ->
+                assert (Process.not_found e = (reason = "command not found"))
+            | Ok _ -> failwith "Expected a launch error");
+            expect message (Process.run [ program ]);
+            expect message (Process.run ~output:Inherit [ program ]);
+            expect message
+              (Process.run_stream ~on_chunk:ignore ~poll:ignore [ program ]);
+            (* One failed launch does not affect the rest of a batch. *)
+            match
+              Process.run_many
+                [ [ program ]; [ Sys.executable_name; "echo"; "ok" ] ]
+            with
+            | [ first; Ok second ] ->
+                expect message first;
+                assert (second.stdout = "ok")
+            | _ -> failwith "Expected one result per command")
+          [
+            (missing, "command not found");
+            (blocked, "permission denied");
+            ("deco-test-command-not-on-path", "command not found");
+          ]))

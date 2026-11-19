@@ -145,8 +145,7 @@ let run ?execute ?read_many
                 match read argv with
                 | Error e ->
                     if index = Availability then
-                      fail
-                        (Podman (Unavailable (e.operation ^ ": " ^ e.message)))
+                      fail (Podman (Podman.unavailable e))
                     else read_failure (e.operation ^ ": " ^ e.message)
                 | Ok r -> Ok r
             in
