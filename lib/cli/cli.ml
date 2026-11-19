@@ -1,32 +1,31 @@
+module Argv = Argv
+
 let version = Generated_version.value
 
-(* Consume option values before interpreting command names or short aliases. *)
-let normalize argv =
-  let rec aliases = function
-    | "--" :: rest -> "--" :: rest
-    | (("--project-dir" | "--template" | "-t") as option) :: value :: rest ->
-        option :: value :: aliases rest
-    | "-h" :: rest -> "--help" :: aliases rest
-    | "-V" :: rest -> "--version" :: aliases rest
-    | value :: rest -> value :: aliases rest
-    | [] -> []
+(* Cmdliner picks ANSI styling from NO_COLOR/TERM when it initialises and never
+   checks whether the output is a terminal. Strip CSI sequences (ESC [ ... final
+   byte) from output written to a pipe or file. *)
+let plain_formatter channel =
+  let state = ref `Text in
+  let output text position length =
+    let buffer = Buffer.create length in
+    for i = position to position + length - 1 do
+      match (!state, text.[i]) with
+      | `Text, '\027' -> state := `Escape
+      | `Text, c -> Buffer.add_char buffer c
+      | `Escape, '[' -> state := `Csi
+      | `Escape, c ->
+          state := `Text;
+          Buffer.add_char buffer c
+      | `Csi, '\x40' .. '\x7e' -> state := `Text
+      | `Csi, _ -> ()
+    done;
+    Out_channel.output_string channel (Buffer.contents buffer)
   in
-  let rec reorder prefix = function
-    | "--project-dir" :: value :: rest ->
-        reorder (prefix @ [ "--project-dir"; value ]) rest
-    | value :: rest when String.starts_with ~prefix:"--project-dir=" value ->
-        reorder (prefix @ [ value ]) rest
-    | (("--help" | "--version") as value) :: rest ->
-        reorder (prefix @ [ value ]) rest
-    | value :: rest when String.starts_with ~prefix:"--help=" value ->
-        reorder (prefix @ [ value ]) rest
-    | command :: rest when command <> "" && command.[0] <> '-' ->
-        (command :: prefix) @ rest
-    | rest -> prefix @ rest
-  in
-  match Array.to_list argv with
-  | [] -> argv
-  | executable :: args -> Array.of_list (executable :: reorder [] (aliases args))
+  Format.make_formatter output (fun () -> Out_channel.flush channel)
+
+let formatter fd channel default =
+  if Unix.isatty fd then default else plain_formatter channel
 
 let command exec_arguments =
   let module Term = Cmdliner.Term in
@@ -48,24 +47,20 @@ let command exec_arguments =
     ]
 
 let run () =
-  (* Plain output also keeps parser/help diagnostics free of terminal styling. *)
-  let argv = normalize Sys.argv in
-  let argv, exec_arguments =
-    if Array.length argv > 1 && argv.(1) = "exec" then
-      let rec split prefix = function
-        | ("--project-dir" as option) :: value :: rest ->
-            split (value :: option :: prefix) rest
-        | "--" :: rest -> (Array.of_list (List.rev prefix), Some rest)
-        | value :: rest -> split (value :: prefix) rest
-        | [] -> (argv, None)
-      in
-      split [] (Array.to_list argv)
-    else (argv, None)
+  let { Argv.argv; exec_command = exec_arguments } = Argv.preprocess Sys.argv in
+  let help = formatter Unix.stdout stdout Format.std_formatter
+  and err = formatter Unix.stderr stderr Format.err_formatter in
+  (* With TERM set, Cmdliner's default help format runs a pager even when
+     stdout is not a terminal; hide TERM so piped help is printed as plain text. *)
+  let env =
+    if Unix.isatty Unix.stdout then Sys.getenv_opt
+    else function "TERM" -> None | name -> Sys.getenv_opt name
   in
   let status =
     try
       match
-        Cmdliner.Cmd.eval_value ~catch:false ~argv (command exec_arguments)
+        Cmdliner.Cmd.eval_value ~help ~err ~env ~catch:false ~argv
+          (command exec_arguments)
       with
       | Ok (`Ok status) -> status
       | Ok (`Help | `Version) -> 0
@@ -75,4 +70,6 @@ let run () =
       prerr_endline "deco: internal error";
       1
   in
+  Format.pp_print_flush help ();
+  Format.pp_print_flush err ();
   status

@@ -67,7 +67,10 @@ let initialize path template replace dry_run list_templates =
 let command =
   let path = Arg.(value & pos 0 (some string) None & info [] ~docv:"PATH") in
   let template =
-    Arg.(value & opt (some string) None & info [ "t"; "template" ] ~docv:"NAME")
+    Arg.(
+      value
+      & opt (some string) None
+      & info Argv.template.Argv.names ~docv:"NAME")
   in
   let replace =
     Arg.(

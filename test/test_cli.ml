@@ -18,7 +18,7 @@ let () =
     ~finally:(fun () -> cleanup temp)
     (fun () ->
       let last_errors = ref "" in
-      let run cwd args expected =
+      let run ?(env = []) cwd args expected =
         let out = Filename.concat temp "stdout"
         and err = Filename.concat temp "stderr" in
         let fd path =
@@ -33,6 +33,7 @@ let () =
           Unix.close stdout;
           Unix.close stderr;
           Unix.putenv "PATH" "/nonexistent";
+          List.iter (fun (name, value) -> Unix.putenv name value) env;
           Unix.execv binary (Array.of_list (binary :: args)));
         Unix.close stdout;
         Unix.close stderr;
@@ -63,6 +64,17 @@ let () =
       ignore (run temp [ "exec" ] 2);
       ignore (run temp [ "exec"; "echo" ] 2);
       ignore (run temp [ "exec"; "--" ] 2);
+      (* Styled terminals must not leak ANSI escapes into pipes. *)
+      List.iter
+        (fun (args, expected) ->
+          ignore (run ~env:[ ("TERM", "xterm") ] temp args expected))
+        [
+          ([ "frobnicate" ], 2);
+          ([ "--help" ], 0);
+          ([ "validate"; "--help" ], 0);
+          ([ "exec"; "echo" ], 2);
+          ([ "init"; "-t" ], 2);
+        ];
       let names =
         [
           "alpine";

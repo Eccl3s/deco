@@ -14,7 +14,7 @@ let project_dir =
   Arg.(
     value
     & opt (some string) None
-    & info [ "project-dir" ] ~docv:"PATH"
+    & info Argv.project_dir.Argv.names ~docv:"PATH"
         ~doc:"Select a project directory without parent fallback.")
 
 let load_project project_dir =
