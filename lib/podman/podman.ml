@@ -39,17 +39,32 @@ let message (r : Process.result) =
   in
   status ^ if r.stderr = "" then "" else ": " ^ String.trim r.stderr
 
+let unavailable (e : Process.error) =
+  Unavailable
+    (if Process.not_found e then "Podman was not found on PATH."
+     else if e.operation = "launch" then
+       (* The message names the program; the sentence already does. *)
+       let prefix = "podman: " in
+       let reason =
+         if String.starts_with ~prefix e.message then
+           String.sub e.message (String.length prefix)
+             (String.length e.message - String.length prefix)
+         else e.message
+       in
+       "Podman could not be started: " ^ reason
+     else e.operation ^ ": " ^ e.message)
+
 let info ?(run = default_run) () =
   match run Podman_command.info with
   | Ok ({ status = Unix.WEXITED 0; _ } as r) -> Ok r.stdout
   | Ok r -> Error (Unavailable (message r))
-  | Error e -> Error (Unavailable (e.operation ^ ": " ^ e.message))
+  | Error e -> Error (unavailable e)
 
 let available ?(run = default_run) () =
   match run Podman_command.version with
   | Ok r when r.Process.status = Unix.WEXITED 0 -> Ok ()
   | Ok r -> Error (Unavailable (message r))
-  | Error e -> Error (Unavailable (e.operation ^ ": " ^ e.message))
+  | Error e -> Error (unavailable e)
 
 let field name = function
   | `Assoc xs -> (

@@ -351,3 +351,26 @@ let () =
   assert (Result.is_error (resolve ()));
   assert (Result.is_error (resolve ()));
   assert (!probes = 1 && !calls = 1)
+
+(* Failing to run Podman at all is explained in plain words. *)
+let () =
+  let fails operation message _ = Error { Process.operation; message } in
+  let unavailable run =
+    match Podman.available ~run () with
+    | Error (Podman.Unavailable text) -> text
+    | _ -> failwith "Expected Podman to be unavailable"
+  in
+  assert (
+    unavailable (fails "launch" "podman: command not found")
+    = "Podman was not found on PATH.");
+  assert (
+    unavailable (fails "launch" "podman: permission denied")
+    = "Podman could not be started: permission denied");
+  assert (
+    unavailable (fails "capture" "No space left on device")
+    = "capture: No space left on device");
+  assert (
+    match Podman.info ~run:(fails "launch" "podman: command not found") () with
+    | Error (Podman.Unavailable text) ->
+        String.starts_with ~prefix:"Podman was not found" text
+    | _ -> false)

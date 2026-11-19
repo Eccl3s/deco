@@ -29,6 +29,10 @@ type container = {
   mounts : mount list;
 }
 
+val unavailable : Process.error -> error
+(** Describe a failure to run Podman at all. A missing program gets a plain
+    explanation; other launch failures keep the reason. *)
+
 val available : ?run:runner -> unit -> (unit, error) result
 val inspect_image : ?run:runner -> string -> (image presence, error) result
 

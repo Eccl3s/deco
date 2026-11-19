@@ -2,6 +2,21 @@ type output = Capture | Inherit
 type result = { status : Unix.process_status; stdout : string; stderr : string }
 type error = { operation : string; message : string }
 
+(* Name the program when it cannot be started; other Unix errors keep their
+   system call. Only [create_process] failures mean the program is the problem:
+   the handlers below also cover temporary files and pipes. *)
+let unix_error argv error operation =
+  let program = match argv with program :: _ -> program | [] -> "" in
+  match (error, operation) with
+  | Unix.ENOENT, "create_process" ->
+      { operation = "launch"; message = program ^ ": command not found" }
+  | Unix.EACCES, "create_process" ->
+      { operation = "launch"; message = program ^ ": permission denied" }
+  | _ -> { operation; message = Unix.error_message error }
+
+let not_found { operation; message } =
+  operation = "launch" && String.ends_with ~suffix:": command not found" message
+
 let run ?(output = Capture) ?poll ?(forward_signals = false) argv =
   match argv with
   | [] -> Error { operation = "launch"; message = "Empty argument vector" }
@@ -98,7 +113,7 @@ let run ?(output = Capture) ?poll ?(forward_signals = false) argv =
                           })))
           with
           | Unix.Unix_error (e, operation, _) ->
-              Error { operation; message = Unix.error_message e }
+              Error (unix_error argv e operation)
           | Sys_error message -> Error { operation = "capture"; message })
 
 let run_stream ~on_chunk ~poll argv =
@@ -174,7 +189,7 @@ let run_stream ~on_chunk ~poll argv =
                raise e);
             Ok { status = Option.get !status; stdout = ""; stderr = "" }
           with Unix.Unix_error (e, operation, _) ->
-            Error { operation; message = Unix.error_message e })
+            Error (unix_error argv e operation))
 
 let run_many ?(poll = fun () -> ()) ?(forward_signals = false) commands =
   let active = ref [] and paths = ref [] and pending = ref [] in
@@ -243,7 +258,7 @@ let run_many ?(poll = fun () -> ()) ?(forward_signals = false) commands =
               Ok (pid, out, err, ref None)
         with
         | Unix.Unix_error (e, operation, _) ->
-            Error { operation; message = Unix.error_message e }
+            Error (unix_error argv e operation)
         | Sys_error message -> Error { operation = "capture"; message }
       in
       let children = List.map launch commands in

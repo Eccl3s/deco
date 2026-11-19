@@ -74,7 +74,9 @@ let () =
           [ "assemble"; "--project-dir"; temp; "-d" ];
         ];
       assert (not (Sys.file_exists log));
-      ignore (run ~path:"/nonexistent" [ "assemble" ] 3);
+      (* A missing Podman is named, not reported as a raw system call. *)
+      let _, err = run ~path:"/nonexistent" [ "assemble" ] 3 in
+      assert (err = "deco: Podman was not found on PATH.\n");
       ignore (run [ "assemble" ] 3);
       assert (Sys.file_exists log);
       Unix.unlink log;
