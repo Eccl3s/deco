@@ -1,32 +1,6 @@
-let version = Generated_version.value
+module Argv = Argv
 
-(* Consume option values before interpreting command names or short aliases. *)
-let normalize argv =
-  let rec aliases = function
-    | "--" :: rest -> "--" :: rest
-    | (("--project-dir" | "--template" | "-t") as option) :: value :: rest ->
-        option :: value :: aliases rest
-    | "-h" :: rest -> "--help" :: aliases rest
-    | "-V" :: rest -> "--version" :: aliases rest
-    | value :: rest -> value :: aliases rest
-    | [] -> []
-  in
-  let rec reorder prefix = function
-    | "--project-dir" :: value :: rest ->
-        reorder (prefix @ [ "--project-dir"; value ]) rest
-    | value :: rest when String.starts_with ~prefix:"--project-dir=" value ->
-        reorder (prefix @ [ value ]) rest
-    | (("--help" | "--version") as value) :: rest ->
-        reorder (prefix @ [ value ]) rest
-    | value :: rest when String.starts_with ~prefix:"--help=" value ->
-        reorder (prefix @ [ value ]) rest
-    | command :: rest when command <> "" && command.[0] <> '-' ->
-        (command :: prefix) @ rest
-    | rest -> prefix @ rest
-  in
-  match Array.to_list argv with
-  | [] -> argv
-  | executable :: args -> Array.of_list (executable :: reorder [] (aliases args))
+let version = Generated_version.value
 
 let command exec_arguments =
   let module Term = Cmdliner.Term in
@@ -48,20 +22,7 @@ let command exec_arguments =
     ]
 
 let run () =
-  (* Plain output also keeps parser/help diagnostics free of terminal styling. *)
-  let argv = normalize Sys.argv in
-  let argv, exec_arguments =
-    if Array.length argv > 1 && argv.(1) = "exec" then
-      let rec split prefix = function
-        | ("--project-dir" as option) :: value :: rest ->
-            split (value :: option :: prefix) rest
-        | "--" :: rest -> (Array.of_list (List.rev prefix), Some rest)
-        | value :: rest -> split (value :: prefix) rest
-        | [] -> (argv, None)
-      in
-      split [] (Array.to_list argv)
-    else (argv, None)
-  in
+  let { Argv.argv; exec_command = exec_arguments } = Argv.preprocess Sys.argv in
   let status =
     try
       match

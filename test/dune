@@ -35,8 +35,14 @@
   test_remove_cli
   test_init
   init_test_support
-  test_embed_templates)
+  test_embed_templates
+  test_argv)
  (libraries deco config unix otoml yojson))
+
+(test
+ (name test_argv)
+ (modules test_argv)
+ (libraries cli))
 
 (test
  (name test_cli)
