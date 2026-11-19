@@ -3,4 +3,5 @@ module Argv = Argv
 
 val run : unit -> int
 (** Evaluate process arguments, write CLI output, and return an exit status.
-    Applies the plain-output environment setup without exiting the process. *)
+    Help and parser diagnostics written to a non-terminal contain no ANSI
+    styling. Does not exit the process. *)
