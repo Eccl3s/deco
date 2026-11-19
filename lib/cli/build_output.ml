@@ -159,3 +159,33 @@ let status ~label ~image =
       active := false)
   in
   { begin_stage; tick; finish }
+
+type runners = {
+  execute :
+    Deco.Process.output ->
+    string list ->
+    (Deco.Process.result, Deco.Process.error) result;
+  read_many :
+    string list list -> (Deco.Process.result, Deco.Process.error) result list;
+  close : bool -> unit;
+}
+
+let runners ~label ~image =
+  let status = status ~label ~image in
+  let execute output argv =
+    match output with
+    | Deco.Process.Inherit ->
+        (* The status stage begins at create or start, not straight after the
+           build, so callers can print lines between the two. *)
+        run ~image argv
+    | Deco.Process.Capture ->
+        (match argv with
+        | "podman" :: "--remote=false" :: ("create" | "start") :: _ ->
+            status.begin_stage ()
+        | _ -> ());
+        Deco.Process.run ~output ~poll:status.tick argv
+  in
+  let read_many commands =
+    Deco.Process.run_many ~forward_signals:true ~poll:status.tick commands
+  in
+  { execute; read_many; close = status.finish }

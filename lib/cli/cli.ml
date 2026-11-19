@@ -40,6 +40,7 @@ let command exec_arguments =
       Validate_command.command;
       Init_command.command;
       Assemble_command.command;
+      Refresh_command.command;
       Exec_command.command exec_arguments;
       Shell_command.command;
       Stop_command.command;

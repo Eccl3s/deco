@@ -26,42 +26,16 @@ let assemble project_dir dry_run =
           (loaded.effective.image.Config.Effective.name [@warning "-42"]) ^ ":"
           ^ loaded.effective.image.tag
         in
-        let status = Build_output.status ~label:"Starting" ~image in
+        let runners = Build_output.runners ~label:"Starting" ~image in
         let result =
           try
-            Deco.Assemble.run
-              ~read_many:(fun commands ->
-                Deco.Process.run_many ~forward_signals:true
-                  ~poll:status.Build_output.tick commands)
-              ~execute:(fun output argv ->
-                match output with
-                | Deco.Process.Inherit ->
-                    let result = Build_output.run ~image argv in
-                    (match result with
-                    | Ok { Deco.Process.status = Unix.WEXITED 0; _ } ->
-                        status.Build_output.begin_stage ()
-                    | Ok
-                        {
-                          Deco.Process.status =
-                            Unix.WEXITED _ | Unix.WSIGNALED _ | Unix.WSTOPPED _;
-                          _;
-                        }
-                    | Error _ ->
-                        ());
-                    result
-                | Deco.Process.Capture ->
-                    (match argv with
-                    | "podman" :: "--remote=false" :: ("create" | "start") :: _
-                      ->
-                        status.Build_output.begin_stage ()
-                    | _ -> ());
-                    Deco.Process.run ~output ~poll:status.Build_output.tick argv)
-              loaded
+            Deco.Assemble.run ~read_many:runners.Build_output.read_many
+              ~execute:runners.Build_output.execute loaded
           with e ->
-            status.Build_output.finish false;
+            runners.Build_output.close false;
             raise e
         in
-        status.Build_output.finish (Result.is_ok result);
+        runners.Build_output.close (Result.is_ok result);
         match result with
         | Ok outcome ->
             let action =
