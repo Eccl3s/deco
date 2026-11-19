@@ -1,0 +1,314 @@
+open Deco
+
+(* A stateful fake Podman: mutations change what later inspections return. *)
+type image = { id : string; owned : bool }
+
+type container = {
+  cid : string;
+  mutable state : string;
+  image_id : string;
+  owner : bool;
+}
+
+type world = {
+  mutable image : image option;
+  mutable container : container option;
+  mutable mutations : string list;  (** Mutating verbs, most recent first. *)
+  mutable build_output : Process.output option;
+  mutable next : int;
+  mutable events : Refresh.progress list;  (** Most recent first. *)
+  fail_build : bool;
+  fail_start : bool;
+  unavailable : bool;
+  intruder : string option;
+      (** When set, [container rm] is immediately followed by another owned
+          container taking the name, in this state, as if created by a
+          concurrent [deco assemble]. *)
+}
+
+let world ?image ?container ?(fail_build = false) ?(fail_start = false)
+    ?(unavailable = false) ?intruder () =
+  {
+    image;
+    container;
+    mutations = [];
+    build_output = None;
+    next = 1;
+    events = [];
+    fail_build;
+    fail_start;
+    unavailable;
+    intruder;
+  }
+
+let image_name = "example-dev-image:latest"
+let container_name = "example-dev-container"
+
+let labels owned =
+  Printf.sprintf
+    {|{"dev.deco.managed":"true","dev.deco.project":"%s","dev.deco.project-root":"/project"}|}
+    (if owned then "example" else "other")
+
+let ok stdout = Ok { Process.status = Unix.WEXITED 0; stdout; stderr = "" }
+let exit n = Ok { Process.status = Unix.WEXITED n; stdout = ""; stderr = "" }
+
+let execute w output argv =
+  if w.unavailable then
+    Error { Process.operation = "launch"; message = "No such file" }
+  else
+    let image_matches name =
+      match w.image with
+      | Some i when name = image_name || name = i.id -> Some i
+      | _ -> None
+    in
+    let container_matches name =
+      match w.container with
+      | Some c when name = container_name || name = c.cid -> Some c
+      | _ -> None
+    in
+    let mutate verb =
+      w.mutations <- verb :: w.mutations;
+      ok ""
+    in
+    match argv with
+    | [ "podman"; "--remote=false"; "version" ] -> ok ""
+    | [ "podman"; "--remote=false"; "info"; "--format"; "json" ] -> ok "{}"
+    | [ "podman"; "--remote=false"; "image"; "inspect"; "--"; name ] -> (
+        match image_matches name with
+        | None -> exit 125
+        | Some i ->
+            ok
+              (Printf.sprintf
+                 {|[{"Id":"%s","Labels":%s,"Config":{"User":"","WorkingDir":"/"}}]|}
+                 i.id (labels i.owned)))
+    | [ "podman"; "--remote=false"; "image"; "exists"; "--"; name ] ->
+        exit (if image_matches name = None then 1 else 0)
+    | [ "podman"; "--remote=false"; "container"; "inspect"; "--"; name ] -> (
+        match container_matches name with
+        | None -> exit 125
+        | Some c ->
+            ok
+              (Printf.sprintf
+                 {|[{"Id":"%s","Image":"%s","Config":{"Labels":%s,"User":"","WorkingDir":"/"},"HostConfig":{"Init":true,"UsernsMode":""},"State":{"Status":"%s"},"Mounts":[]}]|}
+                 c.cid c.image_id (labels c.owner) c.state))
+    | [ "podman"; "--remote=false"; "container"; "exists"; "--"; name ] ->
+        exit (if container_matches name = None then 1 else 0)
+    | [ "podman"; "--remote=false"; "stop"; "--"; id ] ->
+        (Option.get (container_matches id)).state <- "exited";
+        mutate "stop"
+    | [ "podman"; "--remote=false"; "container"; "rm"; "--"; id ] ->
+        assert (container_matches id <> None);
+        w.container <-
+          Option.map
+            (fun state ->
+              {
+                cid = "intruder";
+                state;
+                image_id = (Option.get w.image).id;
+                owner = true;
+              })
+            w.intruder;
+        mutate "rm"
+    | "podman" :: "--remote=false" :: "build" :: _ ->
+        w.build_output <- Some output;
+        if w.fail_build then exit 1
+        else (
+          w.image <- Some { id = Printf.sprintf "built%d" w.next; owned = true };
+          w.next <- w.next + 1;
+          mutate "build")
+    | "podman" :: "--remote=false" :: "create" :: rest ->
+        let image_id = List.nth rest (List.length rest - 1) in
+        let cid = Printf.sprintf "%064x" w.next in
+        w.next <- w.next + 1;
+        w.container <- Some { cid; state = "created"; image_id; owner = true };
+        ignore (mutate "create");
+        ok (cid ^ "\n")
+    | [ "podman"; "--remote=false"; "start"; "--"; id ] ->
+        if w.fail_start then exit 125
+        else (
+          (Option.get (container_matches id)).state <- "running";
+          mutate "start")
+    | _ -> failwith ("Unexpected command: " ^ String.concat " " argv)
+
+let () =
+  let source =
+    Result.get_ok (Config.Decode.from_string "[project]\nname='example'\n")
+  in
+  let effective = Result.get_ok (Config.Resolve.apply source) in
+  let loaded : Config_loader.t =
+    {
+      ignored_paths = [];
+      source;
+      effective;
+      project =
+        { root = "/project"; config_path = "/project/.deco/config.toml" };
+      host_paths =
+        {
+          build_context = "/project/.deco/build";
+          containerfile = "/project/.deco/build/Containerfile";
+          workspace_source = None;
+        };
+      identity = User_identity.Image;
+    }
+  in
+  let old_image = { id = "old"; owned = true } in
+  let running () =
+    { cid = "oldc"; state = "running"; image_id = "old"; owner = true }
+  in
+  let refresh ?(keep_image = false) w =
+    Refresh.run ~execute:(execute w)
+      ~probe:(fun () -> Some false)
+      ~progress:(fun event -> w.events <- event :: w.events)
+      loaded ~keep_image
+  in
+  let mutations w = List.rev w.mutations in
+  let events w = List.rev w.events in
+  let removed stopped = Refresh.Container_removed { stopped } in
+
+  (* Running container: rebuild first, then stop, remove, create, start. *)
+  let w = world ~image:old_image ~container:(running ()) () in
+  (match refresh w with
+  | Ok o ->
+      assert (o.stopped && o.container_removed && o.image_rebuilt);
+      assert (o.image_id = "built1");
+      assert (o.container_id <> "oldc");
+      assert ((Option.get w.container).state = "running");
+      assert ((Option.get w.container).image_id = "built1")
+  | Error _ -> failwith "running refresh failed");
+  assert (mutations w = [ "build"; "stop"; "rm"; "create"; "start" ]);
+  assert (events w = [ Image_rebuilt; removed true; Container_started ]);
+  assert (w.build_output = Some Process.Inherit);
+
+  (* Stopped container: no stop. *)
+  let w =
+    world ~image:old_image ~container:{ (running ()) with state = "exited" } ()
+  in
+  (match refresh w with
+  | Ok o -> assert ((not o.stopped) && o.container_removed && o.image_rebuilt)
+  | Error _ -> failwith "stopped refresh failed");
+  assert (mutations w = [ "build"; "rm"; "create"; "start" ]);
+  assert (events w = [ Image_rebuilt; removed false; Container_started ]);
+
+  (* No container: skip the stop and removal. *)
+  let w = world ~image:old_image () in
+  (match refresh w with
+  | Ok o ->
+      assert ((not o.stopped) && (not o.container_removed) && o.image_rebuilt)
+  | Error _ -> failwith "missing-container refresh failed");
+  assert (mutations w = [ "build"; "create"; "start" ]);
+  assert (events w = [ Image_rebuilt; No_container; Container_started ]);
+
+  (* No image and no container: build from scratch. *)
+  let w = world () in
+  assert (Result.is_ok (refresh w));
+  assert (mutations w = [ "build"; "create"; "start" ]);
+  assert (events w = [ Image_rebuilt; No_container; Container_started ]);
+
+  (* --keep-image: recreate the container from the existing image. *)
+  let w = world ~image:old_image ~container:(running ()) () in
+  (match refresh ~keep_image:true w with
+  | Ok o ->
+      assert (o.stopped && o.container_removed && not o.image_rebuilt);
+      assert (o.image_id = "old");
+      assert ((Option.get w.container).image_id = "old")
+  | Error _ -> failwith "keep-image refresh failed");
+  assert (mutations w = [ "stop"; "rm"; "create"; "start" ]);
+  assert (events w = [ Image_kept; removed true; Container_started ]);
+  assert (w.build_output = None);
+
+  (* Refusals happen before any mutation and leave resources untouched. *)
+  let refused ?keep_image w =
+    (match refresh ?keep_image w with
+    | Error { cause = Conflict _; completed = [] } -> ()
+    | _ -> failwith "expected a conflict before any mutation");
+    assert (mutations w = [] && events w = [])
+  in
+  let w = world ~container:(running ()) () in
+  refused ~keep_image:true w;
+  assert ((Option.get w.container).state = "running");
+  refused
+    (world ~image:old_image ~container:{ (running ()) with owner = false } ());
+  refused
+    (world ~image:{ old_image with owned = false } ~container:(running ()) ());
+  refused (world ~image:{ old_image with owned = false } ());
+
+  (* A failed build happens before the old container is touched. *)
+  let w = world ~image:old_image ~container:(running ()) ~fail_build:true () in
+  (match refresh w with
+  | Error { cause = Runtime _; completed = [] } -> ()
+  | _ -> failwith "expected a build failure with nothing completed");
+  assert (mutations w = []);
+  assert (events w = []);
+  assert (
+    match w.container with
+    | Some { cid = "oldc"; state = "running"; image_id = "old"; _ } -> true
+    | _ -> false);
+
+  (* A start failure reports every completed step. *)
+  let w = world ~image:old_image ~container:(running ()) ~fail_start:true () in
+  (match refresh w with
+  | Error
+      {
+        cause = Runtime _;
+        completed =
+          [ Build_image; Stop_container; Remove_container; Create_container ];
+      } ->
+      ()
+  | _ -> failwith "expected a partial start failure");
+  assert (events w = [ Image_rebuilt; removed true ]);
+
+  (* A container that takes the name after removal is not adopted. *)
+  let w =
+    world ~image:old_image ~container:(running ()) ~intruder:"running" ()
+  in
+  (match refresh w with
+  | Error
+      {
+        cause = Container_appeared;
+        completed = [ Build_image; Stop_container; Remove_container ];
+      } ->
+      ()
+  | _ -> failwith "expected a running intruder to be refused");
+  assert (mutations w = [ "build"; "stop"; "rm" ]);
+  assert (events w = [ Image_rebuilt; removed true ]);
+  assert ((Option.get w.container).cid = "intruder");
+  (* A stopped intruder is started by assemble before refresh can refuse it;
+     the start is reported, and the error still says it was not replaced. *)
+  let w =
+    world ~image:old_image ~container:(running ()) ~intruder:"exited" ()
+  in
+  (match refresh w with
+  | Error
+      {
+        cause = Container_appeared;
+        completed =
+          [ Build_image; Stop_container; Remove_container; Start_container ];
+      } ->
+      ()
+  | _ -> failwith "expected a stopped intruder to be refused");
+  assert (mutations w = [ "build"; "stop"; "rm"; "start" ]);
+  assert (events w = [ Image_rebuilt; removed true ]);
+
+  (* Unavailable Podman. *)
+  (match refresh (world ~unavailable:true ()) with
+  | Error { cause = Podman (Podman.Unavailable _); completed = [] } -> ()
+  | _ -> failwith "expected unavailable Podman");
+
+  (* Invalid plans fail before Podman is used. *)
+  let bad =
+    {
+      loaded with
+      effective =
+        {
+          loaded.effective with
+          container = { loaded.effective.container with name = "bad\000name" };
+        };
+    }
+  in
+  match
+    Refresh.run
+      ~execute:(fun _ _ -> failwith "Podman must not be called")
+      bad ~keep_image:false
+  with
+  | Error { cause = Planning _; completed = [] } -> ()
+  | _ -> failwith "expected a planning error"

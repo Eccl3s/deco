@@ -10,6 +10,7 @@
   test_remove_plan
   test_refresh_plan
   test_remove
+  test_refresh
   test_stop
   test_shell
   test_exec
