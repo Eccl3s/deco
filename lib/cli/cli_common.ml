@@ -10,29 +10,82 @@ let exits =
     Cmd.Exit.info 4 ~doc:"Resource ownership, compatibility, or state conflict.";
   ]
 
-let project_dir =
-  Arg.(
-    value
-    & opt (some string) None
-    & info Argv.project_dir.Argv.names ~docv:"PATH"
-        ~doc:"Select a project directory without parent fallback.")
+type selection = Discover | Directory of string | Named of string
 
-let load_project project_dir =
-  let project =
-    match project_dir with
-    | Some directory -> Deco.Project.select ~directory
-    | None -> Deco.Project.discover ~start_dir:(Sys.getcwd ())
+let project =
+  let module Term = Cmdliner.Term in
+  let project_dir =
+    Arg.(
+      value
+      & opt (some string) None
+      & info Argv.project_dir.Argv.names ~docv:"PATH"
+          ~doc:
+            "Select a project directory without parent fallback. Cannot be \
+             combined with $(b,--project).")
   in
+  let project =
+    Arg.(
+      value
+      & opt (some string) None
+      & info Argv.project.Argv.names ~docv:"NAME"
+          ~doc:
+            "Select an assembled project by its configured name, from any \
+             directory. The project root is found from the labels of its \
+             managed containers, so Podman is required, even with \
+             $(b,--dry-run). Cannot be combined with $(b,--project-dir).")
+  in
+  let select directory name =
+    match (directory, name) with
+    | Some _, Some _ ->
+        Error (`Msg "--project and --project-dir are mutually exclusive")
+    | _, Some "" -> Error (`Msg "--project requires a non-empty name")
+    | Some directory, None -> Ok (Directory directory)
+    | None, Some name -> Ok (Named name)
+    | None, None -> Ok Discover
+  in
+  Term.(term_result ~usage:true (const select $ project_dir $ project))
+
+let report_config_error error =
+  Format.eprintf "%a@." Error_report.pp_config_error error;
+  Error 2
+
+let load_selected project =
   match project with
   | Error error ->
       prerr_endline ("deco: " ^ Deco.Project.error_to_string error);
       Error 2
   | Ok project -> (
       match Deco.Config_loader.load project with
-      | Error error ->
-          Format.eprintf "%a@." Error_report.pp_config_error error;
-          Error 2
+      | Error error -> report_config_error error
       | Ok loaded -> Ok loaded)
+
+let load_named name =
+  let module N = Deco.Named_project in
+  let fail code error =
+    prerr_endline ("deco: " ^ N.error_to_string error);
+    Error code
+  in
+  match
+    N.load
+      ~run:(fun argv -> Deco.Process.run ~forward_signals:true argv)
+      ~name ()
+  with
+  | Ok loaded -> Ok loaded
+  | Error (N.Config error) -> report_config_error error
+  | Error (N.Podman (Deco.Podman.Unavailable _) as error) -> fail 3 error
+  | Error
+      (N.Podman (Deco.Podman.Runtime _ | Deco.Podman.Invalid_response _) as
+       error) ->
+      fail 1 error
+  | Error
+      ((N.No_match _ | N.Ambiguous _ | N.Root _ | N.Name_mismatch _) as error)
+    ->
+      fail 2 error
+
+let load_project = function
+  | Discover -> load_selected (Deco.Project.discover ~start_dir:(Sys.getcwd ()))
+  | Directory directory -> load_selected (Deco.Project.select ~directory)
+  | Named name -> load_named name
 
 let report_execution_result = function
   | Ok outcome -> (

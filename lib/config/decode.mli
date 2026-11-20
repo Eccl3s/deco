@@ -14,3 +14,8 @@ val error_to_string : error -> string
 
 val from_string_with_ignored :
   string -> (Config_types.t * string list list, error list) result
+
+val project_name : string -> string option
+(** The [project.name] string, if the input is syntactically valid TOML and has
+    one. Unlike {!from_string} this ignores every other key, so a configuration
+    with schema errors can still be identified. *)

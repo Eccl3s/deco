@@ -37,11 +37,51 @@ below describe the planned workflow.
 Validate an existing project with `deco validate` or select one explicitly with
 `deco --project-dir PATH validate` (the option also works after the command).
 Use `deco --help` for details and `deco --version` for the development version.
-Validation checks configuration, defaults, host paths and identity without Podman.
-Podman-backed `--project` lookup, runtime compatibility, namespace feasibility,
-and image account/executable checks remain deferred; this is not full v1
-validation conformance. Errors go to stderr with exit code 2; success identifies
-the config path on stdout with exit code 0.
+Validation checks configuration, defaults, host paths and identity without Podman
+(unless the project is selected with `--project`; see below). Runtime
+compatibility, namespace feasibility, and image account/executable checks remain
+deferred; this is not full v1 validation conformance. Errors go to stderr with
+exit code 2; success identifies the config path on stdout with exit code 0.
+
+### Selecting a project
+
+Project commands (`validate`, `assemble`, `refresh`, `exec`, `shell`, `stop`,
+and `remove`) find their project in one of three ways:
+
+- By default, Deco searches the current directory and its parents for
+  `.deco/config.toml`.
+- `--project-dir PATH` selects that directory, with no parent fallback.
+- `-p NAME` or `--project NAME` selects an assembled project by its configured
+  `project.name`, from any directory. Names are those shown by `deco list`:
+
+  ```sh
+  deco list
+  deco stop -p my-project
+  deco -p my-project exec -- cargo test
+  ```
+
+Both options may appear before or after the command, but not after the `--` of
+`deco exec`. They are mutually exclusive, and `init` and `list` accept neither.
+
+`--project` finds the managed containers labelled with that project name and
+uses their recorded project root. The root must still contain a
+`.deco/config.toml` whose `project.name` matches, and that configuration is
+fully validated before any further Podman command. Ownership checks against the
+loaded configuration are unchanged, so the labels only locate the project; they
+never authorise changes on their own. Because the lookup queries Podman, it
+needs Podman even with `--dry-run`, though it only reads container labels.
+
+The lookup fails with exit code 2 when:
+
+- no container records the name (assemble the project first, or use
+  `--project-dir`)
+- containers record more than one distinct root for it
+- the recorded root is missing or has no `.deco/config.toml`
+- the configuration there names a different project
+
+In the ambiguous and mismatched cases, use `--project-dir` to choose the
+directory explicitly. Root labels that are not absolute paths are ignored.
+Unavailable Podman returns 3, and a failed Podman listing returns 1.
 
 The intended full workflow will be:
 
@@ -325,6 +365,8 @@ CMD ["sleep", "infinity"]
 Run `deco assemble --dry-run` (or `-d`) to preview four high-level steps and complete,
 multiline Podman build/create commands without invoking Podman or writing files.
 The image ID appears as a placeholder resolved during execution. Use `--project-dir PATH` before or after `assemble` to select a project.
+`--project NAME` is accepted too, but only finds a project that already has a
+managed container; see [Selecting a project](#selecting-a-project).
 
 Exit codes are 0 for success, 1 for runtime failure, 2 for invalid configuration or
 usage, 3 for unavailable Podman, and 4 for ownership, compatibility, or state
@@ -424,8 +466,9 @@ cleans up only its test resources, and preserves the supplied base image.
 
 Run `deco list` from any directory to list every container labelled
 `dev.deco.managed=true`, running or stopped, across all projects. No project is
-needed, and `--project-dir` is rejected. Entries are sorted by project, then
-container name.
+needed, and `--project-dir` and `--project` are rejected. Entries are sorted by
+project, then container name. Pass a listed project's name to `-p`/`--project`
+to act on it from anywhere, for example `deco stop -p my-project`.
 
 ```text
 $ deco list

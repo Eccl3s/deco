@@ -86,6 +86,24 @@ let () =
       ignore (run [ "list"; "unexpected" ] 2);
       ignore (run [ "list"; "--project-dir"; temp ] 2);
       ignore (run [ "--project-dir"; temp; "list" ] 2);
+      (* list does not select a project, so --project is rejected too, even
+         though its value names a listed project. *)
+      List.iter
+        (fun term ->
+          List.iter
+            (fun args ->
+              let out, err = run ?term args 2 in
+              assert (out = "");
+              assert (contains err "unknown option"))
+            [
+              [ "list"; "-p"; "zeta" ];
+              [ "-p"; "zeta"; "list" ];
+              [ "list"; "--project"; "zeta" ];
+              [ "--project"; "zeta"; "list" ];
+              [ "list"; "--project=zeta" ];
+              [ "--project=zeta"; "list"; "--format"; "json" ];
+            ])
+        [ None; Some "xterm-256color" ];
       assert (not (Sys.file_exists log));
       (* Human output: sorted table, missing values shown as -. *)
       List.iter

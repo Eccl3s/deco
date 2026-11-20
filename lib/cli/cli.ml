@@ -31,7 +31,7 @@ let command exec_arguments =
   let module Term = Cmdliner.Term in
   let module Cmd = Cmdliner.Cmd in
   let default =
-    Term.(ret (const (fun _ -> `Help (`Plain, None)) $ Cli_common.project_dir))
+    Term.(ret (const (fun _ -> `Help (`Plain, None)) $ Cli_common.project))
   in
   Cmd.group ~default
     (Cmd.info "deco" ~version ~exits:Cli_common.exits

@@ -1,10 +1,10 @@
-let execute arguments project_dir dry_run =
+let execute arguments selection dry_run =
   match arguments with
   | None | Some [] ->
       prerr_endline "deco: exec requires -- followed by a command";
       2
   | Some arguments -> (
-      match Cli_common.load_project project_dir with
+      match Cli_common.load_project selection with
       | Error code -> code
       | Ok loaded ->
           let tty = Unix.isatty Unix.stdin && Unix.isatty Unix.stdout in
@@ -33,9 +33,11 @@ let command arguments =
     Arg.(
       value & flag
       & info [ "d"; "dry-run" ]
-          ~doc:"Preview execution without invoking Podman.")
+          ~doc:
+            "Preview execution without invoking Podman, except to locate a \
+             $(b,--project).")
   in
   Cmd.v
     (Cmd.info "exec" ~exits:Cli_common.exits
        ~doc:"Execute a command in the development container.")
-    Term.(const (execute arguments) $ Cli_common.project_dir $ dry_run)
+    Term.(const (execute arguments) $ Cli_common.project $ dry_run)

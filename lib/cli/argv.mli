@@ -23,6 +23,10 @@ type option_spec = {
 val project_dir : option_spec
 (** [--project-dir PATH], accepted by every project command. *)
 
+val project : option_spec
+(** [-p, --project NAME], accepted by every project command and mutually
+    exclusive with [--project-dir]. *)
+
 val format : option_spec
 (** [--format human|json], accepted by informational commands. *)
 

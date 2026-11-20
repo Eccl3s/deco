@@ -1,10 +1,10 @@
-let execute project_dir dry_run =
+let execute selection dry_run =
   let tty = Unix.isatty Unix.stdin && Unix.isatty Unix.stdout in
   if (not dry_run) && not tty then (
     prerr_endline "deco: Shell entry requires stdin and stdout to be terminals";
     2)
   else
-    match Cli_common.load_project project_dir with
+    match Cli_common.load_project selection with
     | Error code -> code
     | Ok loaded ->
         if dry_run then (
@@ -31,9 +31,11 @@ let command =
     Arg.(
       value & flag
       & info [ "d"; "dry-run" ]
-          ~doc:"Preview shell entry without invoking Podman.")
+          ~doc:
+            "Preview shell entry without invoking Podman, except to locate a \
+             $(b,--project).")
   in
   Cmdliner.Cmd.v
     (Cmdliner.Cmd.info "shell" ~exits:Cli_common.exits
        ~doc:"Enter the configured interactive shell.")
-    Term.(const execute $ Cli_common.project_dir $ dry_run)
+    Term.(const execute $ Cli_common.project $ dry_run)

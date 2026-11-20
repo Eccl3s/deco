@@ -2,10 +2,10 @@ module Term = Cmdliner.Term
 module Cmd = Cmdliner.Cmd
 
 let exits = Cli_common.exits
-let project_dir = Cli_common.project_dir
+let project = Cli_common.project
 
-let validate project_dir =
-  match Cli_common.load_project project_dir with
+let validate selection =
+  match Cli_common.load_project selection with
   | Error code -> code
   | Ok loaded ->
       Printf.printf "Configuration valid: %s\n"
@@ -28,4 +28,4 @@ let command =
               account checks remain deferred; this is not full v1 validation \
               conformance.";
          ])
-    Term.(const validate $ project_dir)
+    Term.(const validate $ project)
