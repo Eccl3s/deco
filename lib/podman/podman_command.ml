@@ -35,3 +35,17 @@ let list_containers =
     "--format";
     "json";
   ]
+
+let list_managed_containers =
+  [
+    "podman";
+    "--remote=false";
+    "container";
+    "ls";
+    "--all";
+    "--no-trunc";
+    "--filter";
+    "label=dev.deco.managed=true";
+    "--format";
+    "json";
+  ]

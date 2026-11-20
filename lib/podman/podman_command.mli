@@ -26,3 +26,7 @@ val remove_image : string -> string list
 (** Remove one image without force or pruning dangling parents. *)
 
 val list_containers : string list
+
+val list_managed_containers : string list
+(** List every local container labelled [dev.deco.managed=true], running or not,
+    with full IDs. *)

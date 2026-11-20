@@ -255,3 +255,42 @@ let list_containers ?(run = default_run) () =
         Ok (List.map decode (list (Yojson.Basic.from_string r.stdout)))
       with Failure message | Yojson.Json_error message ->
         Error (Invalid_response { operation; message }))
+
+type listed_container = {
+  id : string;
+  names : string list;
+  state : string;
+  image : string option;
+  image_id : string option;
+  labels : labels;
+}
+
+let list_managed_containers ?(run = default_run) () =
+  let operation = "container list" in
+  match run Podman_command.list_managed_containers with
+  | Error e when e.Process.operation = "launch" -> Error (unavailable e)
+  | Error e ->
+      Error (Runtime { operation; message = e.operation ^ ": " ^ e.message })
+  | Ok r when r.Process.status <> Unix.WEXITED 0 ->
+      Error (Runtime { operation; message = message r })
+  | Ok r -> (
+      try
+        let decode json =
+          let id = string (field "Id" json) in
+          if id = "" then failwith "Empty Id";
+          (* Rootfs-based containers report no image; show it as missing. *)
+          let present value =
+            match string value with "" -> None | text -> Some text
+          in
+          {
+            id;
+            names = optional "Names" [] (fun v -> List.map string (list v)) json;
+            state = string (field "State" json);
+            image = present (field "Image" json);
+            image_id = present (field "ImageID" json);
+            labels = optional "Labels" [] labels json;
+          }
+        in
+        Ok (List.map decode (list (Yojson.Basic.from_string r.stdout)))
+      with Failure message | Yojson.Json_error message ->
+        Error (Invalid_response { operation; message }))
