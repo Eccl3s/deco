@@ -477,13 +477,38 @@ network DNS server addresses. Each `ports` entry includes `host`, `container`,
 deco list [--format <human|json>]
 ```
 
-Lists all Podman containers with
-`dev.deco.managed="true"`. It does not require a project. Both running and
-stopped containers are included and sorted by project name, then container
-name.
+Lists all Podman containers whose `dev.deco.managed` label is exactly
+`"true"`. It does not require a project and does not accept `--project` or
+`--project-dir`; supplying either fails with exit code `2`. Both running and
+stopped containers are included.
 
-Human output is a table containing project, container, state, image, and
-project root.
+Entries are sorted by project name, then container name, then container ID.
+Comparison is byte-wise rather than locale-dependent, and entries with a
+missing project or container name sort after entries that have one.
+
+`list` reports labels as recorded and does not perform ownership checks: it
+does not validate the other ownership labels or check that the project root
+still exists. Any container can carry the `dev.deco.managed` label, so
+appearing in the list is not proof that Deco created a container.
+
+Fields:
+
+- `project` and `project_root` are the `dev.deco.project` and
+  `dev.deco.project-root` label values, or `null` when the label is missing.
+- `container` is the container's Podman name, or `null` if it has none.
+- `container_id` is the full, untruncated container ID.
+- `state` is Podman's container state as reported, such as `running`,
+  `exited`, `created`, or `paused`. Unlike `info`, `list` does not normalise
+  states.
+- `image` is the image reference Podman recorded when the container was
+  created, such as `localhost/my-project-dev-image:latest`. It may no longer
+  name the container's image after a rebuild.
+- `image_id` is the full ID of the image the container uses.
+
+Human output is a bordered table with the columns project, container, state,
+image, and project root. Missing values are shown as `-`. Control characters
+in values are escaped so labels cannot inject terminal sequences. Human output
+contains no IDs.
 
 JSON output is an array:
 
@@ -493,14 +518,22 @@ JSON output is an array:
     "project": "my-project",
     "project_root": "/home/user/my-project",
     "container": "my-project-dev-container",
-    "container_id": "abc123",
+    "container_id": "3f4e9c0a6b1d…",
     "state": "running",
-    "image": "my-project-dev-image:latest"
+    "image": "localhost/my-project-dev-image:latest",
+    "image_id": "8a2b7d5e9f03…"
   }
 ]
 ```
 
-An empty result is successful and produces an empty table or `[]`.
+IDs are shown shortened here; actual output contains full 64-character IDs.
+
+An empty result is successful. Human output prints
+`No Deco-managed containers.` and JSON output prints `[]`.
+
+If Podman is unavailable, `list` fails with exit code `3`. If listing
+containers fails or Podman returns a malformed response, it fails with exit
+code `1`.
 
 ### `deco exec`
 
