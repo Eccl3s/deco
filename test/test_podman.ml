@@ -197,10 +197,11 @@ let () =
         else Result.map (fun _ -> ()) (Podman.inspect_container ~run "test")
       in
       done_ ();
+      (* A launch failure means Podman is unusable, not a failed inspection. *)
       assert (
         match response with
-        | Error (Runtime { message; _ }) ->
-            message = "launch: missing executable"
+        | Error (Unavailable message) ->
+            message = "Podman could not be started: missing executable"
         | _ -> false))
     [ "image"; "container" ];
   let labels =
@@ -374,3 +375,136 @@ let () =
     | Error (Podman.Unavailable text) ->
         String.starts_with ~prefix:"Podman was not found" text
     | _ -> false)
+
+(* Managed container listing filters by label and decodes ps summaries. *)
+let () =
+  assert (
+    Podman_command.list_managed_containers
+    = [
+        "podman";
+        "--remote=false";
+        "container";
+        "ls";
+        "--all";
+        "--no-trunc";
+        "--filter";
+        "label=dev.deco.managed=true";
+        "--format";
+        "json";
+      ]);
+  let listing stdout =
+    let run, done_ =
+      runner
+        [
+          ( Podman_command.list_managed_containers,
+            Ok (result ~stdout (Unix.WEXITED 0)) );
+        ]
+    in
+    let listed = Podman.list_managed_containers ~run () in
+    done_ ();
+    listed
+  in
+  assert (listing "[]" = Ok []);
+  (match
+     listing
+       {|[{"Id":"c1","Names":["one"],"State":"running","Image":"localhost/i:latest","ImageID":"i1","Labels":{"dev.deco.managed":"true","dev.deco.project":"p"}},
+          {"Id":"c2","Names":null,"State":"exited","Image":"i2","ImageID":"i2","Labels":null},
+          {"Id":"c3","State":"created","Image":"i3","ImageID":"i3"},
+          {"Id":"c4","Names":["rootfs"],"State":"","Image":"","ImageID":""}]|}
+   with
+  | Ok
+      [
+        {
+          Podman.id = "c1";
+          names = [ "one" ];
+          state = "running";
+          image = Some "localhost/i:latest";
+          image_id = Some "i1";
+          labels = [ ("dev.deco.managed", "true"); ("dev.deco.project", "p") ];
+        };
+        { id = "c2"; names = []; state = "exited"; labels = []; _ };
+        { id = "c3"; names = []; state = "created"; labels = []; _ };
+        {
+          id = "c4";
+          names = [ "rootfs" ];
+          state = "";
+          image = None;
+          image_id = None;
+          _;
+        };
+      ] ->
+      ()
+  | _ -> failwith "Unexpected managed listing");
+  let invalid stdout =
+    match listing stdout with
+    | Error (Podman.Invalid_response { operation = "container list"; _ }) ->
+        true
+    | _ -> false
+  in
+  assert (invalid "not json");
+  assert (invalid "{}");
+  assert (invalid {|[{"Id":"","State":"running","Image":"i","ImageID":"i"}]|});
+  assert (invalid {|[{"Id":"c","Image":"i","ImageID":"i"}]|});
+  assert (
+    invalid
+      {|[{"Id":"c","State":"running","Image":"i","ImageID":"i","Labels":{"k":1}}]|})
+
+(* Listing failures distinguish an unusable Podman from a failed listing. *)
+let () =
+  let run response _ = response in
+  (match
+     Podman.list_managed_containers
+       ~run:
+         (run
+            (Error
+               {
+                 Process.operation = "launch";
+                 message = "podman: command not found";
+               }))
+       ()
+   with
+  | Error (Podman.Unavailable "Podman was not found on PATH.") -> ()
+  | _ -> failwith "Expected Podman to be unavailable");
+  (match
+     Podman.list_managed_containers
+       ~run:(run (Error { Process.operation = "capture"; message = "full" }))
+       ()
+   with
+  | Error
+      (Podman.Runtime
+         { operation = "container list"; message = "capture: full" }) ->
+      ()
+  | _ -> failwith "Expected a runtime failure");
+  match
+    Podman.list_managed_containers
+      ~run:(run (Ok (result ~stderr:"boom\n" (Unix.WEXITED 125))))
+      ()
+  with
+  | Error
+      (Podman.Runtime
+         { operation = "container list"; message = "exit 125: boom" }) ->
+      ()
+  | _ -> failwith "Expected a runtime failure"
+
+(* Every non-probe operation maps launch failures to Unavailable and other
+   process failures to Runtime. *)
+let () =
+  let launch _ =
+    Error
+      { Process.operation = "launch"; message = "podman: command not found" }
+  and capture _ = Error { Process.operation = "capture"; message = "full" } in
+  (match Podman.list_containers ~run:launch () with
+  | Error (Podman.Unavailable "Podman was not found on PATH.") -> ()
+  | _ -> failwith "Expected Podman to be unavailable");
+  (match Podman.list_containers ~run:capture () with
+  | Error
+      (Podman.Runtime
+         { operation = "container list"; message = "capture: full" }) ->
+      ()
+  | _ -> failwith "Expected a runtime failure");
+  match Podman.inspect_container ~run:capture "test" with
+  | Error
+      (Podman.Runtime
+         { operation = "container inspect"; message = "capture: full" }) ->
+      ()
+  | _ -> failwith "Expected a runtime failure"

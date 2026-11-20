@@ -18,5 +18,5 @@
  (synopsis "Repeatable, project-local development containers in Podman")
  (description "Repeatable, project-local development containers in Podman") 
  (license "GPL-3.0-or-later")
- (depends (ocaml (>= 5.5.2)) (otoml (>= 1.0.5)) (cmdliner (>= 1.3.0)) (yojson (>= 2.0)))
+ (depends (ocaml (>= 5.5.2)) (otoml (>= 1.0.5)) (cmdliner (>= 1.3.0)) (yojson (>= 2.0)) (printbox (>= 0.12)) (printbox-text (>= 0.12)))
  (tags ("dev-tools" "podman")))

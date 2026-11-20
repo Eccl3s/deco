@@ -17,6 +17,7 @@
   test_selinux
   test_assemble
   test_podman
+  test_managed_list
   test_config_decode
   test_planned
   test_config_validate
@@ -36,6 +37,7 @@
   test_stop_cli
   test_remove_cli
   test_refresh_cli
+  test_list_cli
   test_init
   init_test_support
   test_embed_templates
@@ -125,6 +127,14 @@
  (name test_refresh_cli)
  (modules test_refresh_cli)
  (libraries unix)
+ (deps ../bin/deco.exe)
+ (action
+  (run %{test} %{exe:../bin/deco.exe})))
+
+(test
+ (name test_list_cli)
+ (modules test_list_cli)
+ (libraries unix yojson)
  (deps ../bin/deco.exe)
  (action
   (run %{test} %{exe:../bin/deco.exe})))

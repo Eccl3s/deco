@@ -31,7 +31,7 @@ See [specs/](specs/) for the full CLI and configuration specifications.
 
 ## Getting Started
 
-Deco currently implements `init`, `validate`, `assemble`, `exec`, `shell`, `stop`, `remove`, help, and version output. Other commands
+Deco currently implements `init`, `validate`, `assemble`, `exec`, `shell`, `stop`, `remove`, `list`, help, and version output. Other commands
 below describe the planned workflow.
 
 Validate an existing project with `deco validate` or select one explicitly with
@@ -419,6 +419,54 @@ DECO_TEST_IMAGE=your-local-image python3 test/remove_podman.py _build/default/bi
 
 The test builds disposable ownership-labelled child images without pulling,
 cleans up only its test resources, and preserves the supplied base image.
+
+### List managed containers
+
+Run `deco list` from any directory to list every container labelled
+`dev.deco.managed=true`, running or stopped, across all projects. No project is
+needed, and `--project-dir` is rejected. Entries are sorted by project, then
+container name.
+
+```text
+$ deco list
+┌────────────┬──────────────────────────┬─────────┬───────────────────────────────────────┬───────────────────────┐
+│ PROJECT    │ CONTAINER                │ STATE   │ IMAGE                                 │ PROJECT ROOT          │
+├────────────┼──────────────────────────┼─────────┼───────────────────────────────────────┼───────────────────────┤
+│ my-project │ my-project-dev-container │ running │ localhost/my-project-dev-image:latest │ /home/user/my-project │
+│ other      │ other-dev-container      │ exited  │ localhost/other-dev-image:latest      │ /home/user/other      │
+└────────────┴──────────────────────────┴─────────┴───────────────────────────────────────┴───────────────────────┘
+```
+
+The human table is for reading, not parsing. Use `--format json` (before or
+after the command) for a stable array that also includes full container and
+image IDs:
+
+```sh
+deco list --format json
+```
+
+```json
+[
+  {
+    "project": "my-project",
+    "project_root": "/home/user/my-project",
+    "container": "my-project-dev-container",
+    "container_id": "<full container ID>",
+    "state": "running",
+    "image": "localhost/my-project-dev-image:latest",
+    "image_id": "<full image ID>"
+  }
+]
+```
+
+`state` is Podman's own state, such as `running`, `exited`, or `created`.
+Missing labels or images are `null` in JSON and `-` in the table. With no
+managed containers, the table form prints `No Deco-managed containers.` and the
+JSON form prints `[]`; both succeed.
+
+`list` reports labels as recorded and performs no ownership checks, so an
+entry is not proof that Deco created the container. Unavailable Podman returns
+3, and a failed or malformed Podman listing returns 1.
 
 ### Planned configuration compatibility in v0.1.0
 

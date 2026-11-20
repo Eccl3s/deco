@@ -31,6 +31,12 @@ let cases =
     ( [ "--project-dir"; "exec"; "validate" ],
       [ "validate"; "--project-dir"; "exec" ],
       None );
+    (* --format before or after the command; its value is never a command. *)
+    ([ "--format"; "json"; "list" ], [ "list"; "--format"; "json" ], None);
+    ([ "--format=json"; "list" ], [ "list"; "--format=json" ], None);
+    ([ "list"; "--format"; "json" ], [ "list"; "--format"; "json" ], None);
+    ([ "--format"; "list"; "list" ], [ "list"; "--format"; "list" ], None);
+    ([ "list"; "--format"; "-h" ], [ "list"; "--format"; "-h" ], None);
     (* Short aliases for help and version. *)
     ([ "-h" ], [ "--help" ], None);
     ([ "-V" ], [ "--version" ], None);

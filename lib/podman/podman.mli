@@ -1,5 +1,11 @@
 type runner = string list -> (Process.result, Process.error) result
-(** Read-only Podman operations. No functions print or assign CLI exit codes. *)
+(** Read-only Podman operations. No functions print or assign CLI exit codes.
+
+    Process failures are mapped consistently: the availability probes
+    ({!available} and {!info}) report any failure as [Unavailable], because
+    their purpose is to decide whether Podman is usable. Other operations report
+    a failure to launch Podman as [Unavailable] and any other process failure,
+    such as capturing output, as [Runtime]. *)
 
 type error =
   | Unavailable of string
@@ -52,3 +58,21 @@ val list_containers :
   ?run:runner -> unit -> (container_summary list, error) result
 (** List all Podman containers with full IDs, including non-running ones.
     Malformed summaries fail instead of omitting possible dependents. *)
+
+type listed_container = {
+  id : string;  (** Full container ID. *)
+  names : string list;
+  state : string;  (** Podman's state as reported, such as ["exited"]. *)
+  image : string option;
+      (** Image reference recorded at creation; [None] when Podman reports none,
+          as for rootfs-based containers. *)
+  image_id : string option;
+      (** Full image ID; [None] when Podman reports none. *)
+  labels : labels;
+}
+
+val list_managed_containers :
+  ?run:runner -> unit -> (listed_container list, error) result
+(** List all containers labelled [dev.deco.managed=true], including non-running
+    ones. A failure to launch Podman is [Unavailable]; malformed entries,
+    including an empty ID, fail the whole listing instead of being omitted. *)
