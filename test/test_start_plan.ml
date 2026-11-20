@@ -56,7 +56,7 @@ let () =
     ^ "\n   Already-running containers require no mutation.\n"
     ^ "4. After starting, reinspect the same container and verify its ID, \
        ownership, compatibility, and running state.\n"
-    ^ "The post_start hook is deferred in v0.1.0 and is not run.\n\n"
+    ^ "The post_start hook is deferred and is not run.\n\n"
     ^ "<container-id> is resolved by inspection during execution.\n"
   in
   assert (Start_plan.render plan = expected);

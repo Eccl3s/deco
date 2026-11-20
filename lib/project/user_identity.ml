@@ -24,12 +24,14 @@ let resolve ?(host_ids = default_host_ids) (user : Config.Effective.user) =
         Option.iter
           (fun _ ->
             error [ "user"; "uid" ]
-              "Must be omitted in image mode (v0.1.0 restriction)")
+              "Must be omitted in image mode (a restriction beyond the v1 \
+               specification)")
           user.uid;
         Option.iter
           (fun _ ->
             error [ "user"; "gid" ]
-              "Must be omitted in image mode (v0.1.0 restriction)")
+              "Must be omitted in image mode (a restriction beyond the v1 \
+               specification)")
           user.gid;
         Some Image
     | Config.Keep_id -> (

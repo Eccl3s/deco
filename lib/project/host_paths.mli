@@ -6,7 +6,7 @@ type t = {
 (** Canonical host paths checked against the current filesystem. Success does
     not guarantee future availability, container permissions or runtime
     compatibility. Every Containerfile, including relative and symlink paths,
-    must remain inside the canonical context: this is the v0.1.0 containment
+    must remain inside the canonical context: this is Deco's containment
     interpretation. *)
 
 val resolve :

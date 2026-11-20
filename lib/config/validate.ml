@@ -122,7 +122,8 @@ let check (config : Config_types.t) =
           | None -> ()
           | Some _ when mode = Image ->
               error [ "user"; key ]
-                "Must be omitted in image mode (v0.1.0 restriction)"
+                "Must be omitted in image mode (a restriction beyond the v1 \
+                 specification)"
           | Some (Id n) when not (valid_id n) ->
               error [ "user"; key ] "Expected an ID in 0-4294967294"
           | Some _ -> ())
