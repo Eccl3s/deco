@@ -13,7 +13,9 @@ let validate selection =
       if loaded.Deco.Config_loader.ignored_paths <> [] then (
         print_endline "Ignored planned settings (not applied in v0.1.0):";
         List.iter
-          (fun path -> Printf.printf "  %s\n" (String.concat "." path))
+          (fun path ->
+            Printf.printf "  %s\n"
+              (Deco.Terminal_text.escape (String.concat "." path)))
           loaded.Deco.Config_loader.ignored_paths);
       0
 
