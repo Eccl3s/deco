@@ -259,8 +259,7 @@ let () =
               " days ago)\n";
               "  State:       stopped (exited)\n";
               "  Compatible:  no\n    - Container init is disabled\n";
-              "Ignored planned settings (not applied in v0.1.0):\n\
-              \  actions.test\n";
+              "Ignored planned settings (not applied yet):\n  actions.test\n";
             ];
           let expected = run ?term [ "info"; "--format"; "json" ] 0 in
           List.iter

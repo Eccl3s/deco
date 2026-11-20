@@ -598,7 +598,7 @@ Hooks
 Actions
   none
 
-Ignored planned settings (not applied in v0.1.0):
+Ignored planned settings (not applied yet):
   container.cap_drop
   network.mode
 ```
@@ -675,11 +675,11 @@ always empty and only the workspace mount is reported, because those settings
 are not applied yet; any that are configured appear under
 `Ignored planned settings` in the human report instead.
 
-### Planned configuration compatibility in v0.1.0
+### Planned configuration compatibility
 
 All eight built-in templates can be initialized, validated, and previewed without
 editing their files. `deco validate` prints ignored paths under
-`Ignored planned settings (not applied in v0.1.0):` on stdout and succeeds;
+`Ignored planned settings (not applied yet):` on stdout and succeeds;
 `deco info` ends its human report with the same list. Other commands silently
 ignore those settings. Values are not printed.
 
@@ -692,8 +692,8 @@ Capabilities, network settings, environment injection, devices/security options,
 additional mounts, secrets, actions, and hooks remain inactive. In particular,
 accepting the Podman template does not enable its nested-Podman setup, and
 accepting capability-drop settings does not apply capability restrictions.
-This compatibility policy is specific to v0.1.0; the v1 specification continues
-to describe implemented behavior expected from future releases.
+This compatibility policy lasts until each setting is implemented; the v1
+specification continues to describe the behavior expected from future releases.
 
 Run the opt-in default-template workflow check with:
 

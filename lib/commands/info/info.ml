@@ -404,7 +404,7 @@ let render_human ~now ~ignored r =
   items "Hooks" safe r.hooks;
   items "Actions" safe r.actions;
   if ignored <> [] then (
-    line "\nIgnored planned settings (not applied in v0.1.0):";
+    line "\nIgnored planned settings (not applied yet):";
     List.iter (fun path -> line "  %s" (safe (String.concat "." path))) ignored);
   let rows = List.rev !rows in
   let width =

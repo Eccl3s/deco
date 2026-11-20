@@ -199,7 +199,7 @@ Hooks
 Actions
   none
 
-Ignored planned settings (not applied in v0.1.0):
+Ignored planned settings (not applied yet):
   hooks.post_start
   actions
 |};
