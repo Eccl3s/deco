@@ -12,6 +12,17 @@ let bad text =
       errors
   | Ok _ -> failwith "Expected rejection"
 
+(* Lenient name lookup ignores unrelated schema errors. *)
+let () =
+  let name = Config.Decode.project_name in
+  assert (name "[project]\nname='demo'" = Some "demo");
+  assert (name "project.name='demo'\nunknown=1\n[bogus]\nx=[1]" = Some "demo");
+  assert (name "[project]\ndescription='d'" = None);
+  assert (name "[project]\nname=1" = None);
+  assert (name "project='demo'" = None);
+  assert (name "" = None);
+  assert (name "not valid toml =" = None)
+
 let () =
   let minimal = ok "[project]\nname='demo'" in
   assert (minimal.project.name = "demo" && minimal.user = None);

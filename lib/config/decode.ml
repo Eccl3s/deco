@@ -199,3 +199,11 @@ let from_string_with_ignored input =
           | _ -> Error (sorted_errors ())))
 
 let from_string input = Result.map fst (from_string_with_ignored input)
+
+let project_name input =
+  match parse input with
+  | Error _ -> None
+  | Ok toml -> (
+      match Otoml.find_opt toml Fun.id [ "project"; "name" ] with
+      | Some (Otoml.TomlString name) -> Some name
+      | _ -> None)
