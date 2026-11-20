@@ -7,6 +7,7 @@
   test_exec_plan
   test_shell_plan
   test_stop_plan
+  test_start_plan
   test_remove_plan
   test_refresh_plan
   test_remove

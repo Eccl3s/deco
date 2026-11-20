@@ -19,3 +19,18 @@ let make (loaded : Config_loader.t) =
          start
   then Error "Command arguments cannot contain NUL bytes"
   else Ok { container_name; start }
+
+let render plan =
+  "Start preview\nNo commands will be run.\n\n"
+  ^ "1. Check Podman availability.\n"
+  ^ "2. Inspect the configured image and container "
+  ^ Command_plan.quote plan.container_name
+  ^ "; verify ownership, compatibility, and supported state. A missing \
+     container fails; run deco assemble.\n"
+  ^ "3. If the container is not running, start it:\n"
+  ^ Command_plan.render_multiline plan.start
+  ^ "\n   Already-running containers require no mutation.\n"
+  ^ "4. After starting, reinspect the same container and verify its ID, \
+     ownership, compatibility, and running state.\n"
+  ^ "The post_start hook is deferred in v0.1.0 and is not run.\n\n"
+  ^ "<container-id> is resolved by inspection during execution.\n"
