@@ -423,8 +423,13 @@ deco info [--format <human|json>]
 
 Reports the current project's resolved configuration and Podman resource
 state without changing it. The report includes project identity, Podman
-version, image identity and existence, container identity and state, user
-mode, workdir, mounts, published ports, configured hooks, and action names.
+availability and version, image identity, existence, age, and ownership,
+container identity, state, age, ownership, and compatibility, user mode,
+workdir, mounts, published ports, configured hooks, and action names.
+
+`info` performs only read-only Podman queries. Reporting ownership or
+compatibility never changes the ownership rules: a resource reported as owned
+or compatible is still verified again by any command that later uses it.
 
 JSON output has this shape:
 
@@ -437,19 +442,27 @@ JSON output has this shape:
     "config": "/home/user/my-project/.deco/config.toml"
   },
   "podman": {
+    "available": true,
     "version": "5.0.0"
   },
   "image": {
     "name": "my-project-dev-image",
     "tag": "latest",
-    "id": "sha256:...",
-    "exists": true
+    "id": "<full image ID>",
+    "exists": true,
+    "created": "2026-11-11T09:14:02Z",
+    "owned": true
   },
   "container": {
     "name": "my-project-dev-container",
-    "container_id": "abc123",
+    "id": "<full container ID>",
     "exists": true,
-    "state": "running"
+    "state": "stopped",
+    "podman_state": "exited",
+    "created": "2026-11-12T08:30:45Z",
+    "owned": true,
+    "compatible": false,
+    "incompatibilities": ["Container init is disabled"]
   },
   "runtime": {
     "user_mode": "keep-id",
@@ -464,12 +477,63 @@ JSON output has this shape:
 }
 ```
 
-`container.state` is one of `running`, `stopped`, `paused`, `unknown`, or
-`null` when the container does not exist. Each `mounts` entry includes
-`source`, `target`, `type`, `readonly`, and `relabel`; source may be `"-"`
-for source-less mounts such as `tmpfs` and `devpts`. `dns` includes configured
-network DNS server addresses. Each `ports` entry includes `host`, `container`,
-`protocol`, and `bind`.
+Podman fields:
+
+- `podman.available` is `false` when Podman is not installed or not usable;
+  `podman.version` is then `null`.
+
+Image and container fields:
+
+- `id` is the full Podman ID, or `null` when the resource does not exist.
+- `exists` is `null` when Podman is unavailable, because existence cannot be
+  determined.
+- `created` is the resource's creation time as reported by Podman, in UTC
+  RFC 3339 format with second precision, or `null` when the resource does not
+  exist. For the image this is when it was built; for the container it is when
+  it was created, which changes whenever the container is recreated, for
+  example by `refresh`. Deco reports timestamps rather than ages so JSON output
+  does not change between runs; human output shows both.
+- `owned` is `true` when the resource carries this project's ownership labels
+  as defined in Resource ownership, `false` when it exists without them, and
+  `null` when it does not exist or Podman is unavailable.
+- `container.state` is one of `running`, `stopped`, `paused`, `unknown`, or
+  `null` when the container does not exist or Podman is unavailable. Podman
+  states map as follows: `running` is `running`; `created`, `configured`,
+  `exited`, and `stopped` are `stopped`; `paused` is `paused`; any other state
+  is `unknown`.
+- `container.podman_state` is the state exactly as Podman reports it, as in
+  `deco list`, or `null` when `state` is `null`.
+- `container.compatible` reports whether the container matches the
+  configuration as `exec`, `shell`, and `start` require. It is evaluated only
+  when the container and the configured image both exist and are owned;
+  otherwise it is `null`. `container.incompatibilities` lists each mismatch as a
+  human-readable string, and is empty when the container is compatible or
+  compatibility was not evaluated.
+
+Configuration fields:
+
+- Each `mounts` entry includes `source`, `target`, `type`, `readonly`, and
+  `relabel`; source may be `"-"` for source-less mounts such as `tmpfs` and
+  `devpts`.
+- `dns` includes configured network DNS server addresses.
+- Each `ports` entry includes `host`, `container`, `protocol`, and `bind`.
+
+Human output presents the same information as labelled sections in this
+order: project, Podman, image, container, runtime, mounts, DNS, ports, hooks,
+and actions. Timestamps are shown in UTC together with a relative age, such as
+`2026-11-11 09:14 UTC (9 days ago)`. Missing values are shown as `-`, and an
+incompatible container lists each mismatch. Control characters in reported
+values are escaped as in `deco list`.
+
+Exit status:
+
+- With a valid configuration and usable Podman, `info` exits `0`, including
+  when resources are missing, unowned, or incompatible.
+- When Podman is unavailable, `info` still writes the full report, with the
+  Podman-derived fields set as described above, reports the problem on stderr,
+  and exits `3`.
+- Invalid configuration fails with exit code `2`, and any other Podman failure
+  fails with exit code `1`; in both cases no report is written.
 
 ### `deco list`
 
