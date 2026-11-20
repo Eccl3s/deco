@@ -5,12 +5,14 @@ type t = { argv : string array; exec_command : string list option }
 let project_dir =
   { names = [ "project-dir" ]; takes_value = true; scope = Global }
 
+let format = { names = [ "format" ]; takes_value = true; scope = Global }
+
 let template =
   { names = [ "t"; "template" ]; takes_value = true; scope = Command "init" }
 
 (* Every value-taking option must be listed here, or its value may be mistaken
    for a command name or rewritten as an alias. *)
-let options = [ project_dir; template ]
+let options = [ project_dir; format; template ]
 let flag name = if String.length name = 1 then "-" ^ name else "--" ^ name
 
 let takes_value ~command token =
@@ -29,7 +31,7 @@ let alias = function "-h" -> "--help" | "-V" -> "--version" | token -> token
 let global_prefix token =
   List.exists
     (fun prefix -> String.starts_with ~prefix token)
-    [ "--project-dir="; "--help=" ]
+    [ "--project-dir="; "--format="; "--help=" ]
 
 let is_command token = token <> "" && token.[0] <> '-'
 

@@ -23,6 +23,9 @@ type option_spec = {
 val project_dir : option_spec
 (** [--project-dir PATH], accepted by every project command. *)
 
+val format : option_spec
+(** [--format human|json], accepted by informational commands. *)
+
 val template : option_spec
 (** [-t, --template NAME] for [deco init]. *)
 
