@@ -16,8 +16,8 @@ def terminate(signum,frame):
 signal.signal(signal.SIGTERM,terminate)
 with tempfile.TemporaryDirectory(prefix='deco-debian-workflow-') as directory:
     root=pathlib.Path(directory).resolve()
-    def deco(*args):
-        return subprocess.run([binary]+list(args),check=True,capture_output=True,text=True,timeout=600)
+    def deco(*args,cwd=None,check=True):
+        return subprocess.run([binary]+list(args),check=check,capture_output=True,text=True,timeout=600,cwd=cwd)
     deco('init',str(root))
     # Init normalises the basename differently per resource, so read the names it wrote.
     config=tomllib.loads((root/'.deco/config.toml').read_text())
@@ -40,6 +40,8 @@ with tempfile.TemporaryDirectory(prefix='deco-debian-workflow-') as directory:
         result=deco('--project-dir',str(root),'exec','--','/bin/sh','-c','id -un; pwd; printf verified > .deco-workflow-proof')
         assert result.stdout.splitlines()==['dev','/workspace'],result.stdout
         assert (root/'.deco-workflow-proof').read_text()=='verified'
+        def running():
+            return podman('container','inspect','--format','{{.State.Status}}','--',container).stdout.strip()=='running'
         def ids():
             return (podman('container','inspect','--format','{{.Id}}','--',container).stdout.strip(),
                     podman('image','inspect','--format','{{.Id}}','--',image).stdout.strip())
@@ -52,12 +54,20 @@ with tempfile.TemporaryDirectory(prefix='deco-debian-workflow-') as directory:
         assert entry['image'].endswith(image),entry
         table=subprocess.run([binary,'list'],check=True,capture_output=True,text=True,timeout=60,cwd='/').stdout
         assert container in table and str(root) in table and '\x1b' not in table,table
-        deco('--project-dir',str(root),'stop')
+        # --project selects the listed project by name from an unrelated directory,
+        # before or after the command; the lookup and dry runs only read Podman.
+        result=deco('-p',name,'exec','--','/bin/sh','-c','pwd; cat .deco-workflow-proof',cwd='/')
+        assert result.stdout.splitlines()==['/workspace','verified'],result.stdout
+        result=deco('validate','--project',name,cwd='/')
+        assert str(root/'.deco/config.toml') in result.stdout,result.stdout
+        result=deco('stop','-p',name,'--dry-run',cwd='/')
+        assert 'Stop preview' in result.stdout and running(),result.stdout
+        # A real stop through --project still passes the ownership checks.
+        result=deco('stop','-p',name,cwd='/')
+        assert result.stdout=='Stopped '+container+'\n',result.stdout
         [entry]=listed()
         assert entry['container_id']==container_id and entry['state']=='exited',entry
         deco('--project-dir',str(root),'assemble')
-        def running():
-            return podman('container','inspect','--format','{{.State.Status}}','--',container).stdout.strip()=='running'
         # --keep-image recreates the container from the same image.
         before_container,before_image=ids()
         result=deco('--project-dir',str(root),'refresh','--keep-image')
@@ -75,6 +85,9 @@ with tempfile.TemporaryDirectory(prefix='deco-debian-workflow-') as directory:
         assert entry['container_id']==refreshed_container and entry['state']=='running',entry
         deco('--project-dir',str(root),'remove')
         assert listed()==[]
+        # With its containers gone, the name no longer selects the project.
+        result=deco('-p',name,'validate',cwd='/',check=False)
+        assert result.returncode==2 and 'No assembled project' in result.stderr,result
         assert podman('container','exists','--',container,check=False).returncode==1
         assert podman('image','exists','--',image,check=False).returncode==1
         for path,original in originals.items(): assert path.read_bytes()==original
