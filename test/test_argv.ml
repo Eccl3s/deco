@@ -31,6 +31,28 @@ let cases =
     ( [ "--project-dir"; "exec"; "validate" ],
       [ "validate"; "--project-dir"; "exec" ],
       None );
+    (* -p/--project before or after the command; its value is never a command
+       or an alias. *)
+    ([ "-p"; "zeta"; "stop" ], [ "stop"; "-p"; "zeta" ], None);
+    ([ "stop"; "-p"; "zeta" ], [ "stop"; "-p"; "zeta" ], None);
+    ([ "--project"; "zeta"; "stop" ], [ "stop"; "--project"; "zeta" ], None);
+    ([ "stop"; "--project"; "zeta" ], [ "stop"; "--project"; "zeta" ], None);
+    ([ "--project=zeta"; "stop" ], [ "stop"; "--project=zeta" ], None);
+    ([ "stop"; "--project=zeta" ], [ "stop"; "--project=zeta" ], None);
+    ([ "-p"; "validate"; "stop" ], [ "stop"; "-p"; "validate" ], None);
+    ([ "-p"; "exec"; "stop" ], [ "stop"; "-p"; "exec" ], None);
+    ([ "stop"; "-p"; "-h" ], [ "stop"; "-p"; "-h" ], None);
+    ([ "-p"; "-V"; "stop" ], [ "stop"; "-p"; "-V" ], None);
+    ( [ "-p"; "zeta"; "--project-dir"; "/r"; "stop" ],
+      [ "stop"; "-p"; "zeta"; "--project-dir"; "/r" ],
+      None );
+    (* --project= does not swallow --project-dir=. *)
+    ( [ "--project-dir=/r"; "--project=zeta"; "stop" ],
+      [ "stop"; "--project-dir=/r"; "--project=zeta" ],
+      None );
+    (* Rejection by init and list is left to Cmdliner. *)
+    ([ "-p"; "zeta"; "list" ], [ "list"; "-p"; "zeta" ], None);
+    ([ "init"; "-p"; "zeta" ], [ "init"; "-p"; "zeta" ], None);
     (* --format before or after the command; its value is never a command. *)
     ([ "--format"; "json"; "list" ], [ "list"; "--format"; "json" ], None);
     ([ "--format=json"; "list" ], [ "list"; "--format=json" ], None);
@@ -78,6 +100,14 @@ let cases =
       [ "exec"; "-d" ],
       Some [ "echo"; "-h"; "" ] );
     ([ "exec"; "-h"; "--"; "x" ], [ "exec"; "--help" ], Some [ "x" ]);
+    ( [ "-p"; "zeta"; "exec"; "--"; "ls" ],
+      [ "exec"; "-p"; "zeta" ],
+      Some [ "ls" ] );
+    ( [ "exec"; "-p"; "zeta"; "-d"; "--"; "ls" ],
+      [ "exec"; "-p"; "zeta"; "-d" ],
+      Some [ "ls" ] );
+    ([ "exec"; "--"; "grep"; "-p"; "x" ], [ "exec" ], Some [ "grep"; "-p"; "x" ]);
+    ([ "exec"; "-p"; "--"; "--"; "x" ], [ "exec"; "-p"; "--" ], Some [ "x" ]);
     ( [ "exec"; "--project-dir"; "--"; "--"; "x" ],
       [ "exec"; "--project-dir"; "--" ],
       Some [ "x" ] );
