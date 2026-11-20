@@ -279,6 +279,7 @@ let run ?execute ?read_many
                           workdir = "";
                           init = false;
                           mounts = [];
+                          created = None;
                         };
                     Ok ())
               | Start ->

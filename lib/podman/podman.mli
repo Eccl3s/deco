@@ -14,7 +14,16 @@ type error =
 
 type 'a presence = Absent | Present of 'a
 type labels = (string * string) list
-type image = { id : string; labels : labels; user : string; workdir : string }
+
+type image = {
+  id : string;
+  labels : labels;
+  user : string;
+  workdir : string;
+  created : string option;
+      (** [Created] exactly as Podman reports it; [None] when absent or [null].
+      *)
+}
 
 type mount = {
   kind : string;
@@ -33,6 +42,9 @@ type container = {
   workdir : string;
   init : bool;
   mounts : mount list;
+  created : string option;
+      (** [Created] exactly as Podman reports it; [None] when absent or [null].
+      *)
 }
 
 val unavailable : Process.error -> error
@@ -40,6 +52,12 @@ val unavailable : Process.error -> error
     explanation; other launch failures keep the reason. *)
 
 val available : ?run:runner -> unit -> (unit, error) result
+
+val version : ?run:runner -> unit -> (string, error) result
+(** The Podman client version from [podman version --format json]. Like
+    {!available}, a failure to run Podman is [Unavailable]; a response without a
+    string [Client.Version] is [Invalid_response]. *)
+
 val inspect_image : ?run:runner -> string -> (image presence, error) result
 
 val inspect_container :

@@ -4,6 +4,7 @@ let result ?(stdout = "") ?(stderr = "") status : Process.result =
   { status; stdout; stderr }
 
 let ok = result (Unix.WEXITED 0)
+let ok' stdout = result ~stdout (Unix.WEXITED 0)
 
 let runner responses =
   (* Expand resource-presence fixtures into the inspect-first protocol. *)
@@ -282,6 +283,61 @@ let () =
   let c = Result.get_ok (Podman.decode_container text) in
   assert (c.userns = "keep-id:uid=1000,gid=1000");
   assert (List.mem "Z" (List.hd c.mounts).options)
+
+(* Creation times are kept exactly as reported, and are optional. *)
+let () =
+  let image text = Result.get_ok (Podman.decode_image text) in
+  assert (
+    (image
+       {|[{"Id":"i","Created":"2026-11-20T08:39:25.440792071Z","Config":{}}]|})
+      .created = Some "2026-11-20T08:39:25.440792071Z");
+  assert ((image {|[{"Id":"i","Config":{}}]|}).created = None);
+  assert ((image {|[{"Id":"i","Created":null,"Config":{}}]|}).created = None);
+  assert (
+    Result.is_error
+      (Podman.decode_image {|[{"Id":"i","Created":1,"Config":{}}]|}));
+  let container created =
+    Result.get_ok
+      (Podman.decode_container
+         ({|[{"Id":"c","Image":"i",|} ^ created
+        ^ {|"Config":{"Labels":{}},"State":{"Status":"exited"},"HostConfig":{"UsernsMode":""},"Mounts":[]}]|}
+         ))
+  in
+  assert (
+    (container {|"Created":"2026-11-12T08:30:45.1+01:00",|}).created
+    = Some "2026-11-12T08:30:45.1+01:00");
+  assert ((container "").created = None);
+  assert ((container {|"Created":null,|}).created = None)
+
+(* The client version comes from JSON version output. *)
+let () =
+  assert (
+    Podman_command.version_json
+    = [ "podman"; "--remote=false"; "version"; "--format"; "json" ]);
+  let answer response argv =
+    assert (argv = Podman_command.version_json);
+    response
+  in
+  let version response = Podman.version ~run:(answer response) () in
+  assert (
+    version (Ok (ok' {|{"Client":{"APIVersion":"5.7.0","Version":"5.7.0"}}|}))
+    = Ok "5.7.0");
+  List.iter
+    (fun stdout ->
+      match version (Ok (ok' stdout)) with
+      | Error (Podman.Invalid_response { operation = "version"; _ }) -> ()
+      | _ -> failwith ("Expected invalid version response: " ^ stdout))
+    [ ""; "{}"; {|{"Client":{}}|}; {|{"Client":{"Version":5}}|} ];
+  (match version (Ok (result ~stderr:"boom" (Unix.WEXITED 125))) with
+  | Error (Podman.Unavailable _) -> ()
+  | _ -> assert false);
+  match
+    version
+      (Error
+         { Process.operation = "launch"; message = "podman: command not found" })
+  with
+  | Error (Podman.Unavailable "Podman was not found on PATH.") -> ()
+  | _ -> assert false
 
 let () =
   List.iter

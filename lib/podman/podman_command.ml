@@ -16,6 +16,7 @@ let exec ~tty ~user ~workdir ~container command =
   @ [ "--"; container ] @ command
 
 let version = [ "podman"; "--remote=false"; "version" ]
+let version_json = [ "podman"; "--remote=false"; "version"; "--format"; "json" ]
 let stop container = [ "podman"; "--remote=false"; "stop"; "--"; container ]
 
 let remove_container id =

@@ -28,7 +28,9 @@ let () =
       ("dev.deco.project-root", "/project");
     ]
   in
-  let image : Podman.image = { id = "iid"; labels; user = ""; workdir = "/" } in
+  let image : Podman.image =
+    { id = "iid"; labels; user = ""; workdir = "/"; created = None }
+  in
   let c : Podman.container =
     {
       id = "cid";
@@ -40,6 +42,7 @@ let () =
       workdir = "/";
       init = true;
       mounts = [];
+      created = None;
     }
   in
   assert (Assemble.compatibility loaded image c = Ok ());
