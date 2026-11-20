@@ -21,6 +21,7 @@
   test_podman
   test_timestamp
   test_managed_list
+  test_terminal_text
   test_config_decode
   test_planned
   test_config_validate
