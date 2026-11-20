@@ -19,6 +19,7 @@
   test_selinux
   test_assemble
   test_podman
+  test_timestamp
   test_managed_list
   test_config_decode
   test_planned
