@@ -3,12 +3,24 @@ type error = Podman of Podman.error | Conflict of string
 
 type environment = { image : Podman.image; container : Podman.container }
 
+val incompatibilities :
+  ?selinux_enabled:bool ->
+  Config_loader.t ->
+  Podman.image ->
+  Podman.container ->
+  string list
+(** Every way the container differs from the loaded configuration and the image,
+    in a fixed order; empty when compatible. Ownership is not checked.
+    [selinux_enabled] (default [true]) decides whether a missing relabel option
+    can be verified. *)
+
 val compatibility :
   ?selinux_enabled:bool ->
   Config_loader.t ->
   Podman.image ->
   Podman.container ->
   (unit, string) result
+(** {!incompatibilities} as a result, joining the messages with ["; "]. *)
 
 val selinux_enabled : string -> bool
 (** Conservatively assume SELinux is enabled when detection fails. *)
