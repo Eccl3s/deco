@@ -197,10 +197,11 @@ let () =
         else Result.map (fun _ -> ()) (Podman.inspect_container ~run "test")
       in
       done_ ();
+      (* A launch failure means Podman is unusable, not a failed inspection. *)
       assert (
         match response with
-        | Error (Runtime { message; _ }) ->
-            message = "launch: missing executable"
+        | Error (Unavailable message) ->
+            message = "Podman could not be started: missing executable"
         | _ -> false))
     [ "image"; "container" ];
   let labels =
@@ -482,5 +483,28 @@ let () =
   | Error
       (Podman.Runtime
          { operation = "container list"; message = "exit 125: boom" }) ->
+      ()
+  | _ -> failwith "Expected a runtime failure"
+
+(* Every non-probe operation maps launch failures to Unavailable and other
+   process failures to Runtime. *)
+let () =
+  let launch _ =
+    Error
+      { Process.operation = "launch"; message = "podman: command not found" }
+  and capture _ = Error { Process.operation = "capture"; message = "full" } in
+  (match Podman.list_containers ~run:launch () with
+  | Error (Podman.Unavailable "Podman was not found on PATH.") -> ()
+  | _ -> failwith "Expected Podman to be unavailable");
+  (match Podman.list_containers ~run:capture () with
+  | Error
+      (Podman.Runtime
+         { operation = "container list"; message = "capture: full" }) ->
+      ()
+  | _ -> failwith "Expected a runtime failure");
+  match Podman.inspect_container ~run:capture "test" with
+  | Error
+      (Podman.Runtime
+         { operation = "container inspect"; message = "capture: full" }) ->
       ()
   | _ -> failwith "Expected a runtime failure"

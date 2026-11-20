@@ -1,5 +1,11 @@
 type runner = string list -> (Process.result, Process.error) result
-(** Read-only Podman operations. No functions print or assign CLI exit codes. *)
+(** Read-only Podman operations. No functions print or assign CLI exit codes.
+
+    Process failures are mapped consistently: the availability probes
+    ({!available} and {!info}) report any failure as [Unavailable], because
+    their purpose is to decide whether Podman is usable. Other operations report
+    a failure to launch Podman as [Unavailable] and any other process failure,
+    such as capturing output, as [Runtime]. *)
 
 type error =
   | Unavailable of string

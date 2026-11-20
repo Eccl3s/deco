@@ -54,6 +54,10 @@ let unavailable (e : Process.error) =
        "Podman could not be started: " ^ reason
      else e.operation ^ ": " ^ e.message)
 
+let failure ~operation (e : Process.error) =
+  if e.operation = "launch" then unavailable e
+  else Runtime { operation; message = e.operation ^ ": " ^ e.message }
+
 let info ?(run = default_run) () =
   match run Podman_command.info with
   | Ok ({ status = Unix.WEXITED 0; _ } as r) -> Ok r.stdout
@@ -165,10 +169,7 @@ let container json =
 let inspect (run : runner) kind decode name =
   let operation = kind ^ " inspect" in
   let invoke args =
-    match run args with
-    | Ok r -> Ok r
-    | Error e ->
-        Error (Runtime { operation; message = e.operation ^ ": " ^ e.message })
+    match run args with Ok r -> Ok r | Error e -> Error (failure ~operation e)
   in
   match invoke (Podman_command.inspect kind name) with
   | Error e -> Error e
@@ -235,8 +236,7 @@ type container_summary = { id : string; image_id : string; names : string list }
 let list_containers ?(run = default_run) () =
   let operation = "container list" in
   match run Podman_command.list_containers with
-  | Error e ->
-      Error (Runtime { operation; message = e.operation ^ ": " ^ e.message })
+  | Error e -> Error (failure ~operation e)
   | Ok r when r.Process.status <> Unix.WEXITED 0 ->
       Error (Runtime { operation; message = message r })
   | Ok r -> (
@@ -268,9 +268,7 @@ type listed_container = {
 let list_managed_containers ?(run = default_run) () =
   let operation = "container list" in
   match run Podman_command.list_managed_containers with
-  | Error e when e.Process.operation = "launch" -> Error (unavailable e)
-  | Error e ->
-      Error (Runtime { operation; message = e.operation ^ ": " ^ e.message })
+  | Error e -> Error (failure ~operation e)
   | Ok r when r.Process.status <> Unix.WEXITED 0 ->
       Error (Runtime { operation; message = message r })
   | Ok r -> (

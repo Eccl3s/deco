@@ -175,16 +175,19 @@ let () =
   ignore
     (error true
        (run (stopped @ [ (inspect "cid", response (container "paused")) ])));
-  ignore
-    (error true
+  (* Podman failing to launch for verification is reported as unavailable
+     without a further availability probe. *)
+  (match
+     error true
        (run
           (stopped
           @ [
               ( inspect "cid",
                 Error { Process.operation = "launch"; message = "failed" } );
-              ( Podman_command.info,
-                response ~status:(Unix.WEXITED 125) "unavailable" );
-            ])));
+            ]))
+   with
+  | Stop.Podman (Podman.Unavailable _) -> ()
+  | _ -> assert false);
   let outcome =
     Result.get_ok
       (Stop.run ~container_id:"cid" ~check_availability:false
