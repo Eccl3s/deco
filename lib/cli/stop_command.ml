@@ -1,6 +1,6 @@
-let execute project_dir dry_run =
+let execute selection dry_run =
   let open Config.Effective in
-  match Cli_common.load_project project_dir with
+  match Cli_common.load_project selection with
   | Error code -> code
   | Ok loaded -> (
       if dry_run then (
@@ -51,9 +51,12 @@ let command =
   let dry_run =
     Arg.(
       value & flag
-      & info [ "d"; "dry-run" ] ~doc:"Preview shutdown without invoking Podman.")
+      & info [ "d"; "dry-run" ]
+          ~doc:
+            "Preview shutdown without invoking Podman, except to locate a \
+             $(b,--project).")
   in
   Cmdliner.Cmd.v
     (Cmdliner.Cmd.info "stop" ~exits:Cli_common.exits
        ~doc:"Stop the managed development container.")
-    Term.(const execute $ Cli_common.project_dir $ dry_run)
+    Term.(const execute $ Cli_common.project $ dry_run)

@@ -3,14 +3,14 @@ module Term = Cmdliner.Term
 module Cmd = Cmdliner.Cmd
 
 let exits = Cli_common.exits
-let project_dir = Cli_common.project_dir
+let project = Cli_common.project
 
-let assemble project_dir dry_run =
+let assemble selection dry_run =
   let open Deco in
   let open Config_loader in
   let open Config.Effective in
   let open Assemble in
-  match Cli_common.load_project project_dir with
+  match Cli_common.load_project selection with
   | Error code -> code
   | Ok loaded -> (
       if dry_run then (
@@ -77,9 +77,10 @@ let command =
       & info [ "d"; "dry-run" ]
           ~doc:
             "Preview the workflow and build/create commands without invoking \
-             Podman or writing files.")
+             Podman or writing files. Podman is still queried to locate a \
+             $(b,--project).")
   in
   Cmd.v
     (Cmd.info "assemble" ~exits
        ~doc:"Build, create, and start the development container.")
-    Term.(const assemble $ project_dir $ dry_run)
+    Term.(const assemble $ project $ dry_run)

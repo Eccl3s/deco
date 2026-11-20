@@ -39,6 +39,7 @@
   test_remove_cli
   test_refresh_cli
   test_list_cli
+  test_project_cli
   test_init
   init_test_support
   test_embed_templates
@@ -165,3 +166,11 @@
    python3
    %{dep:test_release_packaging.py}
    %{dep:../tools/release/prepare.py})))
+
+(test
+ (name test_project_cli)
+ (modules test_project_cli)
+ (libraries unix yojson)
+ (deps ../bin/deco.exe)
+ (action
+  (run %{test} %{exe:../bin/deco.exe})))

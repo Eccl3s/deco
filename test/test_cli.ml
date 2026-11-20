@@ -244,12 +244,16 @@ let () =
           [ "bad" ];
           [ "validate"; "extra" ];
           [ "validate"; "--project-dir" ];
-          [ "validate"; "--project"; "demo" ];
+          [ "validate"; "--project" ];
+          [ "validate"; "-p"; "demo"; "--project-dir"; "." ];
           [ "validate"; "--format=json" ];
           [ "validate"; "-v" ];
           [ "validate"; "--dry-run" ];
           [ "--project-dir"; "validate"; "validate" ];
         ];
+      (* Named selection needs Podman, which is not on PATH here. *)
+      ignore (run temp [ "validate"; "--project"; "demo" ] 3);
+      assert (contains !last_errors "Podman");
       ignore (run root [ "validate"; "--project-dir"; nested ] 2);
       assert (
         !last_errors

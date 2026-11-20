@@ -1,6 +1,6 @@
-let[@warning "-42"] execute project_dir dry_run keep_image =
+let[@warning "-42"] execute selection dry_run keep_image =
   let open Config.Effective in
-  match Cli_common.load_project project_dir with
+  match Cli_common.load_project selection with
   | Error code -> code
   | Ok loaded -> (
       if dry_run then (
@@ -82,7 +82,10 @@ let command =
   let dry_run =
     Arg.(
       value & flag
-      & info [ "d"; "dry-run" ] ~doc:"Preview removal without invoking Podman.")
+      & info [ "d"; "dry-run" ]
+          ~doc:
+            "Preview removal without invoking Podman, except to locate a \
+             $(b,--project).")
   in
   let keep_image =
     Arg.(
@@ -93,4 +96,4 @@ let command =
   Cmdliner.Cmd.v
     (Cmdliner.Cmd.info "remove" ~exits:Cli_common.exits
        ~doc:"Remove the owned development container and image.")
-    Term.(const execute $ Cli_common.project_dir $ dry_run $ keep_image)
+    Term.(const execute $ Cli_common.project $ dry_run $ keep_image)
