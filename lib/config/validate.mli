@@ -4,9 +4,10 @@ type error = Diagnostic.t = { path : string list; message : string }
 
     Explicit and derived container names are checked. Image repository and tag
     syntax are checked (IPv6 registries are unsupported). UID/GID bounds are
-    checked; image mode forbids UID/GID as a v0.1.0 restriction. Host path
-    expansion and filesystem checks are separate. Build stages, image accounts,
-    executables, SELinux and runtime compatibility are not checked here. *)
+    checked; image mode forbids UID/GID, a restriction beyond the v1
+    specification. Host path expansion and filesystem checks are separate. Build
+    stages, image accounts, executables, SELinux and runtime compatibility are
+    not checked here. *)
 
 val valid_id : int -> bool
 (** Check numeric bounds 0-4294967294 only. Inputs must already fit an OCaml

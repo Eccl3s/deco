@@ -163,6 +163,26 @@ let () =
             "Initialized Deco configuration using template 'debian' in %s.\n"
             (Unix.realpath default_root));
       ignore (run default_root [ "validate" ] 0);
+      (* Ignored setting paths include author-chosen names, which are escaped
+         like any other reported text; [run] rejects raw ESC bytes. *)
+      let hostile = Filename.concat temp "hostile" in
+      Unix.mkdir hostile 0o700;
+      Unix.mkdir (Filename.concat hostile ".deco") 0o700;
+      Unix.mkdir (Filename.concat hostile ".deco/build") 0o700;
+      Out_channel.with_open_bin
+        (Filename.concat hostile ".deco/build/Containerfile") (fun c ->
+          output_string c "FROM scratch\n");
+      Out_channel.with_open_bin (Filename.concat hostile ".deco/config.toml")
+        (fun c ->
+          output_string c
+            "[project]\n\
+             name = 'hostile'\n\
+             [actions]\n\
+             \"x\\u001b[31my\" = 'true'\n");
+      assert (
+        contains
+          (run temp [ "validate"; "--project-dir"; hostile ] 0)
+          "  actions.x\\x1b[31my\n");
       let spaced = Filename.concat temp "Another Project" in
       ignore (run temp [ "init"; spaced ] 0);
       ignore (run temp [ "validate"; "--project-dir"; spaced ] 0);

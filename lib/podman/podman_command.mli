@@ -16,6 +16,9 @@ val exec :
 
 val version : string list
 
+val version_json : string list
+(** [podman version] as JSON, for reading the client version. *)
+
 val stop : string -> string list
 (** Stop the selected local container using Podman's default timeout. *)
 

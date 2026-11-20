@@ -1,4 +1,5 @@
 """Opt-in default Debian workflow; builds/pulls the unchanged template image."""
+import datetime
 import json
 import pathlib
 import signal
@@ -30,6 +31,17 @@ with tempfile.TemporaryDirectory(prefix='deco-debian-workflow-') as directory:
         result=subprocess.run([binary,'list','--format','json'],check=True,capture_output=True,text=True,timeout=60,cwd='/')
         assert result.stderr=='' and result.stdout.endswith(']\n'),result
         return [e for e in json.loads(result.stdout) if e['project_root']==str(root)]
+    def info(*args,cwd=None):
+        # Read the report outside the project unless a directory is given.
+        result=deco(*args,'info','--format','json',cwd=cwd or '/')
+        assert result.stderr=='' and result.stdout.endswith('}\n'),result
+        return json.loads(result.stdout)
+    def created(report,kind):
+        # UTC, second precision, and not after now.
+        text=report[kind]['created']
+        assert text.endswith('Z') and '.' not in text,report
+        when=datetime.datetime.strptime(text,'%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc)
+        assert when<=datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(seconds=5),report
     originals={p:p.read_bytes() for p in (root/'.deco/config.toml',root/'.deco/build/Containerfile')}
     try:
         result=deco('--project-dir',str(root),'validate')
@@ -52,6 +64,22 @@ with tempfile.TemporaryDirectory(prefix='deco-debian-workflow-') as directory:
                        'container_id':container_id,'state':'running',
                        'image':entry['image'],'image_id':image_id},entry
         assert entry['image'].endswith(image),entry
+        # info reports the owned, compatible, running environment.
+        report=info('--project-dir',str(root))
+        assert report['project']=={'name':name,'description':config['project']['description'],
+                                   'root':str(root),'config':str(root/'.deco/config.toml')},report
+        assert report['podman']['available'] is True and report['podman']['version'],report
+        assert {k:report['image'][k] for k in ('id','exists','owned')}=={'id':image_id,'exists':True,'owned':True},report
+        assert {k:report['container'][k] for k in ('id','exists','state','podman_state','owned','compatible','incompatibilities')}=={
+            'id':container_id,'exists':True,'state':'running','podman_state':'running',
+            'owned':True,'compatible':True,'incompatibilities':[]},report
+        created(report,'image'); created(report,'container')
+        assert report['runtime']=={'user_mode':'keep-id','workdir':'/workspace','shell':'bash'},report
+        assert report['mounts']==[{'source':str(root),'target':'/workspace','type':'bind',
+                                   'readonly':False,'relabel':'private'}],report
+        human=deco('info',cwd=root).stdout
+        assert container_id in human and ' UTC (' in human and 'Compatible:  yes' in human,human
+        assert '\x1b' not in human and 'network.mode' in human,human
         table=subprocess.run([binary,'list'],check=True,capture_output=True,text=True,timeout=60,cwd='/').stdout
         assert container in table and str(root) in table and '\x1b' not in table,table
         # --project selects the listed project by name from an unrelated directory,
@@ -67,6 +95,11 @@ with tempfile.TemporaryDirectory(prefix='deco-debian-workflow-') as directory:
         assert result.stdout=='Stopped '+container+'\n',result.stdout
         [entry]=listed()
         assert entry['container_id']==container_id and entry['state']=='exited',entry
+        # info finds the project by name and reports the stopped container.
+        report=info('-p',name)
+        assert report['project']['root']==str(root),report
+        assert report['container']['state']=='stopped' and report['container']['podman_state']=='exited',report
+        assert report['container']['id']==container_id and report['container']['compatible'] is True,report
         # start previews without changing anything, then restarts the same
         # container by name from an unrelated directory; repeating it is a no-op.
         result=deco('start','-p',name,'--dry-run',cwd='/')
@@ -94,6 +127,12 @@ with tempfile.TemporaryDirectory(prefix='deco-debian-workflow-') as directory:
         assert entry['container_id']==refreshed_container and entry['state']=='running',entry
         deco('--project-dir',str(root),'remove')
         assert listed()==[]
+        # After remove, info still succeeds and reports both resources missing.
+        report=info('--project-dir',str(root))
+        for kind in ('image','container'):
+            assert {k:report[kind][k] for k in ('id','exists','created','owned')}=={
+                'id':None,'exists':False,'created':None,'owned':None},report
+        assert report['container']['state'] is None and report['container']['compatible'] is None,report
         # With its containers gone, the name no longer selects the project.
         result=deco('-p',name,'validate',cwd='/',check=False)
         assert result.returncode==2 and 'No assembled project' in result.stderr,result

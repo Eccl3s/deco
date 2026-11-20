@@ -7,7 +7,14 @@ type error =
 
 type 'a presence = Absent | Present of 'a
 type labels = (string * string) list
-type image = { id : string; labels : labels; user : string; workdir : string }
+
+type image = {
+  id : string;
+  labels : labels;
+  user : string;
+  workdir : string;
+  created : string option;
+}
 
 type mount = {
   kind : string;
@@ -26,6 +33,7 @@ type container = {
   workdir : string;
   init : bool;
   mounts : mount list;
+  created : string option;
 }
 
 let default_run argv = Process.run argv
@@ -101,6 +109,7 @@ let image json : image =
     labels = optional "Labels" [] labels json;
     user = optional "User" "" string config;
     workdir = optional "WorkingDir" "" string config;
+    created = optional "Created" None (fun v -> Some (string v)) json;
   }
 
 let mount json =
@@ -115,6 +124,7 @@ let container json =
   let config = field "Config" json and host = field "HostConfig" json in
   {
     id = string (field "Id" json);
+    created = optional "Created" None (fun v -> Some (string v)) json;
     labels = labels (field "Labels" config);
     state = string (field "Status" (field "State" json));
     image_id = string (field "Image" json);
@@ -292,3 +302,18 @@ let list_managed_containers ?(run = default_run) () =
         Ok (List.map decode (list (Yojson.Basic.from_string r.stdout)))
       with Failure message | Yojson.Json_error message ->
         Error (Invalid_response { operation; message }))
+
+let version ?(run = default_run) () =
+  let operation = "version" in
+  match run Podman_command.version_json with
+  | Ok r when r.Process.status = Unix.WEXITED 0 -> (
+      try
+        match
+          field "Version" (field "Client" (Yojson.Basic.from_string r.stdout))
+        with
+        | `String version -> Ok version
+        | _ -> failwith "Expected Client.Version string"
+      with Failure message | Yojson.Json_error message ->
+        Error (Invalid_response { operation; message }))
+  | Ok r -> Error (Unavailable (message r))
+  | Error e -> Error (unavailable e)

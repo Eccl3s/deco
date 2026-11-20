@@ -22,16 +22,11 @@ let execute format =
       code
 
 let command =
-  let module Arg = Cmdliner.Arg in
   let module Term = Cmdliner.Term in
   let format =
-    Arg.(
-      value
-      & opt (enum [ ("human", `Human); ("json", `Json) ]) `Human
-      & info Argv.format.Argv.names ~docv:"FORMAT"
-          ~doc:
-            "Output format: $(b,human) for a table or $(b,json) for a stable \
-             array.")
+    Cli_common.format
+      ~doc:
+        "Output format: $(b,human) for a table or $(b,json) for a stable array."
   in
   Cmdliner.Cmd.v
     (Cmdliner.Cmd.info "list" ~exits:Cli_common.exits

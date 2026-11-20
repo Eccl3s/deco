@@ -1,7 +1,7 @@
 (** Deco configuration model.
 
     This module defines the OCaml representation of the subset of
-    [.deco/config.toml] supported by Deco v0.1.0, as specified in
+    [.deco/config.toml] supported by Deco, as specified in
     [specs/deco-config.md]. It defines the configuration types used by the
     decoder, partial pure validator, and default resolver. These decoded types
     retain omissions; [Effective] represents default-filled values. Remaining
@@ -17,7 +17,7 @@
     - Closed sets of string values are variant types.
     - No default values are resolved here; [None] always means "omitted".
 
-    Tables from the v1 specification that the v0.1.0 commands do not need are
+    Tables from the v1 specification that the current commands do not need are
     intentionally not modelled yet: [[container.namespaces]],
     [[container.secrets]], [[network]], [[network.ports]], [[mounts.volumes]],
     [[hooks]], [[container.environment]], and [[actions]]. Runtime environment
@@ -107,7 +107,7 @@ type mounts = {
   workspace : workspace option;
       (** [[mounts.workspace]]; [None] when not configured. *)
 }
-(** The [[mounts]] table. Only the workspace mount is modelled in v0.1.0. *)
+(** The [[mounts]] table. Only the workspace mount is modelled. *)
 
 type t = {
   project : project;  (** Required: the [[project]] table must be present. *)

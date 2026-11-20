@@ -44,7 +44,7 @@ let registry s =
 
 let check_name name =
   if String.contains name '[' || String.contains name ']' then
-    Error "IPv6 registries are not supported in v0.1.0"
+    Error "IPv6 registries are not supported"
   else if String.contains name '@' then
     Error "Image repository must not contain a digest"
   else if String.length name > 255 then

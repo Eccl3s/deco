@@ -28,7 +28,9 @@ let () =
       ("dev.deco.project-root", "/project");
     ]
   in
-  let image : Podman.image = { id = "iid"; labels; user = ""; workdir = "/" } in
+  let image : Podman.image =
+    { id = "iid"; labels; user = ""; workdir = "/"; created = None }
+  in
   let c : Podman.container =
     {
       id = "cid";
@@ -40,9 +42,25 @@ let () =
       workdir = "/";
       init = true;
       mounts = [];
+      created = None;
     }
   in
   assert (Assemble.compatibility loaded image c = Ok ());
+  assert (Container_runtime.incompatibilities loaded image c = []);
+  (* Every mismatch is reported, in a fixed order, and compatibility joins
+     them. *)
+  let broken = { c with image_id = "other"; init = false; workdir = "/tmp" } in
+  let expected =
+    [
+      "Container image differs";
+      "Container init is disabled";
+      "Working directory differs";
+    ]
+  in
+  assert (Container_runtime.incompatibilities loaded image broken = expected);
+  assert (
+    Assemble.compatibility loaded image broken
+    = Error (String.concat "; " expected));
   let mounted =
     {
       loaded with

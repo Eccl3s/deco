@@ -1,4 +1,4 @@
-let compatibility ?(selinux_enabled = true) (loaded : Config_loader.t)
+let incompatibilities ?(selinux_enabled = true) (loaded : Config_loader.t)
     (image : Podman.image) (c : Podman.container) =
   let expected = loaded.effective in
   let failures = ref [] in
@@ -62,7 +62,10 @@ let compatibility ?(selinux_enabled = true) (loaded : Config_loader.t)
             "Mount relabel policy differs or cannot be verified"
       | _ -> check false "Workspace mount missing or duplicated")
   | _ -> check false "Workspace paths disagree");
-  match List.rev !failures with
+  List.rev !failures
+
+let compatibility ?selinux_enabled loaded image c =
+  match incompatibilities ?selinux_enabled loaded image c with
   | [] -> Ok ()
   | xs -> Error (String.concat "; " xs)
 

@@ -1,7 +1,7 @@
 (* CLI tests for selecting a project by name with -p/--project. A fake Podman
-   answers the availability probe and the managed-container listing and fails
-   every other command, so a passing run proves that only read-only lookups
-   happened. *)
+   answers the availability probe, the managed-container listing and the
+   read-only queries of deco info, and fails every other command, so a passing
+   run proves that only read-only lookups happened. *)
 
 let write p s = Out_channel.with_open_bin p (fun c -> output_string c s)
 let read p = In_channel.with_open_bin p In_channel.input_all
@@ -28,6 +28,9 @@ shift
 printf '%s\n' "$*" >> "$DECO_TEST_LOG"
 case "$1 $2" in
   'version ') exit 0 ;;
+  'version --format') printf '%s' '{"Client":{"Version":"5.7.0"}}' ;;
+  'image inspect'|'container inspect') exit 125 ;;
+  'image exists'|'container exists') exit 1 ;;
   'container ls')
     if test -n "$DECO_TEST_FAIL"; then printf 'boom\n' >&2; exit 125; fi
     IFS= read -r listing < "$DECO_TEST_LISTING"
@@ -157,6 +160,29 @@ let () =
               ("exec", [ "--dry-run"; "--"; "true" ], [ "Exec preview" ]);
             ])
         [ None; Some "xterm-256color" ];
+      (* info reports the located project, beyond the lookup itself. *)
+      List.iter
+        (fun term ->
+          List.iter
+            (fun args ->
+              let stdout, stderr = run ?term args 0 in
+              assert (stderr = "");
+              let j = Yojson.Basic.from_string stdout in
+              let project = Yojson.Basic.Util.member "project" j in
+              assert (Yojson.Basic.Util.member "root" project = `String zeta);
+              assert (Yojson.Basic.Util.member "config" project = `String config);
+              assert (
+                contains (calls ()) "container inspect -- zeta-dev-container"))
+            [
+              [ "info"; "-p"; "zeta"; "--format"; "json" ];
+              [ "-p"; "zeta"; "--format=json"; "info" ];
+            ])
+        [ None; Some "xterm-256color" ];
+      (* Without Podman the lookup itself fails, so there is no report. *)
+      let stdout, stderr =
+        run ~path:"/nonexistent" [ "info"; "-p"; "zeta" ] 3
+      in
+      assert (stdout = "" && contains stderr "Podman");
       (* The option is not accepted with --project-dir, empty, or by init. *)
       List.iter
         (fun args ->

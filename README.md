@@ -31,7 +31,7 @@ See [specs/](specs/) for the full CLI and configuration specifications.
 
 ## Getting Started
 
-Deco currently implements `init`, `validate`, `assemble`, `exec`, `shell`, `start`, `stop`, `remove`, `list`, help, and version output. Other commands
+Deco currently implements `init`, `validate`, `assemble`, `refresh`, `exec`, `shell`, `start`, `stop`, `remove`, `info`, `list`, help, and version output. Other commands
 below describe the planned workflow.
 
 Validate an existing project with `deco validate` or select one explicitly with
@@ -46,7 +46,7 @@ exit code 2; success identifies the config path on stdout with exit code 0.
 ### Selecting a project
 
 Project commands (`validate`, `assemble`, `refresh`, `exec`, `shell`, `start`,
-`stop`, and `remove`) find their project in one of three ways:
+`stop`, `remove`, and `info`) find their project in one of three ways:
 
 - By default, Deco searches the current directory and its parents for
   `.deco/config.toml`.
@@ -302,9 +302,9 @@ Deco is licensed under the GNU General Public License version 3.0 or later (GPL-
 
 See [LICENSE](LICENSE) for details.
 
-For v0.1.0, `[user]` supports `keep-id` and `image`. Explicit UID/GID values
+`[user]` supports `keep-id` and `image`. Explicit UID/GID values
 must be in 0–4294967294 and fit an OCaml `int`. Image mode, including an
-omitted mode, forbids UID/GID settings; this is an additional v0.1.0 restriction.
+omitted mode, forbids UID/GID settings; this is a restriction beyond the v1 specification.
 
 ### Build and release versions
 
@@ -398,7 +398,7 @@ Use `deco exec --dry-run -- COMMAND` to preview without invoking Podman.
 
 ### Local runtime and SELinux detection
 
-Deco v0.1.0 explicitly uses local Podman (`--remote=false`), ignoring implicit
+Deco explicitly uses local Podman (`--remote=false`), ignoring implicit
 remote connection selection. Assemble and exec use a lightweight version check and resolves
 SELinux status only when it affects workspace relabel compatibility. It checks
 local sysfs first and falls back to Podman info when the result is unknown.
@@ -478,7 +478,7 @@ code 4. Unmanaged resources and unsupported states also return 4. Invalid
 configuration/usage returns 2, unavailable Podman 3, and runtime failures 1.
 Failures report completed commands without claiming verification succeeded.
 
-Unlike the full v1 specification, v0.1.0 does not implement `--force`,
+Unlike the full v1 specification, `remove` does not implement `--force`,
 `--keep-volumes`, named-volume removal, or lifecycle hooks. Removal never changes
 unrelated dependent containers or prunes parent images. Only `deco remove` is
 supported as the removal command.
@@ -541,12 +541,147 @@ JSON form prints `[]`; both succeed.
 entry is not proof that Deco created the container. Unavailable Podman returns
 3, and a failed or malformed Podman listing returns 1.
 
-### Planned configuration compatibility in v0.1.0
+### Show project information
+
+Run `deco info` to report the project's resolved configuration and the state of
+its image and container. It only queries Podman and never changes anything, so
+it is safe to run at any time; use `-p NAME` to inspect a listed project from
+any directory.
+
+```text
+$ deco info
+Project
+  Name:        my-project
+  Description: Deco Debian development environment
+  Root:        /home/user/my-project
+  Config:      /home/user/my-project/.deco/config.toml
+
+Podman
+  Available:   yes
+  Version:     5.7.0
+
+Image
+  Name:        my-project-dev-image
+  Tag:         latest
+  ID:          <full image ID>
+  Exists:      yes
+  Created:     2026-11-11 09:14 UTC (9 days ago)
+  Owned:       yes
+
+Container
+  Name:        my-project-dev-container
+  ID:          <full container ID>
+  Exists:      yes
+  State:       stopped (exited)
+  Created:     2026-11-12 08:30 UTC (8 days ago)
+  Owned:       yes
+  Compatible:  no
+    - Container init is disabled
+
+Runtime
+  User mode:   keep-id
+  Workdir:     /workspace
+  Shell:       bash
+
+Mounts
+  /home/user/my-project -> /workspace (bind, read-write, relabel private)
+
+DNS
+  none
+
+Ports
+  none
+
+Hooks
+  none
+
+Actions
+  none
+
+Ignored planned settings (not applied yet):
+  container.cap_drop
+  network.mode
+```
+
+`State` is `running`, `stopped`, `paused`, or `unknown`, followed by Podman's
+own state when it differs. `Owned` says whether the resource carries this
+project's ownership labels, and `Compatible` whether the container matches the
+configuration as `exec`, `shell`, and `start` require; it is evaluated only when
+both resources exist and are owned, and each mismatch is listed. Unknown values
+are `-`. Values are escaped as in `deco list`. The report is informational: any
+command that later uses a resource verifies it again.
+
+Use `--format json` (before or after the command) for a stable object:
+
+```json
+{
+  "project": {
+    "name": "my-project",
+    "description": "Deco Debian development environment",
+    "root": "/home/user/my-project",
+    "config": "/home/user/my-project/.deco/config.toml"
+  },
+  "podman": { "available": true, "version": "5.7.0" },
+  "image": {
+    "name": "my-project-dev-image",
+    "tag": "latest",
+    "id": "<full image ID>",
+    "exists": true,
+    "created": "2026-11-11T09:14:02Z",
+    "owned": true
+  },
+  "container": {
+    "name": "my-project-dev-container",
+    "id": "<full container ID>",
+    "exists": true,
+    "state": "stopped",
+    "podman_state": "exited",
+    "created": "2026-11-12T08:30:45Z",
+    "owned": true,
+    "compatible": false,
+    "incompatibilities": ["Container init is disabled"]
+  },
+  "runtime": { "user_mode": "keep-id", "workdir": "/workspace", "shell": "bash" },
+  "mounts": [
+    {
+      "source": "/home/user/my-project",
+      "target": "/workspace",
+      "type": "bind",
+      "readonly": false,
+      "relabel": "private"
+    }
+  ],
+  "dns": [],
+  "ports": [],
+  "hooks": [],
+  "actions": []
+}
+```
+
+Timestamps are UTC with second precision, so JSON output does not change
+between runs. A missing resource has `exists: false` and `null` for its `id`,
+`created`, and `owned`; `compatible` is `null` unless it was evaluated.
+
+`info` exits 0 whenever it can report, including when resources are missing,
+unowned, or incompatible. When Podman is unavailable it still prints the full
+report, with `podman.available` false and every Podman-derived value `null`
+(`-` in human output), reports the problem on stderr, and exits 3. With
+`-p NAME` the project itself cannot be located without Podman, so that case
+exits 3 without a report. Invalid configuration or usage returns 2 and any
+other Podman failure 1, without a report.
+
+Unlike the full v1 specification, `dns`, `ports`, `hooks`, and `actions` are
+always empty and only the workspace mount is reported, because those settings
+are not applied yet; any that are configured appear under
+`Ignored planned settings` in the human report instead.
+
+### Planned configuration compatibility
 
 All eight built-in templates can be initialized, validated, and previewed without
 editing their files. `deco validate` prints ignored paths under
-`Ignored planned settings (not applied in v0.1.0):` on stdout and succeeds.
-Other commands silently ignore those settings. Values are not printed.
+`Ignored planned settings (not applied yet):` on stdout and succeeds;
+`deco info` ends its human report with the same list. Other commands silently
+ignore those settings. Values are not printed.
 
 Only documented v1 keys are tolerated. Unknown keys, nested typos, wrong types,
 invalid TOML, and errors in implemented fields still fail. Planned fields receive
@@ -557,8 +692,8 @@ Capabilities, network settings, environment injection, devices/security options,
 additional mounts, secrets, actions, and hooks remain inactive. In particular,
 accepting the Podman template does not enable its nested-Podman setup, and
 accepting capability-drop settings does not apply capability restrictions.
-This compatibility policy is specific to v0.1.0; the v1 specification continues
-to describe implemented behavior expected from future releases.
+This compatibility policy lasts until each setting is implemented; the v1
+specification continues to describe the behavior expected from future releases.
 
 Run the opt-in default-template workflow check with:
 
