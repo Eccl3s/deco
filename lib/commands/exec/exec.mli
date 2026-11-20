@@ -3,13 +3,14 @@ type runner =
 (** Execute in an existing owned, compatible environment; never build or create.
 *)
 
-type cause =
+type cause = Start.cause =
   | Planning of string
   | Podman of Podman.error
   | Conflict of string
   | Runtime of string
 
-type error = { cause : cause; started : bool }
+type error = Start.error = { cause : cause; started : bool }
+(** Shared with {!Start}: preparation is {!Start.run}. *)
 
 type outcome = {
   container_id : string;

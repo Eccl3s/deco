@@ -12,6 +12,7 @@
   test_remove
   test_refresh
   test_stop
+  test_start
   test_shell
   test_exec
   test_selinux
