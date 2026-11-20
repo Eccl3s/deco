@@ -97,3 +97,13 @@ val render_json : report -> string
 (** The spec's JSON shape, followed by one newline. Every field is present:
     unknown values are [null] and timestamps are UTC RFC 3339 with second
     precision. *)
+
+val render_human : now:float -> ignored:string list list -> report -> string
+(** Labelled sections in the spec's order: Project, Podman, Image, Container,
+    Runtime, Mounts, DNS, Ports, Hooks and Actions. Unknown values are ["-"],
+    booleans are [yes] or [no], timestamps are UTC with their age relative to
+    [now] (see {!Timestamp.to_human}), each incompatibility is listed, and an
+    empty collection is [none]. A non-empty [ignored] list of setting paths ends
+    the report as in [deco validate]. Every value is escaped with
+    {!Terminal_text.escape}; the output has no styling and ends with a newline.
+*)

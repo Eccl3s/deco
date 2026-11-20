@@ -329,3 +329,94 @@ let render_json r =
       ]
   in
   Yojson.Basic.pretty_to_string json ^ "\n"
+
+(* Human output is built as rows first so field values can be aligned to the
+   longest label actually used, whatever labels are added later. *)
+type row = Field of string * string | Line of string
+
+let render_human ~now ~ignored r =
+  let rows = ref [] in
+  let add row = rows := row :: !rows in
+  let line fmt = Printf.ksprintf (fun s -> add (Line s)) fmt in
+  let safe = Terminal_text.escape in
+  let section first title =
+    if first then line "%s" title else line "\n%s" title
+  in
+  let field key value = add (Field (key ^ ":", value)) in
+  let opt f = function None -> "-" | Some x -> f x in
+  let text = opt safe in
+  let yes_no b = if b then "yes" else "no" in
+  let time = opt (Timestamp.to_human ~now) in
+  let items title render = function
+    | [] ->
+        section false title;
+        line "  none"
+    | xs ->
+        section false title;
+        List.iter (fun x -> line "  %s" (render x)) xs
+  in
+  section true "Project";
+  field "Name" (safe r.project.name);
+  field "Description" (text r.project.description);
+  field "Root" (safe r.project.root);
+  field "Config" (safe r.project.config);
+  section false "Podman";
+  field "Available" (yes_no r.podman.available);
+  field "Version" (text r.podman.version);
+  section false "Image";
+  field "Name" (safe r.image.name);
+  field "Tag" (safe r.image.tag);
+  field "ID" (text r.image.id);
+  field "Exists" (opt yes_no r.image.exists);
+  field "Created" (time r.image.created);
+  field "Owned" (opt yes_no r.image.owned);
+  section false "Container";
+  field "Name" (safe r.container.name);
+  field "ID" (text r.container.id);
+  field "Exists" (opt yes_no r.container.exists);
+  field "State"
+    (match (r.container.state, r.container.podman_state) with
+    | Some state, Some podman when state <> podman ->
+        safe state ^ " (" ^ safe podman ^ ")"
+    | Some state, _ -> safe state
+    | None, _ -> "-");
+  field "Created" (time r.container.created);
+  field "Owned" (opt yes_no r.container.owned);
+  field "Compatible" (opt yes_no r.container.compatible);
+  List.iter (fun x -> line "    - %s" (safe x)) r.container.incompatibilities;
+  section false "Runtime";
+  field "User mode" (safe r.runtime.user_mode);
+  field "Workdir" (text r.runtime.workdir);
+  field "Shell" (safe r.runtime.shell);
+  items "Mounts"
+    (fun m ->
+      Printf.sprintf "%s -> %s (%s, %s, relabel %s)" (safe m.source)
+        (safe m.target) (safe m.kind)
+        (if m.readonly then "read-only" else "read-write")
+        (safe m.relabel))
+    r.mounts;
+  items "DNS" safe r.dns;
+  items "Ports"
+    (fun (p : port) ->
+      Printf.sprintf "%s:%d -> %d/%s" (safe p.bind) p.host p.container
+        (safe p.protocol))
+    r.ports;
+  items "Hooks" safe r.hooks;
+  items "Actions" safe r.actions;
+  if ignored <> [] then (
+    line "\nIgnored planned settings (not applied in v0.1.0):";
+    List.iter (fun path -> line "  %s" (safe (String.concat "." path))) ignored);
+  let rows = List.rev !rows in
+  let width =
+    List.fold_left
+      (fun w -> function
+        | Field (k, _) -> max w (String.length k) | Line _ -> w)
+      0 rows
+  in
+  let b = Buffer.create 1024 in
+  List.iter
+    (function
+      | Field (k, v) -> Printf.bprintf b "  %-*s %s\n" width k v
+      | Line s -> Printf.bprintf b "%s\n" s)
+    rows;
+  Buffer.contents b
