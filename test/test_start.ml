@@ -167,7 +167,7 @@ let () =
       ( fake
           ~image_result:(ok ~status:(Unix.WEXITED 125) "")
           (ok (container "exited")),
-        "Configured image is missing" );
+        "Configured image is missing; run deco assemble" );
       ( fake (ok (container ~project:"other" "exited")),
         "Resource ownership differs" );
       (fake (ok (container ~init:false "exited")), "Container init is disabled");
