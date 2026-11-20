@@ -111,3 +111,11 @@ let report_execution_result = function
       if error.Deco.Exec.started [@warning "-42"] then
         prerr_endline "deco: Container was started and remains available.";
       code
+
+type format = [ `Human | `Json ]
+
+let format ~doc =
+  let open Cmdliner.Arg in
+  value
+  & opt (enum [ ("human", `Human); ("json", `Json) ]) `Human
+  & info Argv.format.Argv.names ~docv:"FORMAT" ~doc

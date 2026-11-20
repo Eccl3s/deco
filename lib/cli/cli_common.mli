@@ -10,6 +10,12 @@ val project : selection Cmdliner.Term.t
 (** The [--project-dir] and [-p, --project] options of every project command.
     Supplying both, or an empty name, is a usage error. *)
 
+type format = [ `Human | `Json ]
+
+val format : doc:string -> format Cmdliner.Term.t
+(** The [--format human|json] option of informational commands, defaulting to
+    [human]. [doc] describes what each format produces for the command. *)
+
 val exits : Cmdliner.Cmd.Exit.info list
 
 val load_project : selection -> (Deco.Config_loader.t, int) result
