@@ -16,6 +16,8 @@ depends: [
   "otoml" {>= "1.0.5"}
   "cmdliner" {>= "1.3.0"}
   "yojson" {>= "2.0"}
+  "printbox" {>= "0.12"}
+  "printbox-text" {>= "0.12"}
   "odoc" {with-doc}
 ]
 build: [

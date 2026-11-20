@@ -2,7 +2,7 @@
 
 (library
  (name deco)
- (libraries config unix yojson))
+ (libraries config unix yojson printbox printbox-text))
 
 (rule
  (target template_data.ml)
