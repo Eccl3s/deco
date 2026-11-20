@@ -43,6 +43,7 @@
   test_shell_cli
   test_stop_cli
   test_start_cli
+  test_info_cli
   test_remove_cli
   test_refresh_cli
   test_list_cli
@@ -177,6 +178,14 @@
 (test
  (name test_project_cli)
  (modules test_project_cli)
+ (libraries unix yojson)
+ (deps ../bin/deco.exe)
+ (action
+  (run %{test} %{exe:../bin/deco.exe})))
+
+(test
+ (name test_info_cli)
+ (modules test_info_cli)
  (libraries unix yojson)
  (deps ../bin/deco.exe)
  (action
