@@ -67,7 +67,16 @@ with tempfile.TemporaryDirectory(prefix='deco-debian-workflow-') as directory:
         assert result.stdout=='Stopped '+container+'\n',result.stdout
         [entry]=listed()
         assert entry['container_id']==container_id and entry['state']=='exited',entry
-        deco('--project-dir',str(root),'assemble')
+        # start previews without changing anything, then restarts the same
+        # container by name from an unrelated directory; repeating it is a no-op.
+        result=deco('start','-p',name,'--dry-run',cwd='/')
+        assert 'Start preview' in result.stdout and not running(),result.stdout
+        result=deco('-p',name,'start',cwd='/')
+        assert result.stdout=='Started '+container+'\n',result.stdout
+        assert running() and ids()[0]==container_id
+        result=deco('start','--project',name,cwd='/')
+        assert result.stdout=='Already running: '+container+'\n',result.stdout
+        assert ids()[0]==container_id
         # --keep-image recreates the container from the same image.
         before_container,before_image=ids()
         result=deco('--project-dir',str(root),'refresh','--keep-image')
@@ -88,6 +97,9 @@ with tempfile.TemporaryDirectory(prefix='deco-debian-workflow-') as directory:
         # With its containers gone, the name no longer selects the project.
         result=deco('-p',name,'validate',cwd='/',check=False)
         assert result.returncode==2 and 'No assembled project' in result.stderr,result
+        # start never creates a container: it directs the user to assemble.
+        result=deco('--project-dir',str(root),'start',check=False)
+        assert result.returncode==4 and 'run deco assemble' in result.stderr,result
         assert podman('container','exists','--',container,check=False).returncode==1
         assert podman('image','exists','--',image,check=False).returncode==1
         for path,original in originals.items(): assert path.read_bytes()==original

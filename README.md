@@ -31,7 +31,7 @@ See [specs/](specs/) for the full CLI and configuration specifications.
 
 ## Getting Started
 
-Deco currently implements `init`, `validate`, `assemble`, `exec`, `shell`, `stop`, `remove`, `list`, help, and version output. Other commands
+Deco currently implements `init`, `validate`, `assemble`, `exec`, `shell`, `start`, `stop`, `remove`, `list`, help, and version output. Other commands
 below describe the planned workflow.
 
 Validate an existing project with `deco validate` or select one explicitly with
@@ -45,8 +45,8 @@ exit code 2; success identifies the config path on stdout with exit code 0.
 
 ### Selecting a project
 
-Project commands (`validate`, `assemble`, `refresh`, `exec`, `shell`, `stop`,
-and `remove`) find their project in one of three ways:
+Project commands (`validate`, `assemble`, `refresh`, `exec`, `shell`, `start`,
+`stop`, and `remove`) find their project in one of three ways:
 
 - By default, Deco searches the current directory and its parents for
   `.deco/config.toml`.
@@ -124,6 +124,12 @@ Stop the container:
 
 ```sh
 deco stop
+```
+
+Start it again later:
+
+```sh
+deco start
 ```
 
 These commands describe the planned interface and may not yet be available.
@@ -417,6 +423,30 @@ Use `deco shell --dry-run` (or `-d`) without a terminal to preview entry.
 The `post_start` and `pre_enter` hooks remain deferred and are not executed.
 Run `dune build @test-shell-pty` for opt-in Linux PTY tests using Python 3's
 standard library and fake Podman; ordinary tests require no Python.
+
+### Start the development container
+
+Run `deco start` to start an existing stopped project container, or
+`deco start --dry-run` (`-d`) to preview without Podman. Success prints
+`Started <name>`, or `Already running: <name>` when nothing needed to change.
+Start never builds or creates resources: a missing container or image returns 4
+and directs you to `deco assemble`.
+
+Start runs the same checks as `exec` and `shell` before starting anything: the
+configured image must exist, both resources must carry this project's ownership
+labels, and the container must match the configuration (image, init, user
+strategy, working directory, and workspace mount, including SELinux relabelling).
+Incompatible containers and unsupported states such as `paused` return 4; use
+`deco refresh` to recreate an incompatible container. After a start, Deco
+reinspects the same container and requires it to be running with unchanged
+container and image IDs. A failed start, or a container that is not running
+afterwards, returns 1; changed IDs return 4. When the start command completed
+but verification failed, the error says so. Invalid configuration/usage returns
+2 and unavailable Podman 3.
+
+Unlike the full v1 specification, the `post_start` hook is not run; the dry-run
+preview notes this. Use `-p NAME` to start a listed project from any directory,
+for example `deco start -p my-project`.
 
 ### Stop the development container
 

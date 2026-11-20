@@ -200,7 +200,8 @@ let inspect ?run ?read_many ?(probe = fun () -> local_selinux ()) ?selinux
   in
   let* image =
     match image with
-    | Podman.Absent -> Error (Conflict "Configured image is missing")
+    | Podman.Absent ->
+        Error (Conflict "Configured image is missing; run deco assemble")
     | Present i -> Ok i
   in
   let* () = own image.labels in

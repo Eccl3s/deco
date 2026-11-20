@@ -7,11 +7,13 @@
   test_exec_plan
   test_shell_plan
   test_stop_plan
+  test_start_plan
   test_remove_plan
   test_refresh_plan
   test_remove
   test_refresh
   test_stop
+  test_start
   test_shell
   test_exec
   test_selinux
@@ -36,6 +38,7 @@
   test_exec_cli
   test_shell_cli
   test_stop_cli
+  test_start_cli
   test_remove_cli
   test_refresh_cli
   test_list_cli
@@ -170,6 +173,14 @@
 (test
  (name test_project_cli)
  (modules test_project_cli)
+ (libraries unix yojson)
+ (deps ../bin/deco.exe)
+ (action
+  (run %{test} %{exe:../bin/deco.exe})))
+
+(test
+ (name test_start_cli)
+ (modules test_start_cli)
  (libraries unix yojson)
  (deps ../bin/deco.exe)
  (action

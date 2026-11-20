@@ -152,6 +152,7 @@ let () =
               ("refresh", [ "--dry-run" ], [ "Refresh preview"; zeta ]);
               ("remove", [ "--dry-run" ], [ "Remove preview" ]);
               ("stop", [ "--dry-run" ], [ "Stop preview" ]);
+              ("start", [ "--dry-run" ], [ "Start preview" ]);
               ("shell", [ "--dry-run" ], [ "Shell preview" ]);
               ("exec", [ "--dry-run"; "--"; "true" ], [ "Exec preview" ]);
             ])
