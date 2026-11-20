@@ -31,7 +31,7 @@ See [specs/](specs/) for the full CLI and configuration specifications.
 
 ## Getting Started
 
-Deco currently implements `init`, `validate`, `assemble`, `exec`, `shell`, `start`, `stop`, `remove`, `info`, `list`, help, and version output. Other commands
+Deco currently implements `init`, `validate`, `assemble`, `refresh`, `exec`, `shell`, `start`, `stop`, `remove`, `info`, `list`, help, and version output. Other commands
 below describe the planned workflow.
 
 Validate an existing project with `deco validate` or select one explicitly with
@@ -302,9 +302,9 @@ Deco is licensed under the GNU General Public License version 3.0 or later (GPL-
 
 See [LICENSE](LICENSE) for details.
 
-For v0.1.0, `[user]` supports `keep-id` and `image`. Explicit UID/GID values
+`[user]` supports `keep-id` and `image`. Explicit UID/GID values
 must be in 0–4294967294 and fit an OCaml `int`. Image mode, including an
-omitted mode, forbids UID/GID settings; this is an additional v0.1.0 restriction.
+omitted mode, forbids UID/GID settings; this is a restriction beyond the v1 specification.
 
 ### Build and release versions
 
@@ -398,7 +398,7 @@ Use `deco exec --dry-run -- COMMAND` to preview without invoking Podman.
 
 ### Local runtime and SELinux detection
 
-Deco v0.1.0 explicitly uses local Podman (`--remote=false`), ignoring implicit
+Deco explicitly uses local Podman (`--remote=false`), ignoring implicit
 remote connection selection. Assemble and exec use a lightweight version check and resolves
 SELinux status only when it affects workspace relabel compatibility. It checks
 local sysfs first and falls back to Podman info when the result is unknown.
@@ -478,7 +478,7 @@ code 4. Unmanaged resources and unsupported states also return 4. Invalid
 configuration/usage returns 2, unavailable Podman 3, and runtime failures 1.
 Failures report completed commands without claiming verification succeeded.
 
-Unlike the full v1 specification, v0.1.0 does not implement `--force`,
+Unlike the full v1 specification, `remove` does not implement `--force`,
 `--keep-volumes`, named-volume removal, or lifecycle hooks. Removal never changes
 unrelated dependent containers or prunes parent images. Only `deco remove` is
 supported as the removal command.
