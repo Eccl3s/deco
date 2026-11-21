@@ -377,6 +377,42 @@ let () =
   conflict
     [ info; ie (response ""); ii (); ce (response ""); ci ~state:"paused" () ];
   conflict [ info; ie (response ~code:1 ""); ce (response ""); ci () ];
+  (* Ownership refusals: the script ends at the failing inspection, so any
+     build, create or start would be an unexpected command. A moved project
+     and another project with the same name both differ only in the root. *)
+  let owned_by ?(managed = "true") ?(project = "example") root =
+    `Assoc
+      [
+        ("dev.deco.managed", `String managed);
+        ("dev.deco.project", `String project);
+        ("dev.deco.project-root", `String root);
+      ]
+  in
+  let refused resource summary script =
+    match run script with
+    | Error { cause = Conflict message; completed = [] } ->
+        let expected = resource ^ " " ^ summary in
+        let actual =
+          match String.index_opt message '\n' with
+          | Some i -> String.sub message 0 i
+          | None -> message
+        in
+        if actual <> expected then failwith (actual ^ " <> " ^ expected)
+    | _ -> failwith "expected an ownership conflict before any mutation"
+  in
+  List.iter
+    (fun (labels, summary) ->
+      refused "image example-dev-image:latest" summary
+        [ info; ie (response ""); ii ~labels () ];
+      refused "container example-dev-container" summary
+        [ info; ie (response ""); ii (); ce (response ""); ci ~labels () ])
+    [
+      ( owned_by "/old/project",
+        "belongs to a Deco project with the same name at another location" );
+      (owned_by ~project:"other" "/other", "belongs to Deco project \"other\"");
+      ( owned_by ~managed:"false" "/project",
+        "exists but was not created by Deco" );
+    ];
   List.iter
     (fun bad ->
       assert (

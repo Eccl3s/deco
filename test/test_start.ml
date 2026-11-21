@@ -169,7 +169,7 @@ let () =
           (ok (container "exited")),
         "Configured image is missing; run deco assemble" );
       ( fake (ok (container ~project:"other" "exited")),
-        "Resource ownership differs" );
+        "container example-dev-container belongs to Deco project \"other\"" );
       (fake (ok (container ~init:false "exited")), "Container init is disabled");
       (fake (ok (container "paused")), "Unsupported container state");
     ];

@@ -28,6 +28,19 @@ val selinux_enabled : string -> bool
 val availability : ?run:Podman.runner -> unit -> (bool, Podman.error) result
 (** Check Podman and return its SELinux setting. *)
 
+type resource =
+  | Image of string
+  | Container of string
+      (** A resource and the reference used to select it: the configured
+          [name:tag] or name, or a supplied ID. *)
+
+val verify_ownership :
+  Config_loader.t -> resource -> Podman.labels -> (unit, error) result
+(** Check that [labels] carry the loaded project's ownership labels. Otherwise
+    fail with a [Conflict] whose message comes from {!Ownership.describe} and
+    names the resource by its reference. The single ownership check used before
+    any lifecycle operation. *)
+
 val inspect :
   ?run:Podman.runner ->
   ?read_many:(string list list -> (Process.result, Process.error) result list) ->

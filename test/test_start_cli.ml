@@ -15,11 +15,12 @@ let contains s fragment =
   loop 0
 
 (* Fake Podman for one scenario. [project] is the container's project label,
-   [init] its init setting, [before] its state until [marker] exists, [after]
-   its state once it does, and [start] the shell action for podman start. *)
-let script ~root ~marker ?(project = "example") ?(init = true)
+   [label_root] its project-root label (default [root]), [init] its init
+   setting, [before] its state until [marker] exists, [after] its state once
+   it does, and [start] the shell action for podman start. *)
+let script ~root ~marker ?(project = "example") ?label_root ?(init = true)
     ?(missing = false) ~before ~after ~start () =
-  let labels project =
+  let labels ?(root = root) project =
     Printf.sprintf
       {|{"dev.deco.managed":"true","dev.deco.project":"%s","dev.deco.project-root":%s}|}
       project
@@ -28,7 +29,9 @@ let script ~root ~marker ?(project = "example") ?(init = true)
   let container state =
     Printf.sprintf
       {|[{"Id":"cid","Image":"iid","State":{"Status":"%s"},"Config":{"Labels":%s,"WorkingDir":"/"},"HostConfig":{"UsernsMode":"","Init":%b},"Mounts":[]}]|}
-      state (labels project) init
+      state
+      (labels ?root:label_root project)
+      init
   in
   let image =
     Printf.sprintf {|[{"Id":"iid","Labels":%s,"Config":{"WorkingDir":"/"}}]|}
@@ -197,7 +200,18 @@ let () =
               ~after:"running" ~start:"exit 97" (),
             4,
             "",
-            "ownership" );
+            "deco: container example-dev-container belongs to Deco project \
+             \"foreign\"\n\
+            \  dev.deco.project: expected \"example\", found \"foreign\"\n" );
+          (* A moved project; the old root's ESC byte must arrive escaped. *)
+          ( "moved",
+            script ~root:temp ~marker ~label_root:"/old/\027[31mproject"
+              ~before:"exited" ~after:"running" ~start:"exit 97" (),
+            4,
+            "",
+            "If the project was moved from /old/\\x1b[31mproject and that copy \
+             no longer exists, remove the old container with:\n\
+            \    podman rm example-dev-container\n" );
           ( "incompatible",
             script ~root:temp ~marker ~init:false ~before:"exited"
               ~after:"running" ~start:"exit 97" (),

@@ -110,12 +110,20 @@ let () =
         error false
           (run [ version; (initial, response (container ~labels "running")) ])
       with
-      | Stop.Conflict _ -> ()
+      | Stop.Conflict message ->
+          assert (
+            String.starts_with ~prefix:"container example-dev-container "
+              message)
       | _ -> assert false)
     [
       [];
       ("dev.deco.managed", `String "true") :: labels;
       List.remove_assoc "dev.deco.project" labels;
+      (* A moved project, or another project with the same name elsewhere. *)
+      ("dev.deco.project-root", `String "/old/project")
+      :: List.remove_assoc "dev.deco.project-root" labels;
+      ("dev.deco.project", `String "other")
+      :: List.remove_assoc "dev.deco.project" labels;
     ];
   let absent target =
     [
