@@ -35,7 +35,8 @@
   test_config_loader
   test_host_paths
   test_user_identity
-  test_trust_digest)
+  test_trust_digest
+  test_trust_store)
  (modules
   :standard
   \
