@@ -34,6 +34,11 @@ described under `[[container.secrets]]`.
   `..` path components.
 - Validation must happen before Deco builds, creates, starts, stops, or removes
   a container.
+- A valid configuration must also be trusted before Deco builds, creates,
+  starts, stops, or removes a container, or runs a hook or action. Trust is
+  an approval of the exact `.deco/` contents, recorded outside the project
+  and defined by [`deco-trust.md`](./deco-trust.md). No configuration key
+  grants or affects trust.
 
 The complete top-level schema is:
 
