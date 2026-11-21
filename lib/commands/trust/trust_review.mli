@@ -9,6 +9,8 @@ val render : now:float -> Trust.status -> Config_loader.t -> string
     settings that are accepted but not applied, in that order. A build context
     outside the canonical [.deco/] directory ([status.deco_dir]) and a workspace
     source outside the project root are flagged. Build arguments are listed by
-    name only. Every value is escaped with {!Terminal_text.escape}; the output
-    has no styling and ends with a newline. Times use {!Timestamp.to_human}
-    relative to [now]. *)
+    name only. Planned settings are listed with their values from the parsed
+    configuration bytes, so hooks and actions appear in full, except
+    environment-variable values, which are shown as [(hidden)]. Every value is
+    escaped with {!Terminal_text.escape}; the output has no styling and ends
+    with a newline. Times use {!Timestamp.to_human} relative to [now]. *)

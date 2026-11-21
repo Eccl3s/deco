@@ -19,6 +19,26 @@ let () =
         [ "container"; "environment"; "TOKEN" ];
         [ "network"; "mode" ];
       ]);
+  assert (
+    Config.Decode.planned_settings
+      "project.name='example'\n\
+       container.cap_drop=['ALL']\n\
+       container.privileged=true\n\
+       network.ports=[{host=8080,container=80}]\n\
+       hooks.post_create=\"say \\\"hi\\\"\\nthen\\t\\\\ done\"\n\
+       actions={}\n\
+       container.environment.TOKEN='SECRET_VALUE'\n\
+       container.name='supported-not-listed'"
+    = [
+        ([ "actions" ], Some "{}");
+        ([ "container"; "cap_drop" ], Some "[\"ALL\"]");
+        ([ "container"; "environment"; "TOKEN" ], None);
+        ([ "container"; "privileged" ], Some "true");
+        ([ "hooks"; "post_create" ], Some {|"say \"hi\"\nthen\t\\ done"|});
+        ([ "network"; "ports[0]"; "container" ], Some "80");
+        ([ "network"; "ports[0]"; "host" ], Some "8080");
+      ]);
+  assert (Config.Decode.planned_settings "not = [toml" = []);
   List.iter
     (fun extra -> assert (Result.is_error (decode extra)))
     [

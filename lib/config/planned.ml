@@ -54,18 +54,56 @@ let registry = function
       ]
   | _ -> []
 
+let quote s =
+  let buffer = Buffer.create (String.length s + 2) in
+  Buffer.add_char buffer '"';
+  String.iter
+    (function
+      | '"' -> Buffer.add_string buffer "\\\""
+      | '\\' -> Buffer.add_string buffer "\\\\"
+      | '\n' -> Buffer.add_string buffer "\\n"
+      | '\r' -> Buffer.add_string buffer "\\r"
+      | '\t' -> Buffer.add_string buffer "\\t"
+      | c -> Buffer.add_char buffer c)
+    s;
+  Buffer.add_char buffer '"';
+  Buffer.contents buffer
+
+(* One-line TOML-style rendering of a reported value. Strings keep other
+   control characters; display code escapes them for the terminal. *)
+let rec render = function
+  | Otoml.TomlString s -> quote s
+  | Otoml.TomlInteger i -> string_of_int i
+  | Otoml.TomlBoolean b -> string_of_bool b
+  | Otoml.TomlArray values | Otoml.TomlTableArray values ->
+      "[" ^ String.concat ", " (List.map render values) ^ "]"
+  | Otoml.TomlTable fields | Otoml.TomlInlineTable fields ->
+      "{"
+      ^ String.concat ", "
+          (List.map (fun (key, value) -> key ^ " = " ^ render value) fields)
+      ^ "}"
+  | value -> Otoml.Printer.to_string value
+
+(* Environment-variable values must never be shown. *)
+let hidden = function
+  | "container" :: "environment" :: _ :: _ -> true
+  | _ -> false
+
 let strip tree =
   let ignored = ref [] and errors = ref [] in
-  let report path = ignored := path :: !ignored in
+  let report path value =
+    let value = if hidden path then None else Some (render value) in
+    ignored := (path, value) :: !ignored
+  in
   let error path message = errors := Diagnostic.{ path; message } :: !errors in
   let rec check path schema value =
     match (schema, value) with
     | String, Otoml.TomlString _
     | Integer, Otoml.TomlInteger _
     | Boolean, Otoml.TomlBoolean _ ->
-        report path
+        report path value
     | Strings, Otoml.TomlArray values ->
-        report path;
+        report path value;
         List.iter
           (fun value ->
             match value with
@@ -74,7 +112,7 @@ let strip tree =
           values
     | (Map | Table _), (Otoml.TomlTable fields | Otoml.TomlInlineTable fields)
       ->
-        if fields = [] then report path;
+        if fields = [] then report path value;
         List.iter
           (fun (key, value) ->
             match schema with
@@ -86,7 +124,7 @@ let strip tree =
             | _ -> assert false)
           fields
     | Rows fields, Otoml.TomlArray rows ->
-        if rows = [] then report path;
+        if rows = [] then report path value;
         List.iteri
           (fun index value ->
             let entry =
@@ -114,4 +152,6 @@ let strip tree =
       fields
   in
   let supported = walk [] tree in
-  (supported, List.sort_uniq compare !ignored, !errors)
+  ( supported,
+    List.sort_uniq (fun (a, _) (b, _) -> compare a b) !ignored,
+    !errors )

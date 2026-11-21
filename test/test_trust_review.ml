@@ -106,6 +106,9 @@ let () =
             user.name='dev'\n\
             container.privileged=true\n\
             hooks.post_create='curl example | sh'\n\
+            actions.test='''line one\n\
+            line two'''\n\
+            container.environment.TOKEN='SECRET_VALUE'\n\
             mounts.workspace={source='" ^ outside ^ "',target='/workspace'}\n")
       in
       let status =
@@ -134,9 +137,15 @@ let () =
           "  User mode:      keep-id\n";
           "  Workspace:      " ^ outside
           ^ " -> /workspace (read-write)  [outside the project]\n";
-          "  container.privileged\n  hooks.post_create\n";
+          "\n\
+           Planned settings (accepted, not applied by this version)\n\
+          \  actions.test = \"line one\\nline two\"\n\
+          \  container.environment.TOKEN = (hidden)\n\
+          \  container.privileged = true\n\
+          \  hooks.post_create = \"curl example | sh\"\n";
         ];
       assert (not (contains review "secret-looking-value"));
+      assert (not (contains review "SECRET_VALUE"));
       assert (not (String.contains review '\027'));
       (* A build context inside a symlinked .deco is not flagged. *)
       let root = Filename.concat temp "linked" in

@@ -70,8 +70,13 @@ let render ~now (status : Trust.status) (loaded : Config_loader.t) =
            (safe source ^ " -> " ^ safe workspace.target ^ " (read-write)"))
   | Some _, None | None, _ -> field "Workspace" "none");
   section false "Planned settings (accepted, not applied by this version)";
-  (match loaded.ignored_paths with
+  (match Config.Decode.planned_settings loaded.contents with
   | [] -> line "  none"
-  | paths ->
-      List.iter (fun path -> line "  %s" (safe (String.concat "." path))) paths);
+  | settings ->
+      List.iter
+        (fun (path, value) ->
+          line "  %s = %s"
+            (safe (String.concat "." path))
+            (match value with Some value -> safe value | None -> "(hidden)"))
+        settings);
   Buffer.contents buffer
