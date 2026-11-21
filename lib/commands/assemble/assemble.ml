@@ -111,188 +111,181 @@ let run ?execute ?read_many
   let id_container () =
     match !container with Some c -> c.Podman.id | None -> ""
   in
+  (* A failed read is ambiguous before anything has changed: Podman itself may
+     be down. After a mutation it is reported as it is. *)
+  let read_failure ~initial message =
+    if initial then
+      match Podman.info ~run:read () with
+      | Error e -> fail (Podman e)
+      | Ok _ -> fail (Runtime message)
+    else fail (Runtime message)
+  in
+  (* Inspect with a planned command. [Ok None] means the resource is absent;
+     a non-zero inspect falls back to an existence check to tell absence from
+     failure. Ownership is verified for every resource found. *)
+  let inspect ~initial ~operation ~decode ~lookup ~owned argv =
+    let* r =
+      match read argv with
+      | Ok r -> Ok r
+      | Error e -> read_failure ~initial (e.Process.operation ^ ": " ^ e.message)
+    in
+    if r.Process.status = Unix.WEXITED 0 then
+      let* x =
+        match decode r.stdout with
+        | Ok x -> Ok x
+        | Error message ->
+            fail (Podman (Invalid_response { operation; message }))
+      in
+      let* () = owned x in
+      Ok (Some x)
+    else
+      let name = List.hd (List.rev argv) in
+      let run command = if command = argv then Ok r else read command in
+      match lookup ~run name with
+      | Ok Podman.Absent -> Ok None
+      (* Not expected: the lookup replays this failed inspection. *)
+      | Ok (Podman.Present _) ->
+          read_failure ~initial "Resource missing after mutation"
+      | Error (Podman.Runtime { message; _ }) -> read_failure ~initial message
+      | Error e -> fail (Podman e)
+  in
+  let inspect_image ~initial =
+    inspect ~initial ~operation:"image inspect" ~decode:Podman.decode_image
+      ~lookup:(fun ~run name -> Podman.inspect_image ~run name)
+      ~owned:(fun (i : Podman.image) -> own_image i.labels)
+  in
+  let inspect_container ~initial =
+    inspect ~initial ~operation:"container inspect"
+      ~decode:Podman.decode_container
+      ~lookup:(fun ~run name -> Podman.inspect_container ~run name)
+      ~owned:(fun (c : Podman.container) -> own_container c.labels)
+  in
+  (* Only the initial inspections may find a resource absent. *)
+  let present = function
+    | Some x -> Ok x
+    | None -> fail (Runtime "Resource missing after mutation")
+  in
+  let created_id (r : Process.result) =
+    let id = String.trim r.stdout in
+    if
+      String.length id = 64
+      && String.for_all
+           (function '0' .. '9' | 'a' .. 'f' -> true | _ -> false)
+           id
+    then Ok id
+    else fail (Runtime "Invalid created container ID")
+  in
+  let availability argv =
+    let* r =
+      match read argv with
+      | Ok r -> Ok r
+      | Error e -> fail (Podman (Podman.unavailable e))
+    in
+    if r.status <> Unix.WEXITED 0 then
+      fail (Podman (Unavailable (Podman.message r)))
+    else (
+      (if concurrent then
+         let commands =
+           List.filter_map
+             (fun (step : Assemble_plan.step) ->
+               if List.mem step.operation [ Image_inspect; Container_inspect ]
+               then
+                 Some
+                   (Assemble_plan.resolve ~image_id:"" ~container_id:""
+                      step.command)
+               else None)
+             plan.steps
+         in
+         prefetched := List.combine commands (read_many commands));
+      Ok ())
+  in
+  (* Re-inspect the container after creating or starting it. *)
+  let inspect_after_mutation ~running argv =
+    let* c = Result.bind (inspect_container ~initial:false argv) present in
+    let* () =
+      if c.Podman.id <> id_container () then
+        fail (Conflict "Container ID differs")
+      else Ok ()
+    in
+    let* () = match !image with Some i -> check i c | None -> Ok () in
+    container := Some c;
+    if running && c.state <> "running" then
+      fail (Runtime "Container is not running after start")
+    else Ok ()
+  in
   let rec loop = function
     | [] -> Ok ()
     | (step : Assemble_plan.step) :: rest ->
-        let index = step.operation in
-        let read_failure message =
-          if List.mem index [ Image_inspect; Container_inspect ] then
-            match Podman.info ~run:read () with
-            | Error e -> fail (Podman e)
-            | Ok _ -> fail (Runtime message)
-          else fail (Runtime message)
-        in
-        let* () = if index = Build then ready () else Ok () in
-        let active =
-          match index with
-          | Availability | Image_inspect | Container_inspect -> true
-          | Build -> !image = None
-          | Built_inspect -> !built
-          | Create -> !container = None
-          | Created_inspect -> !created
-          | Start -> (
-              match !container with
-              | Some c -> c.state <> "running"
-              | None -> false)
-          | Started_inspect -> !started
+        let argv () =
+          Assemble_plan.resolve ~image_id:(id_image ())
+            ~container_id:(id_container ()) step.command
         in
         let* () =
-          if not active then Ok ()
-          else
-            let argv =
-              Assemble_plan.resolve ~image_id:(id_image ())
-                ~container_id:(id_container ()) step.command
-            in
-            let mutating = List.mem index [ Build; Create; Start ] in
-            let* r =
-              if mutating then
-                mutation
-                  (if index = Build then Process.Inherit else Capture)
-                  argv
-              else
-                match read argv with
-                | Error e ->
-                    if index = Availability then
-                      fail (Podman (Podman.unavailable e))
-                    else read_failure (e.operation ^ ": " ^ e.message)
-                | Ok r -> Ok r
-            in
-            let success = r.Process.status = Unix.WEXITED 0 in
-            let absent = ref false in
-            let inspecting =
-              List.mem index
-                [
-                  Image_inspect;
-                  Container_inspect;
-                  Built_inspect;
-                  Created_inspect;
-                  Started_inspect;
-                ]
-            in
-            let* () =
-              if inspecting && not success then
-                let kind =
-                  if List.mem index [ Image_inspect; Built_inspect ] then
-                    "image"
-                  else "container"
-                in
-                let name = List.hd (List.rev argv) in
-                let run command =
-                  if command = argv then Ok r else read command
-                in
-                let result =
-                  if kind = "image" then
-                    Result.map
-                      (function Podman.Absent -> true | Present _ -> false)
-                      (Podman.inspect_image ~run name)
-                  else
-                    Result.map
-                      (function Podman.Absent -> true | Present _ -> false)
-                      (Podman.inspect_container ~run name)
-                in
-                match result with
-                | Ok true
-                  when List.mem index [ Image_inspect; Container_inspect ] ->
-                    absent := true;
-                    Ok ()
-                | Ok _ -> read_failure "Resource missing after mutation"
-                | Error (Podman.Runtime { message; _ }) -> read_failure message
-                | Error e -> fail (Podman e)
-              else Ok ()
-            in
-            if !absent then Ok ()
-            else if not success then
-              if index = Availability then
-                fail (Podman (Unavailable (Podman.message r)))
-              else read_failure (Podman.message r)
-            else
-              match index with
-              | Image_inspect | Built_inspect ->
-                  let* i =
-                    match Podman.decode_image r.stdout with
-                    | Ok i -> Ok i
-                    | Error e ->
-                        fail
-                          (Podman
-                             (Invalid_response
-                                { operation = "image inspect"; message = e }))
-                  in
-                  let* () = own_image i.labels in
-                  image := Some i;
-                  Ok ()
-              | Container_inspect | Created_inspect | Started_inspect ->
-                  let* c =
-                    match Podman.decode_container r.stdout with
-                    | Ok c -> Ok c
-                    | Error e ->
-                        fail
-                          (Podman
-                             (Invalid_response
-                                { operation = "container inspect"; message = e }))
-                  in
-                  let* () = own_container c.labels in
-                  let* () =
-                    if index <> Container_inspect && c.id <> id_container ()
-                    then fail (Conflict "Container ID differs")
-                    else Ok ()
-                  in
+          match step.operation with
+          | Availability -> availability (argv ())
+          | Image_inspect ->
+              let* i = inspect_image ~initial:true (argv ()) in
+              image := i;
+              Ok ()
+          | Container_inspect -> (
+              let* c = inspect_container ~initial:true (argv ()) in
+              match c with
+              | None -> Ok ()
+              | Some c ->
                   let* () =
                     match !image with Some i -> check i c | None -> Ok ()
                   in
                   container := Some c;
-                  if index = Started_inspect && c.state <> "running" then
-                    fail (Runtime "Container is not running after start")
-                  else Ok ()
-              | Availability ->
-                  let commands =
-                    List.filter_map
-                      (fun step ->
-                        if
-                          List.mem step.operation
-                            [ Image_inspect; Container_inspect ]
-                        then
-                          Some
-                            (Assemble_plan.resolve ~image_id:"" ~container_id:""
-                               step.command)
-                        else None)
-                      plan.steps
-                  in
-                  if concurrent then
-                    prefetched := List.combine commands (read_many commands);
-                  Ok ()
-              | Build ->
-                  built := true;
-                  Ok ()
-              | Create ->
-                  let id = String.trim r.stdout in
-                  if
-                    String.length id <> 64
-                    || not
-                         (String.for_all
-                            (function
-                              | '0' .. '9' | 'a' .. 'f' -> true | _ -> false)
-                            id)
-                  then fail (Runtime "Invalid created container ID")
-                  else (
-                    created := true;
-                    container :=
-                      Some
-                        {
-                          Podman.id;
-                          labels = [];
-                          state = "created";
-                          image_id = id_image ();
-                          user = "";
-                          userns = "";
-                          workdir = "";
-                          init = false;
-                          mounts = [];
-                          created = None;
-                        };
-                    Ok ())
-              | Start ->
+                  Ok ())
+          | Build ->
+              let* () = ready () in
+              if !image <> None then Ok ()
+              else
+                let* _ = mutation Process.Inherit (argv ()) in
+                built := true;
+                Ok ()
+          | Built_inspect ->
+              if not !built then Ok ()
+              else
+                let* i =
+                  Result.bind (inspect_image ~initial:false (argv ())) present
+                in
+                image := Some i;
+                Ok ()
+          | Create ->
+              if !container <> None then Ok ()
+              else
+                let* r = mutation Process.Capture (argv ()) in
+                let* id = created_id r in
+                created := true;
+                container :=
+                  Some
+                    {
+                      Podman.id;
+                      labels = [];
+                      state = "created";
+                      image_id = id_image ();
+                      user = "";
+                      userns = "";
+                      workdir = "";
+                      init = false;
+                      mounts = [];
+                      created = None;
+                    };
+                Ok ()
+          | Created_inspect ->
+              if !created then inspect_after_mutation ~running:false (argv ())
+              else Ok ()
+          | Start -> (
+              match !container with
+              | Some c when c.state <> "running" ->
+                  let* _ = mutation Process.Capture (argv ()) in
                   started := true;
                   Ok ()
+              | _ -> Ok ())
+          | Started_inspect ->
+              if !started then inspect_after_mutation ~running:true (argv ())
+              else Ok ()
         in
         loop rest
   in
