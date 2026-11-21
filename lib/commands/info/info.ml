@@ -40,8 +40,16 @@ type mount = {
 
 type port = { host : int; container : int; protocol : string; bind : string }
 
+type trust = {
+  state : string;
+  digest : string;
+  trusted_at : float option;
+  changed : (string * string) list;
+}
+
 type report = {
   project : project;
+  trust : trust option;
   podman : podman;
   image : image;
   container : container;
@@ -99,7 +107,7 @@ let observe ~run ~probe (loaded : Config_loader.t) =
   in
   Ok ({ version; image; container; incompatibilities }, owned)
 
-let build (loaded : Config_loader.t) observed =
+let build ~trust (loaded : Config_loader.t) observed =
   let e = loaded.effective in
   let created t = Option.bind t Timestamp.parse in
   let image_workdir =
@@ -188,6 +196,20 @@ let build (loaded : Config_loader.t) observed =
         root = loaded.project.root;
         config = loaded.project.config_path;
       };
+    trust =
+      Option.map
+        (fun (status : Trust.status) ->
+          {
+            state = Trust.state_to_string status.state;
+            digest = status.digest.digest;
+            trusted_at = status.trusted_at;
+            changed =
+              List.map
+                (fun (path, change) ->
+                  (path, Trust_digest.change_to_string change))
+                status.changes;
+          })
+        trust;
     podman =
       {
         available = Option.is_some observed;
@@ -215,7 +237,7 @@ let build (loaded : Config_loader.t) observed =
   }
 
 let collect ?run ?read_many
-    ?(probe = fun () -> Container_runtime.local_selinux ())
+    ?(probe = fun () -> Container_runtime.local_selinux ()) ~trust
     (loaded : Config_loader.t) =
   let reference = Config.Effective.image_reference loaded.effective.image in
   let base = Option.value ~default:(fun argv -> Process.run argv) run in
@@ -237,8 +259,9 @@ let collect ?run ?read_many
     | other -> other
   in
   match result with
-  | Ok observed -> Ok (build loaded (Some observed), None)
-  | Error (Podman.Unavailable reason) -> Ok (build loaded None, Some reason)
+  | Ok observed -> Ok (build ~trust loaded (Some observed), None)
+  | Error (Podman.Unavailable reason) ->
+      Ok (build ~trust loaded None, Some reason)
   | Error e -> Error e
 
 let render_json r =
@@ -258,6 +281,22 @@ let render_json r =
               ("root", str r.project.root);
               ("config", str r.project.config);
             ] );
+        ( "trust",
+          opt
+            (fun t ->
+              `Assoc
+                [
+                  ("state", str t.state);
+                  ("digest", str t.digest);
+                  ("trusted_at", opt time t.trusted_at);
+                  ( "changed",
+                    `List
+                      (List.map
+                         (fun (path, change) ->
+                           `Assoc [ ("path", str path); ("change", str change) ])
+                         t.changed) );
+                ])
+            r.trust );
         ( "podman",
           `Assoc
             [
@@ -356,6 +395,19 @@ let render_human ~now ~ignored r =
   field "Description" (text r.project.description);
   field "Root" (safe r.project.root);
   field "Config" (safe r.project.config);
+  section false "Trust";
+  (match r.trust with
+  | None ->
+      field "State" "-";
+      field "Digest" "-";
+      field "Approved" "-"
+  | Some t ->
+      field "State" (safe t.state);
+      field "Digest" (safe t.digest);
+      field "Approved" (time t.trusted_at);
+      List.iter
+        (fun (path, change) -> line "    - %s %s" (safe change) (safe path))
+        t.changed);
   section false "Podman";
   field "Available" (yes_no r.podman.available);
   field "Version" (text r.podman.version);

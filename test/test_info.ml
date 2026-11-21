@@ -107,8 +107,23 @@ let () =
     (run, calls)
   in
   let no_probe () = Some true in
-  let collect ?(loaded = loaded) ?(probe = no_probe) run =
-    match Info.collect ~run ~probe loaded with
+  let changed : Trust.status =
+    {
+      state = Trust.Changed;
+      root = "/project";
+      deco_dir = "/project/.deco";
+      digest = { digest = "blake2b-256:abc"; entries = [] };
+      trusted_at = Some 1794388442.;
+      changes =
+        [
+          ("config.toml", Trust_digest.Modified); ("notes", Trust_digest.Added);
+        ];
+      warnings = [];
+    }
+  in
+  let collect ?(loaded = loaded) ?(probe = no_probe) ?(trust = Some changed) run
+      =
+    match Info.collect ~run ~probe ~trust loaded with
     | Ok (report, None) -> report
     | Ok (_, Some reason) -> failwith ("unexpectedly unavailable: " ^ reason)
     | Error _ -> failwith "unexpected error"
@@ -138,6 +153,15 @@ let () =
   assert (r.runtime = { user_mode = "image"; workdir = Some "/"; shell = "sh" });
   assert (r.mounts = [] && r.dns = [] && r.ports = []);
   assert (r.hooks = [] && r.actions = []);
+  assert (
+    r.trust
+    = Some
+        {
+          state = "changed";
+          digest = "blake2b-256:abc";
+          trusted_at = Some 1794388442.;
+          changed = [ ("config.toml", "modified"); ("notes", "added") ];
+        });
   (* Exact JSON for the complete report. *)
   let expected =
     {|{
@@ -146,6 +170,15 @@ let () =
     "description": "Demo",
     "root": "/project",
     "config": "/project/.deco/config.toml"
+  },
+  "trust": {
+    "state": "changed",
+    "digest": "blake2b-256:abc",
+    "trusted_at": "2026-11-11T09:14:02Z",
+    "changed": [
+      { "path": "config.toml", "change": "modified" },
+      { "path": "notes", "change": "added" }
+    ]
   },
   "podman": { "available": true, "version": "5.7.0" },
   "image": {
@@ -178,6 +211,29 @@ let () =
   in
   let json = Info.render_json r in
   if json <> expected then failwith json;
+  (* Untrusted: no approval time and no changes. *)
+  let run, _ = fake (ok (container "running")) in
+  let untrusted =
+    collect
+      ~trust:
+        (Some
+           {
+             changed with
+             state = Trust.Untrusted;
+             trusted_at = None;
+             changes = [];
+           })
+      run
+  in
+  let json = Info.render_json untrusted in
+  assert (
+    contains json
+      {|"trust": {
+    "state": "untrusted",
+    "digest": "blake2b-256:abc",
+    "trusted_at": null,
+    "changed": []
+  },|});
   (* Reads are batched when read_many is supplied. *)
   let run, _ = fake (ok (container "running")) in
   let batches = ref [] in
@@ -185,7 +241,7 @@ let () =
     batches := commands :: !batches;
     List.map run commands
   in
-  (match Info.collect ~run ~read_many ~probe:no_probe loaded with
+  (match Info.collect ~run ~read_many ~probe:no_probe ~trust:None loaded with
   | Ok (_, None) -> ()
   | _ -> assert false);
   assert (!batches = [ [ version_json; image_inspect; container_inspect ] ]);
@@ -377,7 +433,7 @@ let () =
   List.iter
     (fun version ->
       let run, calls = fake ~version (ok (container "running")) in
-      match Info.collect ~run ~probe:no_probe loaded with
+      match Info.collect ~run ~probe:no_probe ~trust:None loaded with
       | Ok (r, Some reason) ->
           assert (reason <> "");
           assert (!calls = [ version_json ]);
@@ -390,6 +446,7 @@ let () =
           assert (r.container.compatible = None);
           assert (r.runtime.workdir = None);
           let json = Info.render_json r in
+          assert (contains json {|"trust": null,|});
           assert (contains json {|"available": false, "version": null|});
           assert (contains json {|"exists": null|})
       | _ -> assert false)
@@ -402,20 +459,20 @@ let () =
     Ok { Process.status = Unix.WSIGNALED 9; stdout = ""; stderr = "" }
   in
   let run, _ = fake failing in
-  (match Info.collect ~run ~probe:no_probe loaded with
+  (match Info.collect ~run ~probe:no_probe ~trust:None loaded with
   | Error (Podman.Runtime _) -> ()
   | _ -> assert false);
   (* ... unless Podman has become unavailable in the meantime. *)
   let run, _ = fake ~probe_version:(ok ~status:(Unix.WEXITED 125) "") failing in
-  (match Info.collect ~run ~probe:no_probe loaded with
+  (match Info.collect ~run ~probe:no_probe ~trust:None loaded with
   | Ok (r, Some _) -> assert (not r.podman.available)
   | _ -> assert false);
   (* Malformed responses are errors. *)
   let run, _ = fake (ok "not json") in
-  (match Info.collect ~run ~probe:no_probe loaded with
+  (match Info.collect ~run ~probe:no_probe ~trust:None loaded with
   | Error (Podman.Invalid_response _) -> ()
   | _ -> assert false);
   let run, _ = fake ~version:(ok "{}") (ok (container "running")) in
-  match Info.collect ~run ~probe:no_probe loaded with
+  match Info.collect ~run ~probe:no_probe ~trust:None loaded with
   | Error (Podman.Invalid_response _) -> ()
   | _ -> assert false
