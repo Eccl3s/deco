@@ -70,9 +70,7 @@ type observed = {
 let ( let* ) = Result.bind
 
 let observe ~run ~probe (loaded : Config_loader.t) =
-  let reference =
-    loaded.effective.image.name ^ ":" ^ loaded.effective.image.tag
-  in
+  let reference = Config.Effective.image_reference loaded.effective.image in
   let container_name = loaded.effective.container.name in
   let owned labels =
     Result.is_ok
@@ -219,9 +217,7 @@ let build (loaded : Config_loader.t) observed =
 let collect ?run ?read_many
     ?(probe = fun () -> Container_runtime.local_selinux ())
     (loaded : Config_loader.t) =
-  let reference =
-    loaded.effective.image.name ^ ":" ^ loaded.effective.image.tag
-  in
+  let reference = Config.Effective.image_reference loaded.effective.image in
   let base = Option.value ~default:(fun argv -> Process.run argv) run in
   let result =
     let* run =

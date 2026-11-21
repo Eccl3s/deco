@@ -51,7 +51,7 @@ let render t =
 
 let make (loaded : Config_loader.t) =
   let c = loaded.effective and paths = loaded.host_paths in
-  let image = c.image.name ^ ":" ^ c.image.tag in
+  let image = Config.Effective.image_reference c.image in
   let label_args labels =
     List.concat_map (fun (k, v) -> [ "--label"; k ^ "=" ^ v ]) labels
   in

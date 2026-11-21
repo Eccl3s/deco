@@ -14,7 +14,7 @@ let[@warning "-42"] execute selection dry_run keep_image =
       else
         let effective = loaded.Deco.Config_loader.effective in
         let container = effective.container.name in
-        let image = effective.image.name ^ ":" ^ effective.image.tag in
+        let image = Config.Effective.image_reference effective.image in
         let runners = Build_output.runners ~label:"Starting" ~image in
         (* Report each stage as it completes so the output follows the real
            order. The status line is closed before the final line. *)

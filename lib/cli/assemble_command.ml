@@ -22,10 +22,7 @@ let assemble selection dry_run =
             print_string (Deco.Assemble_plan.render plan);
             0)
       else
-        let image =
-          (loaded.effective.image.Config.Effective.name [@warning "-42"]) ^ ":"
-          ^ loaded.effective.image.tag
-        in
+        let image = Config.Effective.image_reference loaded.effective.image in
         let runners = Build_output.runners ~label:"Starting" ~image in
         let result =
           try
