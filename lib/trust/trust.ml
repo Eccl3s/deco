@@ -12,51 +12,60 @@ type status = {
 
 type error = Digest of Trust_digest.error | Store of string
 
-let check ?store_dir (loaded : Config_loader.t) =
+let store_dir = function
+  | Some dir -> Ok dir
+  | None -> Result.map_error (fun m -> Store m) (Trust_store.dir ())
+
+let digest (loaded : Config_loader.t) =
+  let deco_dir = Filename.concat loaded.project.Project.root ".deco" in
+  match
+    ( (try Ok (Unix.realpath deco_dir)
+       with Unix.Unix_error (error, _, _) ->
+         Error
+           (Trust_digest.Filesystem (deco_dir ^ ": " ^ Unix.error_message error))),
+      Trust_digest.compute ~deco_dir
+        ~config:(loaded.project.Project.config_path, loaded.contents)
+        ~containerfile:loaded.host_paths.Host_paths.containerfile )
+  with
+  | Error error, _ | _, Error error -> Error (Digest error)
+  | Ok deco_dir, Ok digest -> Ok (deco_dir, digest)
+
+let ( let* ) = Result.bind
+
+let check ?store_dir:dir (loaded : Config_loader.t) =
   let root = loaded.project.Project.root in
-  let store_dir =
-    match store_dir with Some dir -> Ok dir | None -> Trust_store.dir ()
+  let* dir = store_dir dir in
+  let* deco_dir, digest = digest loaded in
+  let record, warning = Trust_store.read ~dir ~root in
+  let warnings = Option.to_list warning in
+  let status state trusted_at changes =
+    Ok { state; root; deco_dir; digest; trusted_at; changes; warnings }
   in
-  match store_dir with
-  | Error message -> Error (Store message)
-  | Ok dir -> (
-      let deco_dir = Filename.concat root ".deco" in
-      match
-        ( (try Ok (Unix.realpath deco_dir)
-           with Unix.Unix_error (error, _, _) ->
-             Error
-               (Trust_digest.Filesystem
-                  (deco_dir ^ ": " ^ Unix.error_message error))),
-          Trust_digest.compute ~deco_dir
-            ~config:(loaded.project.Project.config_path, loaded.contents)
-            ~containerfile:loaded.host_paths.Host_paths.containerfile )
-      with
-      | Error error, _ | _, Error error -> Error (Digest error)
-      | Ok deco_dir, Ok digest -> (
-          let record, warning = Trust_store.read ~dir ~root in
-          let warnings = Option.to_list warning in
-          let status state trusted_at changes =
-            Ok { state; root; deco_dir; digest; trusted_at; changes; warnings }
-          in
-          let approved =
-            match record with
-            | Some record -> record.Trust_store.approved
-            | None -> []
-          in
-          match
-            List.find_opt
-              (fun (a : Trust_store.approval) -> a.digest = digest.digest)
-              approved
-          with
-          | Some approval -> status Trusted (Some approval.trusted_at) []
-          | None -> (
-              match (record, approved) with
-              | None, _ -> status Untrusted None []
-              | Some _, [] -> status Changed None []
-              | Some _, latest :: _ ->
-                  status Changed (Some latest.trusted_at)
-                    (Trust_digest.diff ~approved:latest.entries
-                       ~current:digest.entries))))
+  let approved =
+    match record with Some record -> record.Trust_store.approved | None -> []
+  in
+  match
+    List.find_opt
+      (fun (a : Trust_store.approval) -> a.digest = digest.digest)
+      approved
+  with
+  | Some approval -> status Trusted (Some approval.trusted_at) []
+  | None -> (
+      match (record, approved) with
+      | None, _ -> status Untrusted None []
+      | Some _, [] -> status Changed None []
+      | Some _, latest :: _ ->
+          status Changed (Some latest.trusted_at)
+            (Trust_digest.diff ~approved:latest.entries ~current:digest.entries)
+      )
+
+let approve ?store_dir:dir ~deco_version ~now (loaded : Config_loader.t) =
+  let* dir = store_dir dir in
+  let* _, digest = digest loaded in
+  Result.map_error
+    (fun message -> Store message)
+    (Trust_store.approve ~dir ~root:loaded.project.Project.root
+       ~name:loaded.effective.project.name ~deco_version ~now digest)
 
 let state_to_string = function
   | Trusted -> "trusted"

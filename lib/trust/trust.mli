@@ -25,12 +25,22 @@ type status = {
 
 type error =
   | Digest of Trust_digest.error
-  | Store of string  (** The trust store could not be located. *)
+  | Store of string  (** The trust store could not be located or written. *)
 
 val check : ?store_dir:string -> Config_loader.t -> (status, error) result
 (** Digest [.deco/] using the loaded configuration bytes and the resolved
     Containerfile, then compare it with the project's record in [store_dir]
     (default {!Trust_store.dir}). *)
+
+val approve :
+  ?store_dir:string ->
+  deco_version:string ->
+  now:float ->
+  Config_loader.t ->
+  (unit, error) result
+(** Digest [.deco/] as {!check} does and record an approval of it in [store_dir]
+    (default {!Trust_store.dir}) with {!Trust_store.approve}. No review is
+    shown; [deco init] uses this for the configuration it has just written. *)
 
 val state_to_string : state -> string
 (** [trusted], [changed] or [untrusted]. *)

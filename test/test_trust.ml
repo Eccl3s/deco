@@ -109,7 +109,38 @@ let () =
       | Error (T.Digest (D.Unsupported_entry _) as e) ->
           assert (contains (T.error_to_string e) "pipe")
       | Ok _ | Error _ -> assert false);
+      (* approve digests the current .deco/ and records it. *)
+      let loaded () =
+        match Deco.Project.select ~directory:root with
+        | Ok p -> (
+            match Deco.Config_loader.load p with
+            | Ok l -> l
+            | Error _ -> assert false)
+        | Error _ -> assert false
+      in
+      (match
+         T.approve ~store_dir ~deco_version:"test" ~now:3000. (loaded ())
+       with
+      | Error (T.Digest (D.Unsupported_entry _)) -> ()
+      | Ok () | Error _ -> assert false);
       Unix.unlink (Filename.concat root ".deco/pipe");
+      assert (
+        T.approve ~store_dir ~deco_version:"test" ~now:3000. (loaded ()) = Ok ());
+      let approved = check () in
+      assert (approved.state = T.Trusted && approved.trusted_at = Some 3000.);
+      (match S.read ~dir:store_dir ~root with
+      | Some { project_name = "demo"; approved = latest :: _; _ }, None ->
+          assert (latest.deco_version = "test")
+      | _ -> assert false);
+      let blocked = Filename.concat temp "blocked" in
+      write blocked "";
+      (match
+         T.approve
+           ~store_dir:(Filename.concat blocked "store")
+           ~deco_version:"test" ~now:3000. (loaded ())
+       with
+      | Error (T.Store _) -> ()
+      | Ok () | Error _ -> assert false);
       (* Messages. *)
       let message = T.failure_message ~command:"assemble" added in
       assert (
