@@ -161,19 +161,25 @@ let preflight ?run ?read_many commands =
                 remaining := List.remove_assoc argv !remaining;
                 result)
 
+(* A failed read is ambiguous: ask Podman whether it is reachable at all, so an
+   unavailable Podman is reported as such rather than as a command failure. *)
+let classify ~run = function
+  | Ok x -> Ok x
+  | Error (Podman.Runtime _ as original) -> (
+      match Podman.info ~run () with
+      | Error e -> Error (Podman e)
+      | Ok _ -> Error (Podman original))
+  | Error e -> Error (Podman e)
+
+let image_reference (loaded : Config_loader.t) =
+  loaded.effective.image.name ^ ":" ^ loaded.effective.image.tag
+
 let inspect ?run ?read_many ?(probe = fun () -> local_selinux ()) ?selinux
     ?container_id (loaded : Config_loader.t) =
   let injected_run = run in
   let run = Option.value ~default:(fun argv -> Process.run argv) run in
   let ( let* ) r f = match r with Ok x -> f x | Error e -> Error e in
-  let wrap = function
-    | Ok x -> Ok x
-    | Error (Podman.Runtime _ as original) -> (
-        match Podman.info ~run () with
-        | Error e -> Error (Podman e)
-        | Ok _ -> Error (Podman original))
-    | Error e -> Error (Podman e)
-  in
+  let wrap result = classify ~run result in
   let own labels =
     match
       Ownership.verify ~project:loaded.effective.project.name
@@ -182,10 +188,7 @@ let inspect ?run ?read_many ?(probe = fun () -> local_selinux ()) ?selinux
     | Ok () -> Ok ()
     | Error _ -> Error (Conflict "Resource ownership differs")
   in
-  let image_command =
-    Podman_command.inspect "image"
-      (loaded.effective.image.name ^ ":" ^ loaded.effective.image.tag)
-  in
+  let image_command = Podman_command.inspect "image" (image_reference loaded) in
   let container_command =
     Podman_command.inspect "container"
       (Option.value ~default:loaded.effective.container.name container_id)
@@ -196,11 +199,7 @@ let inspect ?run ?read_many ?(probe = fun () -> local_selinux ()) ?selinux
          [ Podman_command.version; image_command; container_command ])
   in
   let* () = wrap (Podman.available ~run ()) in
-  let* image =
-    wrap
-      (Podman.inspect_image ~run
-         (loaded.effective.image.name ^ ":" ^ loaded.effective.image.tag))
-  in
+  let* image = wrap (Podman.inspect_image ~run (image_reference loaded)) in
   let* image =
     match image with
     | Podman.Absent ->
@@ -235,11 +234,7 @@ let inspect_owned_container ?(run = fun argv -> Process.run argv) ?container_id
     Podman.inspect_container ~run
       (Option.value ~default:loaded.effective.container.name container_id)
   with
-  | Error (Podman.Runtime _ as original) -> (
-      match Podman.info ~run () with
-      | Error e -> Error (Podman e)
-      | Ok _ -> Error (Podman original))
-  | Error e -> Error (Podman e)
+  | Error _ as e -> classify ~run e
   | Ok Podman.Absent -> Ok Podman.Absent
   | Ok (Podman.Present container) -> (
       match
@@ -253,21 +248,14 @@ let inspect_owned_image ?(run = fun argv -> Process.run argv) ?image_id
     (loaded : Config_loader.t) =
   match
     Podman.inspect_image ~run
-      (Option.value
-         ~default:
-           (loaded.effective.image.name ^ ":" ^ loaded.effective.image.tag)
-         image_id)
+      (Option.value ~default:(image_reference loaded) image_id)
   with
-  | Error (Podman.Runtime _ as original) -> (
-      match Podman.info ~run () with
-      | Error e -> Error (Podman e)
-      | Ok _ -> Error (Podman original))
-  | Error e -> Error (Podman e)
+  | Error _ as e -> classify ~run e
   | Ok Podman.Absent -> Ok Podman.Absent
-  | Ok (Podman.Present container) -> (
+  | Ok (Podman.Present image) -> (
       match
         Ownership.verify ~project:loaded.effective.project.name
-          ~project_root:loaded.project.root container.labels
+          ~project_root:loaded.project.root image.labels
       with
-      | Ok () -> Ok (Podman.Present container)
+      | Ok () -> Ok (Podman.Present image)
       | Error _ -> Error (Conflict "Resource ownership differs"))
