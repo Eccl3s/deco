@@ -64,6 +64,9 @@ let () =
       assert (
         contains err
           " is not trusted\nRun 'deco trust' to review and approve it.\n");
+      assert (
+        contains err
+          "Or run 'deco remove --no-hooks' to remove without running hooks.\n");
       assert (not (Sys.file_exists log));
       let _, err = run [ "remove"; "-d" ] 0 in
       assert (
@@ -71,7 +74,27 @@ let () =
         = "Note: configuration is not trusted; 'deco remove' would fail with \
            exit code 5.\n");
       assert (not (Sys.file_exists log));
+      (* --no-hooks waives trust with a warning and reaches Podman, which the
+         fake reports as unusable. *)
+      let warning =
+        "deco: proceeding without hooks for configuration that is not trusted \
+         (untrusted): "
+      in
+      let out, err = run [ "remove"; "--no-hooks" ] 3 in
+      assert (out = "" && String.starts_with ~prefix:warning err);
+      assert (contains err "; pre_stop is skipped.\n");
+      assert (Sys.file_exists log);
+      Unix.unlink log;
+      let _, err = run [ "remove"; "--no-hooks"; "-d" ] 0 in
+      assert (
+        String.starts_with ~prefix:warning err
+        && not (contains err "would fail"));
+      assert (not (Sys.file_exists log));
+      ignore (run [ "start"; "--no-hooks" ] 2);
       ignore (run [ "trust"; "--yes" ] 0);
+      (* Trusted: --no-hooks changes nothing visible. *)
+      let _, err = run [ "remove"; "--no-hooks"; "-d" ] 0 in
+      assert (err = "");
       ignore (run [ "remove"; "--help" ] 0);
       List.iter
         (fun args -> ignore (run args 2))

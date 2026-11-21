@@ -57,6 +57,11 @@ with tempfile.TemporaryDirectory(prefix='deco-stop-live-') as directory:
                 assert stop(0) == f'Stopped {name}\n'
                 assert podman('container', 'inspect', '--format', '{{.State.Status}}', cid) == 'exited'
                 assert stop(0) == f'Already stopped: {name}\n'
+                # --no-hooks proceeds without trust, with a warning.
+                subprocess.run([binary, '--project-dir', str(root), 'trust', '--revoke'], check=True, capture_output=True, timeout=30, env=env)
+                result = subprocess.run([binary, '--project-dir', str(root), 'stop', '--no-hooks'], capture_output=True, text=True, timeout=30, env=env)
+                assert result.returncode == 0 and result.stdout == f'Already stopped: {name}\n', result
+                assert 'pre_stop is skipped' in result.stderr, result
             else:
                 stop(4)
                 assert podman('container', 'inspect', '--format', '{{.State.Status}}', cid) == 'running'

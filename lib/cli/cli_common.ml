@@ -88,7 +88,7 @@ let load_project = function
   | Directory directory -> load_selected (Deco.Project.select ~directory)
   | Named name -> load_named name
 
-let load_trusted_project ~command ~dry_run selection =
+let load_trusted_project ?(no_hooks = false) ~command ~dry_run selection =
   match load_project selection with
   | Error code -> Error code
   | Ok loaded -> (
@@ -103,7 +103,10 @@ let load_trusted_project ~command ~dry_run selection =
           match status.Deco.Trust.state with
           | Deco.Trust.Trusted -> Ok loaded
           | Deco.Trust.Changed | Deco.Trust.Untrusted ->
-              if dry_run then (
+              if no_hooks then (
+                prerr_string (Deco.Trust.no_hooks_warning status);
+                Ok loaded)
+              else if dry_run then (
                 prerr_string (Deco.Trust.dry_run_note ~command);
                 Ok loaded)
               else (

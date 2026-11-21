@@ -55,6 +55,11 @@ val failure_message : command:string -> status -> string
     run [deco trust]. For [stop] and [remove] it also mentions [--no-hooks].
     Each line ends with a newline; the first starts with ["deco: "]. *)
 
+val no_hooks_warning : status -> string
+(** The stderr warning for [stop] or [remove] with [--no-hooks] when the
+    configuration is not trusted: it names the trust state and root and says
+    that [pre_stop] is skipped. Ends with a newline. *)
+
 val dry_run_note : command:string -> string
 (** The stderr note for a dry run of [command] when the configuration is not
     trusted, ending with a newline. *)

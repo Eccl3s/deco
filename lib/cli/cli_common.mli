@@ -27,6 +27,7 @@ val load_project : selection -> (Deco.Config_loader.t, int) result
     callers still verify resource ownership before any mutation. *)
 
 val load_trusted_project :
+  ?no_hooks:bool ->
   command:string ->
   dry_run:bool ->
   selection ->
@@ -35,6 +36,10 @@ val load_trusted_project :
     for [deco <command>]. Store warnings are printed. When the project is not
     trusted, print {!Deco.Trust.failure_message} and return [5], or, for a dry
     run, print {!Deco.Trust.dry_run_note} and continue. A digest that cannot be
-    computed is [2], dry run or not. Nothing is prompted. *)
+    computed is [2], dry run or not. Nothing is prompted.
+
+    [no_hooks] (default [false]) is [stop] and [remove]'s [--no-hooks]: a
+    configuration that is not trusted is then allowed, with
+    {!Deco.Trust.no_hooks_warning} instead of a failure or the dry-run note. *)
 
 val report_execution_result : (Deco.Exec.outcome, Deco.Exec.error) result -> int

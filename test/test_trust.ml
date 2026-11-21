@@ -161,6 +161,14 @@ let () =
               ("Or run 'deco " ^ command ^ " --no-hooks'")))
         [ "stop"; "remove" ];
       assert (
+        T.no_hooks_warning added
+        = "deco: proceeding without hooks for configuration that is not \
+           trusted (changed): " ^ root ^ "; pre_stop is skipped.\n");
+      assert (
+        T.no_hooks_warning { initial with root = "/p\027[2J" }
+        = "deco: proceeding without hooks for configuration that is not \
+           trusted (untrusted): /p\\x1b[2J; pre_stop is skipped.\n");
+      assert (
         T.dry_run_note ~command:"start"
         = "Note: configuration is not trusted; 'deco start' would fail with \
            exit code 5.\n");

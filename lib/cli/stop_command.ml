@@ -1,6 +1,8 @@
-let execute selection dry_run =
+let execute selection dry_run no_hooks =
   let open Config.Effective in
-  match Cli_common.load_trusted_project ~command:"stop" ~dry_run selection with
+  match
+    Cli_common.load_trusted_project ~no_hooks ~command:"stop" ~dry_run selection
+  with
   | Error code -> code
   | Ok loaded -> (
       if dry_run then (
@@ -12,6 +14,8 @@ let execute selection dry_run =
             print_string (Deco.Stop_plan.render plan);
             0)
       else
+        (* pre_stop runs here unless [no_hooks] (specs/deco-trust.md §6). Hooks
+           are not implemented yet, so [no_hooks] only waives trust. *)
         match
           Deco.Stop.run
             ~read_many:(fun commands ->
@@ -56,7 +60,15 @@ let command =
             "Preview shutdown without invoking Podman, except to locate a \
              $(b,--project).")
   in
+  let no_hooks =
+    Arg.(
+      value & flag
+      & info [ "no-hooks" ]
+          ~doc:
+            "Skip the $(b,pre_stop) hook. The configuration then need not be \
+             trusted; a warning is printed when it is not.")
+  in
   Cmdliner.Cmd.v
     (Cmdliner.Cmd.info "stop" ~exits:Cli_common.exits
        ~doc:"Stop the managed development container.")
-    Term.(const execute $ Cli_common.project $ dry_run)
+    Term.(const execute $ Cli_common.project $ dry_run $ no_hooks)

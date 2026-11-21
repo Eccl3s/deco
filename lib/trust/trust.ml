@@ -107,6 +107,13 @@ let failure_message ~command status =
        (fun line -> line ^ "\n")
        ((("deco: " ^ headline) :: render_changes status.changes) @ hints))
 
+let no_hooks_warning status =
+  Printf.sprintf
+    "deco: proceeding without hooks for configuration that is not trusted \
+     (%s): %s; pre_stop is skipped.\n"
+    (state_to_string status.state)
+    (Terminal_text.escape status.root)
+
 let dry_run_note ~command =
   Printf.sprintf
     "Note: configuration is not trusted; 'deco %s' would fail with exit code 5.\n"
