@@ -86,30 +86,27 @@ let run ?execute ?read_many
     own
       (Container_runtime.Container loaded.Config_loader.effective.container.name)
   in
-  let image : Podman.image option ref = ref None in
-  let container : Podman.container option ref = ref None in
-  let built = ref false and created = ref false and started = ref false in
-  let ready () =
-    let* () =
-      match !image with None -> Ok () | Some i -> own_image i.Podman.labels
+  (* The planned command for [operation] with its placeholders resolved. The
+     plan holds every operation exactly once, so the lookup cannot fail. *)
+  let command ?(image_id = "") ?(container_id = "") operation =
+    let step =
+      List.find
+        (fun (step : Assemble_plan.step) -> step.operation = operation)
+        plan.steps
     in
-    let* () =
-      match !container with
-      | None -> Ok ()
-      | Some c -> own_container c.Podman.labels
-    in
-    match (!image, !container) with
+    Assemble_plan.resolve ~image_id ~container_id step.command
+  in
+  (* Before any mutation, the resources found must fit together. Ownership was
+     already verified when each one was inspected. *)
+  let ready image container =
+    match (image, container) with
     | None, Some _ ->
         fail (Conflict "Existing container has no configured image")
-    | Some i, Some c ->
+    | Some i, Some (c : Podman.container) ->
         let* () = check i c in
         if Container_runtime.supported_state c.state then Ok ()
         else fail (Conflict "Unsupported container state")
     | _ -> Ok ()
-  in
-  let id_image () = match !image with Some i -> i.Podman.id | None -> "" in
-  let id_container () =
-    match !container with Some c -> c.Podman.id | None -> ""
   in
   (* A failed read is ambiguous before anything has changed: Podman itself may
      be down. After a mutation it is reported as it is. *)
@@ -185,115 +182,64 @@ let run ?execute ?read_many
       fail (Podman (Unavailable (Podman.message r)))
     else (
       (if concurrent then
-         let commands =
-           List.filter_map
-             (fun (step : Assemble_plan.step) ->
-               if List.mem step.operation [ Image_inspect; Container_inspect ]
-               then
-                 Some
-                   (Assemble_plan.resolve ~image_id:"" ~container_id:""
-                      step.command)
-               else None)
-             plan.steps
-         in
+         let commands = [ command Image_inspect; command Container_inspect ] in
          prefetched := List.combine commands (read_many commands));
       Ok ())
   in
-  (* Re-inspect the container after creating or starting it. *)
-  let inspect_after_mutation ~running argv =
+  (* Re-inspect the container after creating or starting it: it must still be
+     the same container, owned and compatible with the image. *)
+  let inspect_after_mutation ~image ~id ~running argv =
     let* c = Result.bind (inspect_container ~initial:false argv) present in
     let* () =
-      if c.Podman.id <> id_container () then
-        fail (Conflict "Container ID differs")
+      if c.Podman.id <> id then fail (Conflict "Container ID differs")
       else Ok ()
     in
-    let* () = match !image with Some i -> check i c | None -> Ok () in
-    container := Some c;
+    let* () = check image c in
     if running && c.state <> "running" then
       fail (Runtime "Container is not running after start")
-    else Ok ()
+    else Ok c
   in
-  let rec loop = function
-    | [] -> Ok ()
-    | (step : Assemble_plan.step) :: rest ->
-        let argv () =
-          Assemble_plan.resolve ~image_id:(id_image ())
-            ~container_id:(id_container ()) step.command
-        in
-        let* () =
-          match step.operation with
-          | Availability -> availability (argv ())
-          | Image_inspect ->
-              let* i = inspect_image ~initial:true (argv ()) in
-              image := i;
-              Ok ()
-          | Container_inspect -> (
-              let* c = inspect_container ~initial:true (argv ()) in
-              match c with
-              | None -> Ok ()
-              | Some c ->
-                  let* () =
-                    match !image with Some i -> check i c | None -> Ok ()
-                  in
-                  container := Some c;
-                  Ok ())
-          | Build ->
-              let* () = ready () in
-              if !image <> None then Ok ()
-              else
-                let* _ = mutation Process.Inherit (argv ()) in
-                built := true;
-                Ok ()
-          | Built_inspect ->
-              if not !built then Ok ()
-              else
-                let* i =
-                  Result.bind (inspect_image ~initial:false (argv ())) present
-                in
-                image := Some i;
-                Ok ()
-          | Create ->
-              if !container <> None then Ok ()
-              else
-                let* r = mutation Process.Capture (argv ()) in
-                let* id = created_id r in
-                created := true;
-                container :=
-                  Some
-                    {
-                      Podman.id;
-                      labels = [];
-                      state = "created";
-                      image_id = id_image ();
-                      user = "";
-                      userns = "";
-                      workdir = "";
-                      init = false;
-                      mounts = [];
-                      created = None;
-                    };
-                Ok ()
-          | Created_inspect ->
-              if !created then inspect_after_mutation ~running:false (argv ())
-              else Ok ()
-          | Start -> (
-              match !container with
-              | Some c when c.state <> "running" ->
-                  let* _ = mutation Process.Capture (argv ()) in
-                  started := true;
-                  Ok ()
-              | _ -> Ok ())
-          | Started_inspect ->
-              if !started then inspect_after_mutation ~running:true (argv ())
-              else Ok ()
-        in
-        loop rest
+  let ensure_image = function
+    | Some image -> Ok image
+    | None ->
+        let* _ = mutation Process.Inherit (command Build) in
+        Result.bind
+          (inspect_image ~initial:false (command Built_inspect))
+          present
   in
-  let* () = loop plan.steps in
-  Ok
-    {
-      image_id = id_image ();
-      container_id = id_container ();
-      created = !created;
-      started = !started;
-    }
+  (* Returns the container and whether it was created. *)
+  let ensure_container (image : Podman.image) = function
+    | Some container -> Ok (container, false)
+    | None ->
+        let* r = mutation Process.Capture (command ~image_id:image.id Create) in
+        let* id = created_id r in
+        let* container =
+          inspect_after_mutation ~image ~id ~running:false
+            (command ~container_id:id Created_inspect)
+        in
+        Ok (container, true)
+  in
+  (* Returns the container and whether it was started. *)
+  let ensure_running image (container : Podman.container) =
+    if container.state = "running" then Ok (container, false)
+    else
+      let id = container.id in
+      let* _ = mutation Process.Capture (command ~container_id:id Start) in
+      let* container =
+        inspect_after_mutation ~image ~id ~running:true
+          (command ~container_id:id Started_inspect)
+      in
+      Ok (container, true)
+  in
+  let* () = availability (command Availability) in
+  let* image = inspect_image ~initial:true (command Image_inspect) in
+  let* container =
+    inspect_container ~initial:true (command Container_inspect)
+  in
+  let* () = ready image container in
+  let* image = ensure_image image in
+  let* container, created = ensure_container image container in
+  (* Lifecycle hooks belong here: post_create when [created], then post_start
+     after [ensure_running] when it started the container. *)
+  let* container, started = ensure_running image container in
+  Ok { image_id = image.id; container_id = container.id; created; started }
