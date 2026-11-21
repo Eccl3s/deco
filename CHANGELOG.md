@@ -7,6 +7,24 @@ releases may change behaviour.
 
 ## [Unreleased]
 
+### Added
+
+- Configuration trust. `assemble`, `refresh`, `start`, `stop`, `remove`,
+  `exec`, and `shell` now refuse with exit code 5 until the project's `.deco/`
+  directory has been approved, and refuse again when anything in it changes,
+  listing what changed. Dry runs still work and print a note. Existing
+  projects need `deco trust` once after upgrading.
+- `deco trust` reviews the configuration's security-relevant settings and
+  approves it after confirmation, or with `--yes`. `--dry-run` shows the
+  review only, `--show` prints the trust state, and `--revoke` removes every
+  approval. Approvals are kept in `$XDG_STATE_HOME/deco/trust/`.
+- `deco init` approves the configuration it writes.
+- `deco info` reports the trust state, digest, last approval time, and changed
+  entries.
+- `--no-hooks` for `stop` and `remove` skips the `pre_stop` hook, so they work
+  on configuration that is not trusted, with a warning. Hooks are not
+  implemented yet, so it currently only waives the trust requirement.
+
 ### Changed
 
 - Ownership conflicts now name the image or container and say why it is not

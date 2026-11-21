@@ -1,6 +1,7 @@
 (** The trust state of a loaded project ([specs/deco-trust.md] §5), and the
     messages commands print about it. Computing the state reads the project's
-    [.deco/] directory and the trust store; nothing is written or printed. *)
+    [.deco/] directory and the trust store; only {!approve} writes, and nothing
+    is printed. *)
 
 type state =
   | Trusted  (** The current digest matches an approval. *)
