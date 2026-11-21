@@ -78,6 +78,9 @@ let run ?execute ?read_many
     | Error (Container_runtime.Conflict e) -> fail (Conflict e)
     | Error (Container_runtime.Podman e) -> fail (Podman e)
   in
+  (* The container is named by its configured name even in the steps that
+     inspect it by ID: those inspect the container assemble just created under
+     that name, and the name is what a recovery hint should show. *)
   let own_image = own (Container_runtime.Image plan.Assemble_plan.image_name)
   and own_container =
     own

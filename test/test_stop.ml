@@ -110,7 +110,10 @@ let () =
         error false
           (run [ version; (initial, response (container ~labels "running")) ])
       with
-      | Stop.Conflict _ -> ()
+      | Stop.Conflict message ->
+          assert (
+            String.starts_with ~prefix:"container example-dev-container "
+              message)
       | _ -> assert false)
     [
       [];

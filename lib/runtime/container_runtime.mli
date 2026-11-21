@@ -36,9 +36,10 @@ type resource =
 
 val verify_ownership :
   Config_loader.t -> resource -> Podman.labels -> (unit, error) result
-(** Check that [labels] carry the loaded project's ownership labels, failing
-    with [Conflict] otherwise. The single ownership check used before any
-    lifecycle operation. *)
+(** Check that [labels] carry the loaded project's ownership labels. Otherwise
+    fail with a [Conflict] whose message comes from {!Ownership.describe} and
+    names the resource by its reference. The single ownership check used before
+    any lifecycle operation. *)
 
 val inspect :
   ?run:Podman.runner ->

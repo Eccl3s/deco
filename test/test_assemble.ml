@@ -388,15 +388,30 @@ let () =
         ("dev.deco.project-root", `String root);
       ]
   in
+  let refused resource summary script =
+    match run script with
+    | Error { cause = Conflict message; completed = [] } ->
+        let expected = resource ^ " " ^ summary in
+        let actual =
+          match String.index_opt message '\n' with
+          | Some i -> String.sub message 0 i
+          | None -> message
+        in
+        if actual <> expected then failwith (actual ^ " <> " ^ expected)
+    | _ -> failwith "expected an ownership conflict before any mutation"
+  in
   List.iter
-    (fun labels ->
-      conflict [ info; ie (response ""); ii ~labels () ];
-      conflict
+    (fun (labels, summary) ->
+      refused "image example-dev-image:latest" summary
+        [ info; ie (response ""); ii ~labels () ];
+      refused "container example-dev-container" summary
         [ info; ie (response ""); ii (); ce (response ""); ci ~labels () ])
     [
-      owned_by "/old/project";
-      owned_by ~project:"other" "/other";
-      owned_by ~managed:"false" "/project";
+      ( owned_by "/old/project",
+        "belongs to a Deco project with the same name at another location" );
+      (owned_by ~project:"other" "/other", "belongs to Deco project \"other\"");
+      ( owned_by ~managed:"false" "/project",
+        "exists but was not created by Deco" );
     ];
   List.iter
     (fun bad ->

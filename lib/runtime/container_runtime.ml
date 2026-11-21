@@ -176,13 +176,19 @@ let image_reference (loaded : Config_loader.t) =
 
 type resource = Image of string | Container of string
 
-let verify_ownership (loaded : Config_loader.t) (_ : resource) labels =
+let verify_ownership (loaded : Config_loader.t) resource labels =
   match
     Ownership.verify ~project:loaded.effective.project.name
       ~project_root:loaded.project.root labels
   with
   | Ok () -> Ok ()
-  | Error _ -> Error (Conflict "Resource ownership differs")
+  | Error conflicts ->
+      let kind, reference =
+        match resource with
+        | Image r -> (`Image, r)
+        | Container r -> (`Container, r)
+      in
+      Error (Conflict (Ownership.describe ~kind ~reference conflicts))
 
 let inspect ?run ?read_many ?(probe = fun () -> local_selinux ()) ?selinux
     ?container_id (loaded : Config_loader.t) =

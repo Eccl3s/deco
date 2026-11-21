@@ -177,8 +177,15 @@ let () =
                (ownership_modes "container" @ ownership_modes "image")
            then (
              assert (not (!stopped || !c_removed || !i_removed));
+             let prefix =
+               if List.mem mode (ownership_modes "image") then
+                 "image example-dev-image:latest "
+               else "container example-dev-container "
+             in
              match e.cause with
-             | Remove.Conflict _ -> ()
+             | Remove.Conflict message when String.starts_with ~prefix message
+               ->
+                 ()
              | _ -> failwith ("Expected an ownership conflict: " ^ mode));
            if mode = "dependencies" then
              match e.cause with

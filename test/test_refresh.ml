@@ -227,9 +227,11 @@ let () =
   assert (w.build_output = None);
 
   (* Refusals happen before any mutation and leave resources untouched. *)
-  let refused ?keep_image w =
+  let refused ?keep_image ?(prefix = "") w =
     (match refresh ?keep_image w with
-    | Error { cause = Conflict _; completed = [] } -> ()
+    | Error { cause = Conflict message; completed = [] }
+      when String.starts_with ~prefix message ->
+        ()
     | _ -> failwith "expected a conflict before any mutation");
     assert (mutations w = [] && events w = [])
   in
@@ -238,12 +240,15 @@ let () =
   assert ((Option.get w.container).state = "running");
   List.iter
     (fun owner ->
-      refused (world ~image:old_image ~container:{ (running ()) with owner } ());
-      refused
+      let container = "container example-dev-container "
+      and image = "image example-dev-image:latest " in
+      refused ~prefix:container
+        (world ~image:old_image ~container:{ (running ()) with owner } ());
+      refused ~prefix:image
         (world
            ~image:{ old_image with owned = owner }
            ~container:(running ()) ());
-      refused (world ~image:{ old_image with owned = owner } ()))
+      refused ~prefix:image (world ~image:{ old_image with owned = owner } ()))
     [ Foreign; Moved; Unlabelled ];
 
   (* A failed build happens before the old container is touched. *)
