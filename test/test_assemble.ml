@@ -143,6 +143,24 @@ let () =
           started = false;
         });
   assert (List.length !calls = 3);
+  (* Concurrent reads: the two initial inspections are batched once, after
+     the availability check, and their results are used without re-running
+     them. *)
+  calls := [];
+  let batches = ref [] in
+  let read_many commands =
+    batches := commands :: !batches;
+    List.map (execute Process.Capture) commands
+  in
+  let initial =
+    [
+      Podman_command.inspect "image" "example-dev-image:latest";
+      Podman_command.inspect "container" "example-dev-container";
+    ]
+  in
+  assert (Result.is_ok (Assemble.run ~execute ~read_many loaded));
+  assert (!batches = [ initial ]);
+  assert (List.rev_map snd !calls = Podman_command.version :: initial);
   let error =
     Assemble.run
       ~execute:(fun _ _ ->
@@ -244,13 +262,14 @@ let () =
              ];
          ])
   in
-  let container ?(state = "created") ?(image_id = "iid") ?(labels = labels) () =
+  let container ?(state = "created") ?(image_id = "iid") ?(labels = labels)
+      ?(cid = id) () =
     Yojson.Basic.to_string
       (`List
          [
            `Assoc
              [
-               ("Id", `String id);
+               ("Id", `String cid);
                ("Image", `String image_id);
                ( "Config",
                  `Assoc
@@ -301,6 +320,7 @@ let () =
     ]
   in
   let start r = read [ "podman"; "--remote=false"; "start"; "--"; id ] r in
+  let executed = ref [] in
   let run script =
     (* Expand resource-presence fixtures into the inspect-first protocol. *)
     let rec inspection_script = function
@@ -322,7 +342,9 @@ let () =
     in
     let script = inspection_script script in
     let pending = ref script in
+    executed := [];
     let execute output argv =
+      executed := argv :: !executed;
       match !pending with
       | (mode, expected, r) :: rest ->
           assert (mode = output);
@@ -447,6 +469,136 @@ let () =
         { cause = Runtime _; completed = [ "podman --remote=false create" ] } ->
         true
     | _ -> false);
+  (* Characterization: exact causes and completed mutations for every failure
+     path, so restructuring the executor cannot change them silently. *)
+  let expect ?(completed = []) cause script =
+    match run script with
+    | Error e when e.Assemble.cause = cause && e.completed = completed -> ()
+    | Error { cause = Conflict m | Runtime m | Planning m; completed = c } ->
+        failwith (Printf.sprintf "got %S after [%s]" m (String.concat "; " c))
+    | Error _ -> failwith "unexpected Podman error"
+    | Ok _ -> failwith "expected a failure"
+  in
+  let invalid ?(completed = []) operation script =
+    match run script with
+    | Error
+        {
+          cause = Podman (Invalid_response { operation = o; _ });
+          completed = c;
+        }
+      when o = operation && c = completed ->
+        ()
+    | _ -> failwith ("expected an invalid " ^ operation ^ " response")
+  in
+  let created = [ "podman --remote=false create" ] in
+  let built_only = [ "podman --remote=false build" ] in
+  let new_container = existing @ [ create (response id) ] @ post "created" in
+  (* A container whose configured image is missing is refused before any
+     build. *)
+  expect (Conflict "Existing container has no configured image")
+    [ info; ie (response ~code:1 ""); ce (response ""); ci () ];
+  (* Resources that vanish after a mutation. *)
+  expect ~completed:built_only (Runtime "Resource missing after mutation")
+    (missing @ [ build (response ""); ie (response ~code:1 "") ]);
+  expect ~completed:created (Runtime "Resource missing after mutation")
+    (existing
+    @ [
+        create (response id);
+        read (Podman_command.exists "container" id) (response ~code:1 "");
+      ]);
+  expect
+    ~completed:(created @ [ "podman --remote=false start" ])
+    (Runtime "Resource missing after mutation")
+    (new_container
+    @ [
+        start (response id);
+        read (Podman_command.exists "container" id) (response ~code:1 "");
+      ]);
+  (* Post-mutation inspections re-check identity, compatibility and state. *)
+  expect ~completed:created (Conflict "Container ID differs")
+    (existing
+    @ [
+        create (response id);
+        read
+          (Podman_command.inspect "container" id)
+          (response (container ~cid:(String.make 64 'b') ()));
+      ]);
+  expect ~completed:created (Conflict "Container image differs")
+    (existing
+    @ [
+        create (response id);
+        read
+          (Podman_command.inspect "container" id)
+          (response (container ~image_id:"other" ()));
+      ]);
+  expect
+    ~completed:(created @ [ "podman --remote=false start" ])
+    (Runtime "Container is not running after start")
+    (new_container @ [ start (response id) ] @ post "exited");
+  (* Undecodable inspections. *)
+  invalid "image inspect"
+    [
+      info;
+      read
+        (Podman_command.inspect "image" "example-dev-image:latest")
+        (response "bad");
+    ];
+  invalid "container inspect"
+    [
+      info;
+      ie (response "");
+      ii ();
+      read
+        (Podman_command.inspect "container" "example-dev-container")
+        (response "bad");
+    ];
+  invalid ~completed:created "container inspect"
+    (existing
+    @ [
+        create (response id);
+        read (Podman_command.inspect "container" id) (response "bad");
+      ]);
+  (* A failed initial inspection asks Podman whether it is reachable: down is
+     reported as unavailable, up as the inspection failure. *)
+  let podman_info r = read Podman_command.info r in
+  let failed_inspect = "exit 125; existence check: exit 125" in
+  expect (Podman (Unavailable "exit 125"))
+    [ info; ie (response ~code:125 ""); podman_info (response ~code:125 "") ];
+  expect (Runtime failed_inspect)
+    [ info; ie (response ~code:125 ""); podman_info (response "") ];
+  expect (Runtime failed_inspect)
+    [
+      info;
+      ie (response "");
+      ii ();
+      ce (response ~code:125 "");
+      podman_info (response "");
+    ];
+  (* After a mutation there is no reachability probe: the script ends at the
+     failed inspection. *)
+  expect ~completed:built_only (Runtime failed_inspect)
+    (missing @ [ build (response ""); ie (response ~code:125 "") ]);
+  (* Sequence guard: on the full path, the commands run, ignoring the
+     existence fallbacks, are exactly the planned steps in order. This keeps
+     --dry-run and execution in step. *)
+  assert (
+    Result.is_ok
+      (run
+         (built
+         @ [ create (response id) ]
+         @ post "created"
+         @ [ start (response id) ]
+         @ post "running")));
+  let ran =
+    List.rev !executed |> List.filter (fun argv -> not (List.mem "exists" argv))
+  in
+  let planned =
+    List.map
+      (fun (step : Assemble_plan.step) ->
+        Assemble_plan.resolve ~image_id:"iid" ~container_id:id step.command)
+      plan.steps
+  in
+  assert (ran = planned);
   let parsed_image = Result.get_ok (Podman.decode_image (image ())) in
   let base = Result.get_ok (Podman.decode_container (container ())) in
   let keep =
