@@ -13,6 +13,7 @@ let () =
     let effective = Result.get_ok (Config.Resolve.apply source) in
     ({
        ignored_paths = [];
+       contents = "";
        project =
          { root = "/project"; config_path = "/project/.deco/config.toml" };
        source;

@@ -15,6 +15,7 @@ let () =
   let loaded : Config_loader.t =
     {
       ignored_paths = [];
+      contents = "";
       project =
         { root = "/project"; config_path = "/project/.deco/config.toml" };
       source;

@@ -148,6 +148,7 @@ let () =
   let loaded : Config_loader.t =
     {
       ignored_paths = [];
+      contents = "";
       source;
       effective;
       project =
