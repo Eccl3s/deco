@@ -37,7 +37,8 @@
   test_user_identity
   test_trust_digest
   test_trust_store
-  test_trust)
+  test_trust
+  test_trust_review)
  (modules
   :standard
   \
