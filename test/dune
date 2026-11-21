@@ -36,7 +36,8 @@
   test_host_paths
   test_user_identity
   test_trust_digest
-  test_trust_store)
+  test_trust_store
+  test_trust)
  (modules
   :standard
   \
