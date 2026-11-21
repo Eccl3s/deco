@@ -572,6 +572,9 @@ Exit status:
   and exits `3`.
 - Invalid configuration fails with exit code `2`, and any other Podman failure
   fails with exit code `1`; in both cases no report is written.
+- When the trust state cannot be determined, `info` still writes the full
+  report with `trust` set to `null`, reports the problem on stderr, and exits
+  `2`, even if Podman is also unavailable. See `deco-trust.md`.
 
 ### `deco list`
 

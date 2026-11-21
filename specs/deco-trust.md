@@ -65,7 +65,9 @@ The trust digest covers:
 
 1. Every entry beneath the project's `.deco/` directory, walked recursively.
    If `.deco` is a symlink, Deco walks the directory it resolves to.
-2. The resolved `build.containerfile`, when its canonical path is not inside
+2. The project configuration file, when `.deco/config.toml` is a symlink
+   whose canonical target is not inside the canonical `.deco/` directory.
+3. The resolved `build.containerfile`, when its canonical path is not inside
    the canonical `.deco/` directory.
 
 Each entry contributes one record:
@@ -78,9 +80,12 @@ Each entry contributes one record:
 
 Relative paths are relative to `.deco/`, use `/` as the separator, and are
 sorted byte-wise before digesting. The `.deco/` directory itself has no
-record. A Containerfile outside `.deco/` contributes a regular-file record
-whose path is its canonical absolute path. Absolute paths can never equal a
-relative `.deco/` path, so the two kinds of record cannot be confused.
+record. A configuration file or Containerfile outside `.deco/` contributes a
+regular-file record whose path is its canonical absolute path, in addition to
+any symlink record beneath `.deco/` that leads to it. Absolute paths can never
+equal a relative `.deco/` path, so the two kinds of record cannot be confused.
+If the configuration file and the Containerfile resolve to the same path, it
+contributes one record.
 
 Any other entry type, such as a FIFO, socket, or device node, makes the trust
 digest uncomputable. Deco must treat this as a configuration error, exit with
@@ -109,7 +114,9 @@ entries changed since an approval (section 5).
 
 When a command both checks trust and parses `.deco/config.toml`, the bytes
 Deco parses must be the bytes it digested. Deco must not read the file a
-second time between the trust check and parsing.
+second time between the trust check and parsing. This applies to the
+configuration file's regular-file record wherever it is, beneath `.deco/` or
+outside it.
 
 ## 4. Trust store
 
@@ -374,6 +381,13 @@ object:
 
 Human output adds a trust section immediately after the project section.
 
+If the trust state cannot be determined, for example because `.deco/` contains
+an unsupported file type, `info` still writes the full report with `trust` set
+to `null` and the human trust fields shown as `-`, reports the problem on
+stderr, and exits `2`. This takes precedence over exit `3` for unavailable
+Podman. An unusable trust record is not such a failure: the project is
+reported as `untrusted` and the record is named in a warning on stderr.
+
 ### `deco validate`
 
 `validate` does not require trust and its exit status does not depend on
@@ -417,3 +431,6 @@ A conforming implementation must cover at least these scenarios:
     is not trusted, skip `pre_stop`, and warn on stderr.
     `remove --no-hooks --force` for configuration that is not trusted fails
     with exit code `5`.
+14. A `.deco/config.toml` symlink whose target is outside `.deco/` is covered
+    by the target's contents, so editing the target makes the project
+    `changed`.
