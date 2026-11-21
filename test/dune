@@ -38,7 +38,8 @@
   test_trust_digest
   test_trust_store
   test_trust
-  test_trust_review)
+  test_trust_review
+  test_trust_cmd)
  (modules
   :standard
   \
@@ -52,6 +53,7 @@
   test_remove_cli
   test_refresh_cli
   test_list_cli
+  test_trust_cli
   test_project_cli
   test_init
   init_test_support
@@ -200,6 +202,14 @@
  (name test_start_cli)
  (modules test_start_cli)
  (libraries unix yojson)
+ (deps ../bin/deco.exe)
+ (action
+  (run %{test} %{exe:../bin/deco.exe})))
+
+(test
+ (name test_trust_cli)
+ (modules test_trust_cli)
+ (libraries unix)
  (deps ../bin/deco.exe)
  (action
   (run %{test} %{exe:../bin/deco.exe})))

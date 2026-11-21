@@ -14,7 +14,8 @@
   shell_command
   stop_command
   remove_command
-  list_command)
+  list_command
+  trust_command)
  (libraries deco cmdliner unix)
  (flags
   (:standard -w +a -warn-error +a)))
