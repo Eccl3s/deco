@@ -131,6 +131,15 @@ let () =
              label=dev.deco.managed=true --format json\n")
       in
       set_listing [ container ~project:"zeta" ~root:zeta "c1" ];
+      (* A located project is checked for trust after the lookup and before
+         any further Podman operation. *)
+      let stdout, stderr = run [ "stop"; "-p"; "zeta" ] 5 in
+      assert (
+        stdout = ""
+        && contains stderr
+             ("deco: configuration for " ^ zeta ^ " is not trusted"));
+      lookup_only ();
+      ignore (run [ "trust"; "--yes"; "--project-dir"; zeta ] 0);
       (* Every project command accepts the option before or after the command
          and, with --dry-run, performs only the read-only lookup. *)
       let config = zeta ^ "/.deco/config.toml" in

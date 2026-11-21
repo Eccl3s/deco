@@ -1,6 +1,6 @@
 let execute selection dry_run =
   let open Config.Effective in
-  match Cli_common.load_project selection with
+  match Cli_common.load_trusted_project ~command:"stop" ~dry_run selection with
   | Error code -> code
   | Ok loaded -> (
       if dry_run then (

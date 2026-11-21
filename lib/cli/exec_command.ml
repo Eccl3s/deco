@@ -4,7 +4,9 @@ let execute arguments selection dry_run =
       prerr_endline "deco: exec requires -- followed by a command";
       2
   | Some arguments -> (
-      match Cli_common.load_project selection with
+      match
+        Cli_common.load_trusted_project ~command:"exec" ~dry_run selection
+      with
       | Error code -> code
       | Ok loaded ->
           let tty = Unix.isatty Unix.stdin && Unix.isatty Unix.stdout in

@@ -30,8 +30,12 @@ with tempfile.TemporaryDirectory(prefix='deco-stop-live-') as directory:
     (root / '.deco/build').mkdir(parents=True)
     (root / '.deco/build/Containerfile').write_text('FROM scratch\n')
     project = 'deco-stop-' + uuid.uuid4().hex
-    def config(name):
+    def trust():
+        subprocess.run([binary, '--project-dir', str(root), 'trust', '--yes'], check=True, capture_output=True, timeout=30, env=env)
+    def config(name, trusted=True):
         (root / '.deco/config.toml').write_text(f'[project]\nname="{project}"\n[container]\nname="{name}"\n')
+        if trusted:
+            trust()
     def stop(expected):
         result = subprocess.run([binary, '--project-dir', str(root), 'stop'], capture_output=True, text=True, timeout=30, env=env)
         assert result.returncode == expected, result
@@ -44,8 +48,12 @@ with tempfile.TemporaryDirectory(prefix='deco-stop-live-') as directory:
             cid = podman('create', '--name', name, '--pull=never', *labels, '--entrypoint', 'sleep', '--', image, '300')
             created.append(cid)
             podman('start', '--', cid)
-            config(name)
+            config(name, trusted=not managed)
             if managed:
+                # Untrusted configuration is refused before Podman is touched.
+                stop(5)
+                assert podman('container', 'inspect', '--format', '{{.State.Status}}', cid) == 'running'
+                trust()
                 assert stop(0) == f'Stopped {name}\n'
                 assert podman('container', 'inspect', '--format', '{{.State.Status}}', cid) == 'exited'
                 assert stop(0) == f'Already stopped: {name}\n'

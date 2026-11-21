@@ -58,6 +58,14 @@ let () =
       in
       write fake "#!/bin/sh\nprintf called >> \"$DECO_TEST_LOG\"\nexit 125\n";
       Unix.chmod fake 0o700;
+      (* Trust is required before Podman is used; a dry run only notes it. *)
+      let _, err = run [ "shell"; "-d" ] 0 in
+      assert (
+        err
+        = "Note: configuration is not trusted; 'deco shell' would fail with \
+           exit code 5.\n");
+      assert (not (Sys.file_exists log));
+      ignore (run [ "trust"; "--yes" ] 0);
       ignore (run [ "shell"; "--help" ] 0);
       ignore (run [ "shell"; "unexpected" ] 2);
       ignore (run [ "shell"; "--project-dir"; "/nonexistent/deco" ] 2);

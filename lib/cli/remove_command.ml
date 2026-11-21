@@ -1,6 +1,8 @@
 let[@warning "-42"] execute selection dry_run keep_image =
   let open Config.Effective in
-  match Cli_common.load_project selection with
+  match
+    Cli_common.load_trusted_project ~command:"remove" ~dry_run selection
+  with
   | Error code -> code
   | Ok loaded -> (
       if dry_run then (

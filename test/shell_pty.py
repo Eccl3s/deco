@@ -41,9 +41,13 @@ elif a[0]=='exec':
 else: sys.exit(99)
 ''')
     fake.chmod(0o700)
-    for mode, expected in [('running',17), ('stopped',17), ('interrupt',0), ('missing',4), ('owner',4), ('unavailable',3), ('stdin-only',2), ('stdout-only',2)]:
+    # The first mode runs before the project is trusted.
+    for mode, expected in [('untrusted',5), ('running',17), ('stopped',17), ('interrupt',0), ('missing',4), ('owner',4), ('unavailable',3), ('stdin-only',2), ('stdout-only',2)]:
         (root/'calls').write_text('')
         (root/'started').unlink(missing_ok=True)
+        if mode == 'running':
+            subprocess.run([binary,'--project-dir',str(root),'trust','--yes'],check=True,capture_output=True,
+                           env=dict(os.environ,XDG_STATE_HOME=state_home.name))
         pid, master = pty.fork()
         if pid == 0:
             os.chdir(root)
@@ -76,7 +80,8 @@ else: sys.exit(99)
             if mode in ('running','stopped'):
                 assert b'31 91' in data and b'GOT:hello' in data,(mode,data)
             calls=(root/'calls').read_text()
-            if mode in ('stdin-only','stdout-only'): assert calls==''
+            if mode in ('stdin-only','stdout-only','untrusted'): assert calls==''
+            if mode == 'untrusted': assert b'is not trusted' in data,(mode,data)
             assert '"stop"' not in calls and '"remove"' not in calls
         finally:
             if status is None:
