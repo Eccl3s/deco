@@ -101,10 +101,14 @@ let () =
                 not
                   (List.exists
                      (fun prefix -> String.starts_with ~prefix entry)
-                     [ "PATH="; "TERM="; "DECO_TEST_" ]))
+                     [ "PATH="; "TERM="; "DECO_TEST_"; "XDG_STATE_HOME=" ]))
           in
           let env =
-            [ "PATH=" ^ path; "DECO_TEST_LOG=" ^ log ]
+            [
+              "PATH=" ^ path;
+              "XDG_STATE_HOME=" ^ temp ^ "/state";
+              "DECO_TEST_LOG=" ^ log;
+            ]
             @ Option.to_list (Option.map (fun term -> "TERM=" ^ term) term)
             @ inherited
           in

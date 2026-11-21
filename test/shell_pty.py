@@ -14,6 +14,8 @@ import termios
 import time
 
 binary = str(pathlib.Path(sys.argv[1]).resolve())
+# Keep trust records out of the developer's real state directory.
+state_home = tempfile.TemporaryDirectory(prefix='deco-state-')
 with tempfile.TemporaryDirectory(prefix='deco-shell-pty-') as directory:
     root = pathlib.Path(directory)
     (root / '.deco/build').mkdir(parents=True)
@@ -47,6 +49,7 @@ else: sys.exit(99)
             os.chdir(root)
             os.environ['PATH'] = directory + ':' + os.environ['PATH']
             os.environ['DECO_PTY_MODE'] = mode
+            os.environ['XDG_STATE_HOME'] = state_home.name
             if mode == 'stdin-only':
                 fd=os.open('/dev/null',os.O_WRONLY); os.dup2(fd,1); os.close(fd)
             if mode == 'stdout-only':

@@ -1,6 +1,7 @@
 """Opt-in default Debian workflow; builds/pulls the unchanged template image."""
 import datetime
 import json
+import os
 import pathlib
 import signal
 import subprocess
@@ -9,6 +10,9 @@ import tempfile
 import tomllib
 
 binary=str(pathlib.Path(sys.argv[1]).resolve())
+# Keep trust records out of the developer's real state directory.
+state_home=tempfile.TemporaryDirectory(prefix='deco-state-')
+env=dict(os.environ,XDG_STATE_HOME=state_home.name)
 prefix=['podman','--remote=false']
 def podman(*args, check=True):
     return subprocess.run(prefix+list(args),check=check,capture_output=True,text=True,timeout=60)
@@ -18,7 +22,7 @@ signal.signal(signal.SIGTERM,terminate)
 with tempfile.TemporaryDirectory(prefix='deco-debian-workflow-') as directory:
     root=pathlib.Path(directory).resolve()
     def deco(*args,cwd=None,check=True):
-        return subprocess.run([binary]+list(args),check=check,capture_output=True,text=True,timeout=600,cwd=cwd)
+        return subprocess.run([binary]+list(args),check=check,capture_output=True,text=True,timeout=600,cwd=cwd,env=env)
     deco('init',str(root))
     # Init normalises the basename differently per resource, so read the names it wrote.
     config=tomllib.loads((root/'.deco/config.toml').read_text())
@@ -28,7 +32,7 @@ with tempfile.TemporaryDirectory(prefix='deco-debian-workflow-') as directory:
     def listed():
         # Run outside the project: list must not need one. Other projects'
         # managed containers may exist on this host, so keep only ours.
-        result=subprocess.run([binary,'list','--format','json'],check=True,capture_output=True,text=True,timeout=60,cwd='/')
+        result=subprocess.run([binary,'list','--format','json'],check=True,capture_output=True,text=True,timeout=60,cwd='/',env=env)
         assert result.stderr=='' and result.stdout.endswith(']\n'),result
         return [e for e in json.loads(result.stdout) if e['project_root']==str(root)]
     def info(*args,cwd=None):
@@ -80,7 +84,7 @@ with tempfile.TemporaryDirectory(prefix='deco-debian-workflow-') as directory:
         human=deco('info',cwd=root).stdout
         assert container_id in human and ' UTC (' in human and 'Compatible:  yes' in human,human
         assert '\x1b' not in human and 'network.mode' in human,human
-        table=subprocess.run([binary,'list'],check=True,capture_output=True,text=True,timeout=60,cwd='/').stdout
+        table=subprocess.run([binary,'list'],check=True,capture_output=True,text=True,timeout=60,cwd='/',env=env).stdout
         assert container in table and str(root) in table and '\x1b' not in table,table
         # --project selects the listed project by name from an unrelated directory,
         # before or after the command; the lookup and dry runs only read Podman.

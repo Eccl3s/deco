@@ -33,6 +33,7 @@ let () =
           Unix.close stdout;
           Unix.close stderr;
           Unix.putenv "PATH" "/nonexistent";
+          Unix.putenv "XDG_STATE_HOME" (temp ^ "/state");
           List.iter (fun (name, value) -> Unix.putenv name value) env;
           Unix.execv binary (Array.of_list (binary :: args)));
         Unix.close stdout;

@@ -8,6 +8,9 @@ import tempfile
 import uuid
 
 binary = str(pathlib.Path(sys.argv[1]).resolve())
+# Keep trust records out of the developer's real state directory.
+state_home = tempfile.TemporaryDirectory(prefix='deco-state-')
+env = dict(os.environ, XDG_STATE_HOME=state_home.name)
 base = os.environ.get('DECO_TEST_IMAGE')
 if not base:
     raise SystemExit('Set DECO_TEST_IMAGE to a local image supporting sleep')
@@ -53,7 +56,7 @@ with tempfile.TemporaryDirectory(prefix='deco-remove-live-') as directory:
         podman('start', '--', cid)
         return name, cid
     def remove(expected, *args):
-        result = subprocess.run([binary, '--project-dir', str(root), 'remove', *args], capture_output=True, text=True, timeout=60)
+        result = subprocess.run([binary, '--project-dir', str(root), 'remove', *args], capture_output=True, text=True, timeout=60, env=env)
         assert result.returncode == expected, result
         return result
     def exists(kind, ref):

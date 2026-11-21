@@ -104,6 +104,7 @@ let () =
         if pid = 0 then (
           Unix.chdir (temp ^ "/child");
           Unix.putenv "PATH" path;
+          Unix.putenv "XDG_STATE_HOME" (temp ^ "/state");
           Unix.putenv "DECO_TEST_LOG" log;
           Unix.dup2 o Unix.stdout;
           Unix.dup2 e Unix.stderr;
