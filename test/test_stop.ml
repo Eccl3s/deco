@@ -116,6 +116,11 @@ let () =
       [];
       ("dev.deco.managed", `String "true") :: labels;
       List.remove_assoc "dev.deco.project" labels;
+      (* A moved project, or another project with the same name elsewhere. *)
+      ("dev.deco.project-root", `String "/old/project")
+      :: List.remove_assoc "dev.deco.project-root" labels;
+      ("dev.deco.project", `String "other")
+      :: List.remove_assoc "dev.deco.project" labels;
     ];
   let absent target =
     [

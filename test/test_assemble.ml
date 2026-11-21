@@ -377,6 +377,27 @@ let () =
   conflict
     [ info; ie (response ""); ii (); ce (response ""); ci ~state:"paused" () ];
   conflict [ info; ie (response ~code:1 ""); ce (response ""); ci () ];
+  (* Ownership refusals: the script ends at the failing inspection, so any
+     build, create or start would be an unexpected command. A moved project
+     and another project with the same name both differ only in the root. *)
+  let owned_by ?(managed = "true") ?(project = "example") root =
+    `Assoc
+      [
+        ("dev.deco.managed", `String managed);
+        ("dev.deco.project", `String project);
+        ("dev.deco.project-root", `String root);
+      ]
+  in
+  List.iter
+    (fun labels ->
+      conflict [ info; ie (response ""); ii ~labels () ];
+      conflict
+        [ info; ie (response ""); ii (); ce (response ""); ci ~labels () ])
+    [
+      owned_by "/old/project";
+      owned_by ~project:"other" "/other";
+      owned_by ~managed:"false" "/project";
+    ];
   List.iter
     (fun bad ->
       assert (

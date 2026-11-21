@@ -30,13 +30,26 @@ let () =
     and c_removed = ref false
     and i_removed = ref false in
     let calls = ref [] in
-    let labels owner =
-      `Assoc
-        [
-          ("dev.deco.managed", `String "true");
-          ("dev.deco.project", `String owner);
-          ("dev.deco.project-root", `String "/project");
-        ]
+    (* [<kind>-owner] is another project, [<kind>-root] a moved project (or
+       another project with the same name elsewhere), [<kind>-unlabelled] a
+       resource Deco did not create. *)
+    let labels kind =
+      if mode = kind ^ "-unlabelled" then `Assoc []
+      else
+        `Assoc
+          [
+            ("dev.deco.managed", `String "true");
+            ( "dev.deco.project",
+              `String (if mode = kind ^ "-owner" then "foreign" else "example")
+            );
+            ( "dev.deco.project-root",
+              `String
+                (if mode = kind ^ "-root" then "/old/project" else "/project")
+            );
+          ]
+    in
+    let ownership_modes kind =
+      List.map (( ^ ) (kind ^ "-")) [ "owner"; "root"; "unlabelled" ]
     in
     let json value = Yojson.Basic.to_string (`List [ value ]) in
     let response ?(code = 0) stdout =
@@ -66,14 +79,7 @@ let () =
                                    "exited"
                                  else "running") );
                           ] );
-                      ( "Config",
-                        `Assoc
-                          [
-                            ( "Labels",
-                              labels
-                                (if mode = "container-owner" then "foreign"
-                                 else "example") );
-                          ] );
+                      ("Config", `Assoc [ ("Labels", labels "container") ]);
                       ("HostConfig", `Assoc [ ("UsernsMode", `String "") ]);
                       ("Mounts", `List []);
                     ]))
@@ -90,10 +96,7 @@ let () =
                           (if mode = "retag" && !c_removed && target <> "iid"
                            then "new-id"
                            else "iid") );
-                      ( "Labels",
-                        labels
-                          (if mode = "image-owner" then "foreign" else "example")
-                      );
+                      ("Labels", labels "image");
                       ("Config", `Assoc []);
                     ]))
       | [ "podman"; "--remote=false"; kind; "exists"; "--"; _ ] ->
@@ -150,7 +153,7 @@ let () =
     in
     assert (List.length (List.filter (( = ) Podman_command.version) !calls) = 1);
     (if
-       (keep_image && mode = "image-owner")
+       (keep_image && List.mem mode (ownership_modes "image"))
        || mode = "ok" || mode = "stopped" || mode = "missing"
        || mode = "container-missing" || mode = "image-missing"
      then (
@@ -169,6 +172,14 @@ let () =
              @ if !i_removed then [ Remove.Remove_image ] else []
            in
            assert (e.Remove.completed = expected);
+           if
+             List.mem mode
+               (ownership_modes "container" @ ownership_modes "image")
+           then (
+             assert (not (!stopped || !c_removed || !i_removed));
+             match e.cause with
+             | Remove.Conflict _ -> ()
+             | _ -> failwith ("Expected an ownership conflict: " ^ mode));
            if mode = "dependencies" then
              match e.cause with
              | Remove.Image_in_use [ a; b ] ->
@@ -192,7 +203,11 @@ let () =
       "image-missing";
       "paused";
       "container-owner";
+      "container-root";
+      "container-unlabelled";
       "image-owner";
+      "image-root";
+      "image-unlabelled";
       "stop-failure";
       "container-failure";
       "container-verification";
@@ -204,7 +219,7 @@ let () =
     ];
   List.iter
     (fun mode -> List.iter (test mode true) [ false; true ])
-    [ "ok"; "missing"; "image-owner" ];
+    [ "ok"; "missing"; "image-owner"; "image-root"; "image-unlabelled" ];
   let invalid =
     {
       loaded with

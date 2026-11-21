@@ -1,13 +1,19 @@
 open Deco
 
 (* A stateful fake Podman: mutations change what later inspections return. *)
-type image = { id : string; owned : bool }
+
+(** Whose ownership labels a resource carries. [Moved] differs only in the
+    project root, as after moving the project or for another project with the
+    same name elsewhere. *)
+type owner = Owned | Foreign | Moved | Unlabelled
+
+type image = { id : string; owned : owner }
 
 type container = {
   cid : string;
   mutable state : string;
   image_id : string;
-  owner : bool;
+  owner : owner;
 }
 
 type world = {
@@ -44,10 +50,13 @@ let world ?image ?container ?(fail_build = false) ?(fail_start = false)
 let image_name = "example-dev-image:latest"
 let container_name = "example-dev-container"
 
-let labels owned =
-  Printf.sprintf
-    {|{"dev.deco.managed":"true","dev.deco.project":"%s","dev.deco.project-root":"/project"}|}
-    (if owned then "example" else "other")
+let labels = function
+  | Unlabelled -> "{}"
+  | owner ->
+      Printf.sprintf
+        {|{"dev.deco.managed":"true","dev.deco.project":"%s","dev.deco.project-root":"%s"}|}
+        (if owner = Foreign then "other" else "example")
+        (if owner = Moved then "/old/project" else "/project")
 
 let ok stdout = Ok { Process.status = Unix.WEXITED 0; stdout; stderr = "" }
 let exit n = Ok { Process.status = Unix.WEXITED n; stdout = ""; stderr = "" }
@@ -105,7 +114,7 @@ let execute w output argv =
                 cid = "intruder";
                 state;
                 image_id = (Option.get w.image).id;
-                owner = true;
+                owner = Owned;
               })
             w.intruder;
         mutate "rm"
@@ -113,14 +122,15 @@ let execute w output argv =
         w.build_output <- Some output;
         if w.fail_build then exit 1
         else (
-          w.image <- Some { id = Printf.sprintf "built%d" w.next; owned = true };
+          w.image <-
+            Some { id = Printf.sprintf "built%d" w.next; owned = Owned };
           w.next <- w.next + 1;
           mutate "build")
     | "podman" :: "--remote=false" :: "create" :: rest ->
         let image_id = List.nth rest (List.length rest - 1) in
         let cid = Printf.sprintf "%064x" w.next in
         w.next <- w.next + 1;
-        w.container <- Some { cid; state = "created"; image_id; owner = true };
+        w.container <- Some { cid; state = "created"; image_id; owner = Owned };
         ignore (mutate "create");
         ok (cid ^ "\n")
     | [ "podman"; "--remote=false"; "start"; "--"; id ] ->
@@ -151,9 +161,9 @@ let () =
       identity = User_identity.Image;
     }
   in
-  let old_image = { id = "old"; owned = true } in
+  let old_image = { id = "old"; owned = Owned } in
   let running () =
-    { cid = "oldc"; state = "running"; image_id = "old"; owner = true }
+    { cid = "oldc"; state = "running"; image_id = "old"; owner = Owned }
   in
   let refresh ?(keep_image = false) w =
     Refresh.run ~execute:(execute w)
@@ -226,11 +236,15 @@ let () =
   let w = world ~container:(running ()) () in
   refused ~keep_image:true w;
   assert ((Option.get w.container).state = "running");
-  refused
-    (world ~image:old_image ~container:{ (running ()) with owner = false } ());
-  refused
-    (world ~image:{ old_image with owned = false } ~container:(running ()) ());
-  refused (world ~image:{ old_image with owned = false } ());
+  List.iter
+    (fun owner ->
+      refused (world ~image:old_image ~container:{ (running ()) with owner } ());
+      refused
+        (world
+           ~image:{ old_image with owned = owner }
+           ~container:(running ()) ());
+      refused (world ~image:{ old_image with owned = owner } ()))
+    [ Foreign; Moved; Unlabelled ];
 
   (* A failed build happens before the old container is touched. *)
   let w = world ~image:old_image ~container:(running ()) ~fail_build:true () in
