@@ -17,7 +17,7 @@ let make (loaded : Config_loader.t) ~keep_image =
   let container_name = loaded.effective.container.name in
   let image_reference =
     if keep_image then None
-    else Some (loaded.effective.image.name ^ ":" ^ loaded.effective.image.tag)
+    else Some (Config.Effective.image_reference loaded.effective.image)
   in
   let stop = symbolic Command_plan.Container_id (Podman_command.stop "") in
   let remove_container =

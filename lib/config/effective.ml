@@ -35,3 +35,5 @@ type t = {
   container : container;
   mounts : mounts;
 }
+
+let image_reference (image : image) = image.name ^ ":" ^ image.tag
