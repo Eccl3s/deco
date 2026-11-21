@@ -15,6 +15,7 @@ let () =
   assert (Marshal.to_string original [] = before);
   assert (resolve original = c);
   assert (c.image.name = "demo-dev-image" && c.image.tag = "latest");
+  assert (Config.Effective.image_reference c.image = "demo-dev-image:latest");
   assert (c.container.name = "demo-dev-container" && c.container.shell = "sh");
   assert (c.container.workdir = None && c.mounts.workspace = None);
   assert (
@@ -46,6 +47,7 @@ let () =
           mounts.workspace={source='$HOME',target='/w',relabel='private'}")
   in
   assert (c.image.name = "custom" && c.image.tag = "dev");
+  assert (Config.Effective.image_reference c.image = "custom:dev");
   assert (
     c.build.context = "~/build"
     && c.build.containerfile = "Custom"

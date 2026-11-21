@@ -41,3 +41,8 @@ type t = {
   container : container;
   mounts : mounts;
 }
+
+val image_reference : image -> string
+(** The configured image as Podman references it when building, inspecting and
+    removing it: [name:tag]. The parts are joined as configured, with no
+    normalisation; validation has already checked their syntax. *)
