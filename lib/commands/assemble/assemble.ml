@@ -55,14 +55,6 @@ let run ?execute ?read_many
     | Error (Container_runtime.Conflict e) -> fail (Conflict e)
     | Error (Container_runtime.Podman e) -> fail (Podman e)
   in
-  let own labels =
-    match
-      Ownership.verify ~project:loaded.Config_loader.effective.project.name
-        ~project_root:loaded.project.root labels
-    with
-    | Ok () -> Ok ()
-    | Error _ -> fail (Conflict "Resource ownership differs")
-  in
   let mutation output argv =
     match execute output argv with
     | Error e -> fail (Runtime (e.operation ^ ": " ^ e.message))
@@ -80,15 +72,28 @@ let run ?execute ?read_many
     | Ok p -> Ok p
     | Error e -> fail (Planning e)
   in
+  let own resource labels =
+    match Container_runtime.verify_ownership loaded resource labels with
+    | Ok () -> Ok ()
+    | Error (Container_runtime.Conflict e) -> fail (Conflict e)
+    | Error (Container_runtime.Podman e) -> fail (Podman e)
+  in
+  let own_image = own (Container_runtime.Image plan.Assemble_plan.image_name)
+  and own_container =
+    own
+      (Container_runtime.Container loaded.Config_loader.effective.container.name)
+  in
   let image : Podman.image option ref = ref None in
   let container : Podman.container option ref = ref None in
   let built = ref false and created = ref false and started = ref false in
   let ready () =
     let* () =
-      match !image with None -> Ok () | Some i -> own i.Podman.labels
+      match !image with None -> Ok () | Some i -> own_image i.Podman.labels
     in
     let* () =
-      match !container with None -> Ok () | Some c -> own c.Podman.labels
+      match !container with
+      | None -> Ok ()
+      | Some c -> own_container c.Podman.labels
     in
     match (!image, !container) with
     | None, Some _ ->
@@ -209,7 +214,7 @@ let run ?execute ?read_many
                              (Invalid_response
                                 { operation = "image inspect"; message = e }))
                   in
-                  let* () = own i.labels in
+                  let* () = own_image i.labels in
                   image := Some i;
                   Ok ()
               | Container_inspect | Created_inspect | Started_inspect ->
@@ -222,7 +227,7 @@ let run ?execute ?read_many
                              (Invalid_response
                                 { operation = "container inspect"; message = e }))
                   in
-                  let* () = own c.labels in
+                  let* () = own_container c.labels in
                   let* () =
                     if index <> Container_inspect && c.id <> id_container ()
                     then fail (Conflict "Container ID differs")

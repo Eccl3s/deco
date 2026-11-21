@@ -174,24 +174,28 @@ let classify ~run = function
 let image_reference (loaded : Config_loader.t) =
   loaded.effective.image.name ^ ":" ^ loaded.effective.image.tag
 
+type resource = Image of string | Container of string
+
+let verify_ownership (loaded : Config_loader.t) (_ : resource) labels =
+  match
+    Ownership.verify ~project:loaded.effective.project.name
+      ~project_root:loaded.project.root labels
+  with
+  | Ok () -> Ok ()
+  | Error _ -> Error (Conflict "Resource ownership differs")
+
 let inspect ?run ?read_many ?(probe = fun () -> local_selinux ()) ?selinux
     ?container_id (loaded : Config_loader.t) =
   let injected_run = run in
   let run = Option.value ~default:(fun argv -> Process.run argv) run in
   let ( let* ) r f = match r with Ok x -> f x | Error e -> Error e in
   let wrap result = classify ~run result in
-  let own labels =
-    match
-      Ownership.verify ~project:loaded.effective.project.name
-        ~project_root:loaded.project.root labels
-    with
-    | Ok () -> Ok ()
-    | Error _ -> Error (Conflict "Resource ownership differs")
+  let container_reference =
+    Option.value ~default:loaded.effective.container.name container_id
   in
   let image_command = Podman_command.inspect "image" (image_reference loaded) in
   let container_command =
-    Podman_command.inspect "container"
-      (Option.value ~default:loaded.effective.container.name container_id)
+    Podman_command.inspect "container" container_reference
   in
   let* run =
     wrap
@@ -206,19 +210,19 @@ let inspect ?run ?read_many ?(probe = fun () -> local_selinux ()) ?selinux
         Error (Conflict "Configured image is missing; run deco assemble")
     | Present i -> Ok i
   in
-  let* () = own image.labels in
-  let* container =
-    wrap
-      (Podman.inspect_container ~run
-         (Option.value ~default:loaded.effective.container.name container_id))
+  let* () =
+    verify_ownership loaded (Image (image_reference loaded)) image.labels
   in
+  let* container = wrap (Podman.inspect_container ~run container_reference) in
   let* container =
     match container with
     | Podman.Absent ->
         Error (Conflict "Container is missing; run deco assemble")
     | Present c -> Ok c
   in
-  let* () = own container.labels in
+  let* () =
+    verify_ownership loaded (Container container_reference) container.labels
+  in
   let selinux =
     match selinux with
     | Some resolve -> resolve
@@ -230,32 +234,24 @@ let inspect ?run ?read_many ?(probe = fun () -> local_selinux ()) ?selinux
 
 let inspect_owned_container ?(run = fun argv -> Process.run argv) ?container_id
     (loaded : Config_loader.t) =
-  match
-    Podman.inspect_container ~run
-      (Option.value ~default:loaded.effective.container.name container_id)
-  with
+  let reference =
+    Option.value ~default:loaded.effective.container.name container_id
+  in
+  match Podman.inspect_container ~run reference with
   | Error _ as e -> classify ~run e
   | Ok Podman.Absent -> Ok Podman.Absent
-  | Ok (Podman.Present container) -> (
-      match
-        Ownership.verify ~project:loaded.effective.project.name
-          ~project_root:loaded.project.root container.labels
-      with
-      | Ok () -> Ok (Podman.Present container)
-      | Error _ -> Error (Conflict "Resource ownership differs"))
+  | Ok (Podman.Present container) ->
+      Result.map
+        (fun () -> Podman.Present container)
+        (verify_ownership loaded (Container reference) container.labels)
 
 let inspect_owned_image ?(run = fun argv -> Process.run argv) ?image_id
     (loaded : Config_loader.t) =
-  match
-    Podman.inspect_image ~run
-      (Option.value ~default:(image_reference loaded) image_id)
-  with
+  let reference = Option.value ~default:(image_reference loaded) image_id in
+  match Podman.inspect_image ~run reference with
   | Error _ as e -> classify ~run e
   | Ok Podman.Absent -> Ok Podman.Absent
-  | Ok (Podman.Present image) -> (
-      match
-        Ownership.verify ~project:loaded.effective.project.name
-          ~project_root:loaded.project.root image.labels
-      with
-      | Ok () -> Ok (Podman.Present image)
-      | Error _ -> Error (Conflict "Resource ownership differs"))
+  | Ok (Podman.Present image) ->
+      Result.map
+        (fun () -> Podman.Present image)
+        (verify_ownership loaded (Image reference) image.labels)
