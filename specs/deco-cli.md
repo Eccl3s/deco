@@ -10,9 +10,10 @@ The key words **must**, **must not**, **required**, **should**, and **may** are
 to be interpreted as requirements.
 
 Configuration behavior is defined by
-[`deco-config.md`](./deco-config.md). When this document and the config
-specification discuss the same lifecycle operation, the requirements in both
-documents apply.
+[`deco-config.md`](./deco-config.md). Configuration trust is defined by
+[`deco-trust.md`](./deco-trust.md). When this document and either of those
+specifications discuss the same operation, the requirements in each document
+apply.
 
 Command names, option names, template names, and action names are
 case-sensitive.
@@ -36,6 +37,7 @@ Commands:
   shell                       Enter the configured interactive shell
   actions                     List configured actions
   run <ACTION>                Run a configured action
+  trust                       Review and approve the project configuration
   completion bash             Generate a Bash completion script
 ```
 
@@ -57,7 +59,7 @@ the `--` separator used by `deco exec`.
 
 `--project` and `--project-dir` are mutually exclusive and are accepted by commands that operate on one project:
 `validate`, `assemble`, `refresh`, `remove`, `start`, `stop`, `info`, `exec`,
-`shell`, `actions`, and `run`. It is not accepted by `init`, `list`,
+`shell`, `actions`, `run`, and `trust`. It is not accepted by `init`, `list`,
 or `completion`. `init` uses its positional `PATH` instead.
 
 Every command that creates, starts, stops, or removes Podman resources accepts
@@ -101,6 +103,20 @@ Validation follows the TOML specification and must include configuration rules, 
 
 Commands must not partially apply an invalid configuration. In particular, `assemble` and `refresh` must complete validation before creating, rebuilding, or replacing any resources.
 
+### Configuration trust
+
+`assemble`, `refresh`, `start`, `stop`, `remove`, `exec`, `shell`, and `run`
+require the project configuration to be trusted, as defined by
+[`deco-trust.md`](./deco-trust.md). After validation succeeds and before any
+further Podman operation, file write, or hook, these commands check trust and
+fail with exit code `5` when the configuration is not trusted. They never
+prompt for approval; the user approves with `deco trust`. `stop` and
+`remove` with `--no-hooks` skip `pre_stop` and do not require trust, except
+for `remove --force`; see [`deco-trust.md`](./deco-trust.md).
+
+Dry runs and the commands `validate`, `info`, `list`, `actions`, `completion`,
+`init`, and `trust` do not require trust.
+
 ### Resource ownership
 
 Every image built by Deco and every container created by Deco must receive
@@ -143,6 +159,7 @@ Changes to user identity mapping alone do not require rebuilding the image.
 | `2` | Command usage or project configuration is invalid. |
 | `3` | Podman is not installed or not usable. |
 | `4` | Resource state conflicts with the requested operation, or an unsafe removal was refused. |
+| `5` | The project configuration is not trusted. |
 
 `exec`, `run`, and hook-driven commands should return the executed process's
 exit status when it is available. If the process terminated by signal or its
@@ -268,6 +285,10 @@ anything unless `--replace` is supplied. `--replace` atomically replaces only
 preserved. If creation or replacement fails, Deco should leave the original
 files intact.
 
+After writing its files, `init` records trust for the resulting `.deco/`
+directory and prints the trusted project root, as defined by
+[`deco-trust.md`](./deco-trust.md). `--dry-run` records nothing.
+
 Dry-run output must show:
 
 1. The resolved target directory.
@@ -276,6 +297,7 @@ Dry-run output must show:
 4. Whether `.deco/` would be created.
 5. Each file that would be created or replaced.
 6. The generated contents or an equivalent clearly delimited preview.
+7. That the result would be trusted.
 
 Example:
 
@@ -353,7 +375,7 @@ Podman or hooks.
 ### `deco remove`
 
 ```text
-deco remove [--keep-image] [--force] [--keep-volumes] [--dry-run]
+deco remove [--keep-image] [--force] [--keep-volumes] [--no-hooks] [--dry-run]
 ```
 
 By default, Deco removes the current project's container, configured owned
@@ -382,6 +404,10 @@ confirmation.
 Hooks from other projects are not run while forcibly removing dependent
 containers because their configuration and trust status are unknown.
 
+`--no-hooks` skips `pre_stop` and lets `remove` run when the configuration is
+not trusted, except in combination with `--force`, as defined by
+[`deco-trust.md`](./deco-trust.md).
+
 `-d, --dry-run` displays the `pre_stop` hook, container stop, and container,
 volume, and image removals in execution order — including every dependent
 container `--force` would stop and remove, and any removal that would be
@@ -404,13 +430,16 @@ container does not exist, it fails with exit code `4` and directs the user to
 ### `deco stop`
 
 ```text
-deco stop [--dry-run]
+deco stop [--no-hooks] [--dry-run]
 ```
 
 For a running container, runs `pre_stop` and then stops it. If `pre_stop`
 fails, the container remains running. If the container is already stopped,
 the command succeeds without running the hook. A missing container fails with
 exit code `4`.
+
+`--no-hooks` skips `pre_stop` and lets `stop` run when the configuration is
+not trusted, as defined by [`deco-trust.md`](./deco-trust.md).
 
 `-d, --dry-run` displays the `pre_stop` hook and the stop that would run,
 without invoking Podman or running hooks.
@@ -425,7 +454,8 @@ Reports the current project's resolved configuration and Podman resource
 state without changing it. The report includes project identity, Podman
 availability and version, image identity, existence, age, and ownership,
 container identity, state, age, ownership, and compatibility, user mode,
-workdir, mounts, published ports, configured hooks, and action names.
+workdir, mounts, published ports, configured hooks, action names, and
+configuration trust state. `info` does not require trust.
 
 `info` performs only read-only Podman queries. Reporting ownership or
 compatibility never changes the ownership rules: a resource reported as owned
@@ -440,6 +470,12 @@ JSON output has this shape:
     "description": "Example project",
     "root": "/home/user/my-project",
     "config": "/home/user/my-project/.deco/config.toml"
+  },
+  "trust": {
+    "state": "trusted",
+    "digest": "blake2b-256:4c1f…",
+    "trusted_at": "2026-11-21T10:02:13Z",
+    "changed": []
   },
   "podman": {
     "available": true,
@@ -510,6 +546,8 @@ Image and container fields:
   human-readable string, and is empty when the container is compatible or
   compatibility was not evaluated.
 
+Trust fields are defined by [`deco-trust.md`](./deco-trust.md).
+
 Configuration fields:
 
 - Each `mounts` entry includes `source`, `target`, `type`, `readonly`, and
@@ -519,8 +557,8 @@ Configuration fields:
 - Each `ports` entry includes `host`, `container`, `protocol`, and `bind`.
 
 Human output presents the same information as labelled sections in this
-order: project, Podman, image, container, runtime, mounts, DNS, ports, hooks,
-and actions. Timestamps are shown in UTC together with a relative age, such as
+order: project, trust, Podman, image, container, runtime, mounts, DNS, ports,
+hooks, and actions. Timestamps are shown in UTC together with a relative age, such as
 `2026-11-11 09:14 UTC (9 days ago)`. Missing values are shown as `-`, and an
 incompatible container lists each mismatch. Control characters in reported
 values are escaped as in `deco list`.
@@ -711,6 +749,21 @@ the action does not stop or remove the container.
 `post_start`) and the action command that would run, without invoking Podman,
 allocating a TTY, or running hooks.
 
+### `deco trust`
+
+```text
+deco trust [--yes] [--dry-run]
+deco trust --show
+deco trust --revoke
+```
+
+Reviews the project's `.deco/` contents and records the user's approval of
+them. Shows the trust state with `--show` and removes approvals with
+`--revoke`. Options, output, prompting, storage, and exit codes are defined by
+[`deco-trust.md`](./deco-trust.md).
+
+`trust` does not invoke Podman except to locate the project for `--project`.
+
 ### `deco completion`
 
 ```text
@@ -737,6 +790,7 @@ Hooks run in the order defined by the TOML specification and fail fast.
 - A failed `post_start` leaves the container running.
 - A failed `pre_enter` prevents shell entry.
 - A failed `pre_stop` prevents the requested stop, refresh, or normal removal.
+  `stop --no-hooks` and `remove --no-hooks` skip it.
 - Podman or hook failure stops the current command; Deco must not continue to
   later lifecycle steps.
 
@@ -746,8 +800,8 @@ outdated container.
 
 ## 7. Dry-run requirements
 
-`init`, `assemble`, `refresh`, `remove`, `start`, `stop`, `exec`, `shell`, and
-`run` support `-d, --dry-run`.
+`init`, `assemble`, `refresh`, `remove`, `start`, `stop`, `exec`, `shell`,
+`run`, and `trust` support `-d, --dry-run`.
 
 A dry run must:
 
@@ -762,9 +816,15 @@ A dry run must:
   by the common output rules.
 - Mark conditional or destructive operations clearly.
 - Avoid file writes, image builds, resource mutations, and hook execution.
+- Not require configuration trust. When the configuration is not trusted, a
+  dry run of a command that requires trust writes a note to stderr as defined
+  by [`deco-trust.md`](./deco-trust.md).
 
 A dry run fails normally when configuration is invalid or required Podman
 inspection cannot be performed.
+
+`deco trust --dry-run` prints the trust review without prompting or recording
+an approval.
 
 ## 8. Conformance scenarios
 
@@ -791,4 +851,7 @@ A conforming implementation must cover at least these scenarios:
     the documented errors and exit codes.
 11. `remove`, `start`, `stop`, `exec`, `shell`, and `run` dry runs print the
     ordered plan and perform no Podman mutations or hook execution.
+12. Commands that require trust fail with exit code `5` for untrusted or
+    changed configuration, and the trust scenarios in
+    [`deco-trust.md`](./deco-trust.md) are covered.
 
