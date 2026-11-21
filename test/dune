@@ -34,7 +34,8 @@
   test_named_project
   test_config_loader
   test_host_paths
-  test_user_identity)
+  test_user_identity
+  test_trust_digest)
  (modules
   :standard
   \
