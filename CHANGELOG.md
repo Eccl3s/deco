@@ -5,6 +5,24 @@ All notable changes to Deco are documented here. The format is based on
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Before 1.0.0, minor
 releases may change behaviour.
 
+## [Unreleased]
+
+### Changed
+
+- Ownership conflicts now name the image or container and say why it is not
+  this project's: it was not created by Deco, it belongs to another Deco
+  project, or it belongs to a project with the same name at another root. Each
+  conflicting label is listed with its expected and found values, followed by
+  a recovery hint. Removing the resource is suggested only for a moved
+  project, and only if its old copy no longer exists.
+
+### Known limitations
+
+- Moving or renaming a project directory leaves its image and container owned
+  by the old root, so Deco refuses to change them, `deco remove` included.
+  Remove them with the `podman rm` and `podman rmi` commands the error prints,
+  then run `deco assemble`.
+
 ## [0.2.0] - 2026-11-20
 
 Better lifecycle management: restart, rebuild, inspect and list environments,
@@ -78,5 +96,6 @@ First release: working project-local development containers in Podman.
   ignored, and `deco validate` lists them.
 - Signed source archives and a Linux x86_64 binary for each release.
 
+[Unreleased]: https://github.com/Eccl3s/deco/compare/v0.2.0...HEAD
 [0.2.0]: https://github.com/Eccl3s/deco/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Eccl3s/deco/releases/tag/v0.1.0

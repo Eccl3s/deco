@@ -134,6 +134,41 @@ deco start
 
 These commands describe the planned interface and may not yet be available.
 
+### Ownership conflicts
+
+Deco labels every image and container it creates with the project name and the
+absolute project root, and only changes resources whose labels match the
+current project. When a resource with the configured name carries other labels,
+the command refuses with exit code 4. The message says what owns the resource
+and lists each conflicting label with its expected and found values:
+
+```text
+deco: container my-project-dev-container belongs to Deco project "other-project"
+  dev.deco.project: expected "my-project", found "other-project"
+  dev.deco.project-root: expected "/home/me/my-project", found "/home/me/other-project"
+  To keep it, set [container].name in .deco/config.toml to use a different name.
+```
+
+#### Known limitation: moved projects
+
+Because ownership records the absolute project root, moving or renaming the
+project directory leaves its image and container labelled with the old root.
+Deco cannot tell this apart from another project with the same name elsewhere,
+so it refuses to change them, `deco remove` included. For this case only, the
+message names the old root and the Podman command that removes the resource:
+
+```text
+deco: container my-project-dev-container belongs to a Deco project with the same name at another location
+  dev.deco.project-root: expected "/home/me/src/my-project", found "/home/me/my-project"
+  If the project was moved from /home/me/my-project and that copy no longer exists, remove the old container with:
+    podman rm my-project-dev-container
+  Otherwise, set [container].name in .deco/config.toml to use a different name.
+```
+
+Run that command only if the old copy is gone. The image reports the same
+conflict and has its own `podman rmi` command. Once both are removed,
+`deco assemble` creates fresh resources for the new location.
+
 ## Configuration
 
 Deco uses two files to define a development environment.
