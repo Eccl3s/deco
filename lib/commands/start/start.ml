@@ -3,12 +3,13 @@ type cause =
   | Podman of Podman.error
   | Conflict of string
   | Runtime of string
+  | Hook of Hook.failure
 
 type error = { cause : cause; started : bool }
 type outcome = { environment : Container_runtime.environment; started : bool }
 
 let run ?run ?read_many ?(probe = fun () -> Container_runtime.local_selinux ())
-    loaded =
+    ?hook loaded =
   let injected = run in
   let run = Option.value ~default:(fun argv -> Process.run argv) run in
   let read_many =
@@ -58,4 +59,7 @@ let run ?run ?read_many ?(probe = fun () -> Container_runtime.local_selinux ())
       then fail (Conflict "Resource ID changed after start")
       else if current.container.state <> "running" then
         fail (Runtime "Container is not running after start")
-      else Ok { environment = current; started = true })
+      else
+        match Hook.run ?run:hook loaded ~container_id Hook.Post_start with
+        | Error failure -> fail (Hook failure)
+        | Ok () -> Ok { environment = current; started = true })

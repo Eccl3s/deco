@@ -7,5 +7,5 @@ val make : Config_loader.t -> (t, string) result
     argument. Reuse exec's user, workdir, and NUL-byte validation. *)
 
 val render : t -> string
-(** Describe conditional startup, verification, and shell entry without hooks.
-*)
+(** Describe conditional startup, verification, the [post_start] hook after a
+    start, and shell entry. *)

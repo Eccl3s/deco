@@ -3,6 +3,7 @@ val run :
   ?execute:Exec.runner ->
   ?read_many:(string list list -> (Process.result, Process.error) result list) ->
   ?probe:(unit -> bool option) ->
+  ?hook:Hook.runner ->
   Config_loader.t ->
   tty:bool ->
   (Exec.outcome, Exec.error) result

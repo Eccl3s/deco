@@ -1,5 +1,6 @@
 type t = {
   start : Command_plan.argument list;
+  post_start : string option;
   exec : Command_plan.argument list;
 }
 
@@ -18,6 +19,7 @@ let make (loaded : Config_loader.t) ~tty command =
         let plan =
           {
             start = start.Start_plan.start;
+            post_start = Start_plan.post_start_step start;
             exec =
               List.mapi
                 (fun i value ->
@@ -35,15 +37,22 @@ let make (loaded : Config_loader.t) ~tty command =
         then Error "Command arguments cannot contain NUL bytes"
         else Ok plan
 
+let prepare t =
+  [
+    "Check Podman availability.";
+    "Inspect the configured image and container; verify ownership, \
+     compatibility, and supported state.";
+    "If the container is not running, start it:\n"
+    ^ Command_plan.render_multiline t.start
+    ^ "\n\
+      \   Then reinspect the same container and verify ownership, \
+       compatibility, and running state.";
+  ]
+  @ Option.to_list t.post_start
+
 let render t =
   "Exec preview\nNo commands will be run.\n\n"
-  ^ "1. Check Podman availability.\n"
-  ^ "2. Inspect the configured image and container; verify ownership, \
-     compatibility, and supported state.\n"
-  ^ "3. If the container is not running, start it:\n"
-  ^ Command_plan.render_multiline t.start
-  ^ "\n"
-  ^ "   Then reinspect the same container and verify ownership, compatibility, \
-     and running state.\n" ^ "4. Execute the command:\n"
-  ^ Command_plan.render_multiline t.exec
-  ^ "\n\n" ^ "<container-id> is resolved by inspection during execution.\n"
+  ^ Command_plan.render_steps
+      (prepare t
+      @ [ "Execute the command:\n" ^ Command_plan.render_multiline t.exec ])
+  ^ "\n<container-id> is resolved by inspection during execution.\n"

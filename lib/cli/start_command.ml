@@ -32,6 +32,9 @@ let execute selection dry_run =
               | Deco.Start.Planning e -> (e, 2)
               | Deco.Start.Conflict e -> (e, 4)
               | Deco.Start.Runtime e -> (e, 1)
+              | Deco.Start.Hook failure ->
+                  ( Deco.Hook.failure_message failure,
+                    Deco.Hook.exit_status failure )
               | Deco.Start.Podman (Deco.Podman.Unavailable e) -> (e, 3)
               | Deco.Start.Podman
                   ( Deco.Podman.Runtime { operation; message }
@@ -39,10 +42,19 @@ let execute selection dry_run =
                   (operation ^ ": " ^ message, 1)
             in
             prerr_endline ("deco: " ^ message);
-            if error.Deco.Start.started [@warning "-42"] then
-              prerr_endline
-                "deco: Start command completed, but container startup could \
-                 not be verified.";
+            (match error.Deco.Start.cause with
+            | Deco.Start.Hook _ ->
+                prerr_endline
+                  ("deco: Started "
+                 ^ loaded.Deco.Config_loader.effective
+                     .Config.Effective.container
+                     .name ^ "; it remains running.")
+            | Deco.Start.Planning _ | Deco.Start.Conflict _
+            | Deco.Start.Runtime _ | Deco.Start.Podman _ ->
+                if error.Deco.Start.started [@warning "-42"] then
+                  prerr_endline
+                    "deco: Start command completed, but container startup \
+                     could not be verified.");
             code)
 
 let command =

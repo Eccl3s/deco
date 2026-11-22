@@ -6,6 +6,7 @@ type cause = Start.cause =
   | Podman of Podman.error
   | Conflict of string
   | Runtime of string
+  | Hook of Hook.failure
 
 type error = Start.error = { cause : cause; started : bool }
 
@@ -15,7 +16,7 @@ type outcome = {
   status : Unix.process_status;
 }
 
-let run ?execute ?read_many ?probe loaded ~tty command =
+let run ?execute ?read_many ?probe ?hook loaded ~tty command =
   let injected = execute in
   let execute =
     Option.value ~default:(fun output argv -> Process.run ~output argv) execute
@@ -33,7 +34,7 @@ let run ?execute ?read_many ?probe loaded ~tty command =
     | Error e -> Error { cause = Planning e; started = false }
   in
   let* { Start.environment; started } =
-    Start.run ~run:(execute Process.Capture) ?read_many ?probe loaded
+    Start.run ~run:(execute Process.Capture) ?read_many ?probe ?hook loaded
   in
   let container_id = environment.container.id in
   let argv =
