@@ -32,9 +32,14 @@ if a[0]=='version': sys.exit(125 if mode=='unavailable' else 0)
 elif a[:2]==['image','inspect']: print(json.dumps([dict(Id='iid',Labels=labels,Config=dict(WorkingDir='/'))]))
 elif a[:2]==['container','inspect']:
  if mode=='missing': sys.exit(125)
- print(json.dumps([dict(Id='cid',Image='iid',State=dict(Status='exited' if mode=='stopped' and not marker.exists() else 'running'),Config=dict(Labels=labels,WorkingDir='/'),HostConfig=dict(UsernsMode='',Init=True),Mounts=[])]))
+ print(json.dumps([dict(Id='cid',Image='iid',State=dict(Status='exited' if mode in ('stopped','pre-enter') and not marker.exists() else 'running'),Config=dict(Labels=labels,WorkingDir='/'),HostConfig=dict(UsernsMode='',Init=True),Mounts=[])]))
 elif a[:2]==['container','exists']: sys.exit(1)
 elif a[0]=='start': marker.touch()
+elif a[:2]==['exec','--']:
+ # A hook: no stdin or TTY, the configured shell with -lc.
+ assert a[2:5]==['cid','/bin/sh','-lc'],a
+ print('HOOK:'+a[5],flush=True)
+ sys.exit(9 if mode=='pre-enter-fail' and a[5]=='echo pre' else 0)
 elif a[0]=='exec':
  assert a==['exec','--interactive','--tty','--','cid','/bin/sh'],a
  os.execv('/bin/sh',['/bin/sh'])
@@ -42,10 +47,13 @@ else: sys.exit(99)
 ''')
     fake.chmod(0o700)
     # The first mode runs before the project is trusted.
-    for mode, expected in [('untrusted',5), ('running',17), ('stopped',17), ('interrupt',0), ('missing',4), ('owner',4), ('unavailable',3), ('stdin-only',2), ('stdout-only',2)]:
+    for mode, expected in [('untrusted',5), ('running',17), ('stopped',17), ('interrupt',0), ('missing',4), ('owner',4), ('unavailable',3), ('stdin-only',2), ('stdout-only',2), ('pre-enter',17), ('pre-enter-fail',9)]:
         (root/'calls').write_text('')
         (root/'started').unlink(missing_ok=True)
-        if mode == 'running':
+        if mode == 'pre-enter':
+            (root / '.deco/config.toml').write_text('[project]\nname="example"\n[container]\nshell="/bin/sh"\n'
+                                                     '[hooks]\npost_start="echo post"\npre_enter="echo pre"\n')
+        if mode in ('running','pre-enter'):
             subprocess.run([binary,'--project-dir',str(root),'trust','--yes'],check=True,capture_output=True,
                            env=dict(os.environ,XDG_STATE_HOME=state_home.name))
         pid, master = pty.fork()
@@ -67,7 +75,7 @@ else: sys.exit(99)
                 if select.select([master],[],[],0.02)[0]:
                     try: data+=os.read(master,4096)
                     except OSError: pass
-                if not sent and mode in ('running','stopped','interrupt') and (b'#' in data or b'$' in data):
+                if not sent and mode in ('running','stopped','interrupt','pre-enter') and (b'#' in data or b'$' in data):
                     os.write(master,b'echo READY; sleep 5\n' if mode=='interrupt' else b'stty size; read value; echo GOT:$value; exit 17\nhello\n')
                     sent=True
                 if mode=='interrupt' and b'READY\r\n' in data and not interrupted:
@@ -77,9 +85,15 @@ else: sys.exit(99)
                 if child: status=result; break
             assert status is not None, (mode,data)
             assert os.waitstatus_to_exitcode(status)==expected,(mode,status,data)
-            if mode in ('running','stopped'):
+            if mode in ('running','stopped','pre-enter'):
                 assert b'31 91' in data and b'GOT:hello' in data,(mode,data)
             calls=(root/'calls').read_text()
+            if mode == 'pre-enter':
+                # post_start after the start, then pre_enter, then the shell.
+                assert data.index(b'HOOK:echo post') < data.index(b'HOOK:echo pre') < data.index(b'GOT:hello'),data
+            if mode == 'pre-enter-fail':
+                assert b'HOOK:echo pre' in data and b'pre_enter hook failed with exit status 9' in data,data
+                assert '"--tty"' not in calls,calls
             if mode in ('stdin-only','stdout-only','untrusted'): assert calls==''
             if mode == 'untrusted': assert b'is not trusted' in data,(mode,data)
             assert '"stop"' not in calls and '"remove"' not in calls

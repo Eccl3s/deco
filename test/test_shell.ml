@@ -186,4 +186,83 @@ let () =
         (fun failure ->
           test ~state:"exited" ~failure ~status:(Unix.WEXITED 0) ~batch)
         [ "missing"; "owner"; "compatibility"; "start"; "verify"; "launch" ])
-    [ false; true ]
+    [ false; true ];
+  (* post_start (after a start) then pre_enter run in the verified container
+     before entry; a failed pre_enter prevents entry and keeps its status. *)
+  let hooked =
+    {
+      loaded with
+      effective =
+        {
+          loaded.effective with
+          hooks =
+            {
+              loaded.effective.hooks with
+              post_start = Some "echo started";
+              pre_enter = Some "echo entering";
+            };
+        };
+    }
+  in
+  List.iter
+    (fun (state, pre_enter_status) ->
+      let events = ref [] and started = ref false in
+      let response stdout =
+        Ok { Process.status = Unix.WEXITED 0; stdout; stderr = "" }
+      in
+      let execute _ argv =
+        match argv with
+        | [ "podman"; "--remote=false"; "version" ] -> response ""
+        | [ "podman"; "--remote=false"; "image"; "inspect"; "--"; _ ] ->
+            response image
+        | [ "podman"; "--remote=false"; "container"; "inspect"; "--"; _ ] ->
+            response (json (if !started then "running" else state))
+        | [ "podman"; "--remote=false"; "start"; "--"; "cid" ] ->
+            started := true;
+            events := "start" :: !events;
+            response ""
+        | "podman" :: "--remote=false" :: "exec" :: "--interactive" :: _ ->
+            events := "shell" :: !events;
+            response ""
+        | _ -> failwith ("Unexpected shell command: " ^ String.concat " " argv)
+      in
+      let hook argv =
+        let status =
+          match List.rev argv with
+          | "echo entering" :: "-lc" :: _ :: "cid" :: "--" :: _ ->
+              events := "pre_enter" :: !events;
+              pre_enter_status
+          | "echo started" :: "-lc" :: _ :: "cid" :: "--" :: _ ->
+              events := "post_start" :: !events;
+              Unix.WEXITED 0
+          | _ -> failwith ("Unexpected hook: " ^ String.concat " " argv)
+        in
+        Ok { Process.status; stdout = ""; stderr = "" }
+      in
+      let result =
+        Shell.run ~execute ~hook
+          ~probe:(fun () -> failwith "Unexpected SELinux probe")
+          hooked ~tty:true
+      in
+      let prepared =
+        if state = "running" then [] else [ "start"; "post_start" ]
+      in
+      match (result, pre_enter_status) with
+      | Ok _, Unix.WEXITED 0 ->
+          assert (List.rev !events = prepared @ [ "pre_enter"; "shell" ])
+      | ( Error
+            {
+              cause = Exec.Hook (Hook.Exited { hook = Pre_enter; status });
+              started;
+            },
+          _ ) ->
+          assert (status = pre_enter_status);
+          assert (started = (state <> "running"));
+          assert (List.rev !events = prepared @ [ "pre_enter" ])
+      | _ -> assert false)
+    [
+      ("running", Unix.WEXITED 0);
+      ("exited", Unix.WEXITED 0);
+      ("running", Unix.WEXITED 9);
+      ("exited", Unix.WEXITED 9);
+    ]

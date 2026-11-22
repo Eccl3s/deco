@@ -16,7 +16,8 @@ type outcome = {
   status : Unix.process_status;
 }
 
-let run ?execute ?read_many ?probe ?hook loaded ~tty command =
+let run ?execute ?read_many ?probe ?hook
+    ?(before_exec = fun ~container_id:_ -> Ok ()) loaded ~tty command =
   let injected = execute in
   let execute =
     Option.value ~default:(fun output argv -> Process.run ~output argv) execute
@@ -39,6 +40,11 @@ let run ?execute ?read_many ?probe ?hook loaded ~tty command =
   let container_id = environment.container.id in
   let argv =
     Command_plan.resolve ~image_id:environment.image.id ~container_id plan.exec
+  in
+  let* () =
+    match before_exec ~container_id with
+    | Ok () -> Ok ()
+    | Error failure -> Error { cause = Hook failure; started }
   in
   match execute Process.Inherit argv with
   | Ok result -> Ok { container_id; started; status = result.status }
