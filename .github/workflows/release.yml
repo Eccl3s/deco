@@ -49,7 +49,7 @@ jobs:
           (cd "$source_dir" && opam exec -- dune build --pkg=disabled && opam exec -- dune build --pkg=disabled @check && opam exec -- dune runtest --pkg=disabled && opam exec -- dune build --pkg=disabled @test-shell-pty)
           test "$("$source_dir/_build/default/bin/deco.exe" --version)" = "$version"
           python3 tools/release/prepare.py binary "$TAG" "$RUNNER_TEMP/dist" "$source_dir" "$(git show -s --format=%ct "refs/tags/${TAG}^{commit}")"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: release-files
           path: ${{ runner.temp }}/dist/*
@@ -62,7 +62,7 @@ jobs:
         os: [ubuntu-22.04, ubuntu-24.04]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: release-files
           path: dist
@@ -88,7 +88,7 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: release-files
           path: dist
@@ -110,7 +110,7 @@ jobs:
             echo 'Tampered artifact incorrectly verified' >&2
             exit 1
           fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: signed-release-files
           path: dist/*
@@ -122,7 +122,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: signed-release-files
           path: dist
