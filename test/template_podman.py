@@ -137,7 +137,8 @@ with tempfile.TemporaryDirectory(prefix='deco-debian-workflow-') as directory:
         config_path=root/'.deco/config.toml'
         hook_names=['post_create','post_start','pre_enter','pre_stop']
         config_path.write_text(originals[config_path].decode()+'\n[hooks]\n'+''.join(
-            '%s = "printf \'%s\\\\n\' >> .deco-hooks"\n'%(hook,hook) for hook in hook_names))
+            '%s = "printf \'%s\\\\n\' >> .deco-hooks"\n'%(hook,hook) for hook in hook_names)
+            +'[actions]\nproof = "printf ran > .deco-action-proof; exit 3"\n')
         deco('--project-dir',str(root),'trust','--yes')
         marker=root/'.deco-hooks'
         def ran():
@@ -159,6 +160,23 @@ with tempfile.TemporaryDirectory(prefix='deco-debian-workflow-') as directory:
         result=deco('--project-dir',str(root),'exec','--','/bin/sh','-c','cat .deco-hooks')
         assert result.stdout=='post_start\n',result.stdout
         assert ran()==['post_start'] and running()
+        # Actions: listing needs no container; run uses exec's path, so it
+        # starts a stopped container (running post_start) and passes the
+        # action's exit status through.
+        result=deco('--project-dir',str(root),'actions','--format','json')
+        assert json.loads(result.stdout)==[{'name':'proof','command':'printf ran > .deco-action-proof; exit 3'}],result.stdout
+        deco('--project-dir',str(root),'stop','--no-hooks')
+        assert not running()
+        action_proof=root/'.deco-action-proof'
+        result=deco('--project-dir',str(root),'run','proof',check=False)
+        assert result.returncode==3,result
+        assert action_proof.read_text()=='ran' and ran()==['post_start'] and running()
+        action_proof.unlink()
+        result=deco('-p',name,'run','proof',cwd='/',check=False)
+        assert result.returncode==3 and action_proof.read_text()=='ran' and ran()==[],result
+        action_proof.unlink()
+        result=deco('--project-dir',str(root),'run','nope',check=False)
+        assert result.returncode==2 and "run 'deco actions'" in result.stderr,result
         # shell runs pre_enter immediately before entry.
         pid,master=pty.fork()
         if pid==0:
