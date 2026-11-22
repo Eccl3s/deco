@@ -104,6 +104,7 @@ let () =
         if pid = 0 then (
           Unix.chdir (temp ^ "/child");
           Unix.putenv "PATH" path;
+          Unix.putenv "XDG_STATE_HOME" (temp ^ "/state");
           Unix.putenv "DECO_TEST_LOG" log;
           Unix.dup2 o Unix.stdout;
           Unix.dup2 e Unix.stderr;
@@ -151,6 +152,21 @@ let () =
           |> replace ~pattern:"@ROOT@" ~by:temp);
         Unix.chmod fake 0o700
       in
+
+      (* Trust is required before Podman is used; a dry run only notes it. *)
+      let out, err = run [ "refresh" ] 5 in
+      assert (out = "" && contains err "deco: configuration for ");
+      assert (
+        contains err
+          " is not trusted\nRun 'deco trust' to review and approve it.\n");
+      assert (not (Sys.file_exists log));
+      let _, err = run [ "refresh"; "-d" ] 0 in
+      assert (
+        err
+        = "Note: configuration is not trusted; 'deco refresh' would fail with \
+           exit code 5.\n");
+      assert (not (Sys.file_exists log));
+      ignore (run [ "trust"; "--yes" ] 0);
 
       (* Usage. *)
       ignore (run [ "refresh"; "--help" ] 0);

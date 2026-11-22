@@ -92,10 +92,14 @@ let () =
                 not
                   (List.exists
                      (fun prefix -> String.starts_with ~prefix entry)
-                     [ "PATH="; "TERM="; "DECO_TEST_" ]))
+                     [ "PATH="; "TERM="; "DECO_TEST_"; "XDG_STATE_HOME=" ]))
           in
           let env =
-            [ "PATH=" ^ path; "DECO_TEST_LOG=" ^ log ]
+            [
+              "PATH=" ^ path;
+              "XDG_STATE_HOME=" ^ temp ^ "/state";
+              "DECO_TEST_LOG=" ^ log;
+            ]
             @ Option.to_list (Option.map (fun term -> "TERM=" ^ term) term)
             @ inherited
           in
@@ -121,6 +125,20 @@ let () =
       let calls () = if Sys.file_exists log then read log else "" in
       write fake "#!/bin/sh\nprintf called >> \"$DECO_TEST_LOG\"\nexit 125\n";
       Unix.chmod fake 0o700;
+      (* Trust is required before Podman is used; a dry run only notes it. *)
+      let out, err = run [ "start" ] 5 in
+      assert (out = "" && contains err "deco: configuration for ");
+      assert (
+        contains err
+          " is not trusted\nRun 'deco trust' to review and approve it.\n");
+      assert (not (Sys.file_exists log));
+      let _, err = run [ "start"; "-d" ] 0 in
+      assert (
+        err
+        = "Note: configuration is not trusted; 'deco start' would fail with \
+           exit code 5.\n");
+      assert (not (Sys.file_exists log));
+      ignore (run [ "trust"; "--yes" ] 0);
       (* Usage errors never reach Podman. *)
       List.iter
         (fun (args, code) ->

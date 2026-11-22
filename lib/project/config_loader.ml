@@ -1,4 +1,5 @@
 type t = {
+  contents : string;
   ignored_paths : string list list;
   project : Project.t;
   source : Config.t;
@@ -70,6 +71,7 @@ let load ?host_ids ?home_dir (project : Project.t) =
                   | Ok identity ->
                       Ok
                         {
+                          contents;
                           project;
                           source;
                           effective;

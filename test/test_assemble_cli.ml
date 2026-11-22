@@ -34,6 +34,7 @@ let () =
         if pid = 0 then (
           Unix.chdir (temp ^ "/child");
           Unix.putenv "PATH" path;
+          Unix.putenv "XDG_STATE_HOME" (temp ^ "/state");
           Unix.putenv "DECO_TEST_LOG" log;
           Unix.dup2 o Unix.stdout;
           Unix.dup2 e Unix.stderr;
@@ -58,6 +59,33 @@ let () =
       write fake
         "#!/bin/sh\nshift\nprintf 'called\\n' >> \"$DECO_TEST_LOG\"\nexit 125\n";
       Unix.chmod fake 0o700;
+      (* Trust is required before Podman is used; a dry run only notes it. *)
+      let out, err = run [ "assemble" ] 5 in
+      assert (out = "" && contains err "deco: configuration for ");
+      assert (
+        contains err
+          " is not trusted\nRun 'deco trust' to review and approve it.\n");
+      assert (not (Sys.file_exists log));
+      let _, err = run [ "assemble"; "-d" ] 0 in
+      assert (
+        err
+        = "Note: configuration is not trusted; 'deco assemble' would fail with \
+           exit code 5.\n");
+      assert (not (Sys.file_exists log));
+      ignore (run [ "trust"; "--yes" ] 0);
+      (* A changed configuration lists what changed, and reverting it restores
+         the earlier approval. *)
+      let containerfile = temp ^ "/.deco/build/Containerfile" in
+      write containerfile "FROM alpine\n";
+      let out, err = run [ "assemble" ] 5 in
+      assert (out = "");
+      assert (
+        contains err
+          " has changed since it was trusted\n\
+          \  modified  build/Containerfile\n\
+           Run 'deco trust' to review and approve it.\n");
+      assert (not (Sys.file_exists log));
+      write containerfile "FROM scratch\n";
       let out, err = run [ "assemble"; "--help" ] 0 in
       assert (contains out "--dry-run" && err = "");
       List.iter

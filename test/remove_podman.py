@@ -8,6 +8,9 @@ import tempfile
 import uuid
 
 binary = str(pathlib.Path(sys.argv[1]).resolve())
+# Keep trust records out of the developer's real state directory.
+state_home = tempfile.TemporaryDirectory(prefix='deco-state-')
+env = dict(os.environ, XDG_STATE_HOME=state_home.name)
 base = os.environ.get('DECO_TEST_IMAGE')
 if not base:
     raise SystemExit('Set DECO_TEST_IMAGE to a local image supporting sleep')
@@ -35,7 +38,9 @@ with tempfile.TemporaryDirectory(prefix='deco-remove-live-') as directory:
     labels = ['--label', 'dev.deco.managed=true', '--label', 'dev.deco.project=' + project,
               '--label', 'dev.deco.project-root=' + str(root)]
     def config(name):
+        # Approve each configuration, including the Containerfile build() wrote.
         (root / '.deco/config.toml').write_text(f'[project]\nname="{project}"\n[image]\nname="{image_name}"\n[container]\nname="{name}"\n')
+        subprocess.run([binary, '--project-dir', str(root), 'trust', '--yes'], check=True, capture_output=True, timeout=60, env=env)
     def build():
         path = root / '.deco/build/Containerfile'
         path.write_text('FROM ' + base_id + '\n')
@@ -53,7 +58,7 @@ with tempfile.TemporaryDirectory(prefix='deco-remove-live-') as directory:
         podman('start', '--', cid)
         return name, cid
     def remove(expected, *args):
-        result = subprocess.run([binary, '--project-dir', str(root), 'remove', *args], capture_output=True, text=True, timeout=60)
+        result = subprocess.run([binary, '--project-dir', str(root), 'remove', *args], capture_output=True, text=True, timeout=60, env=env)
         assert result.returncode == expected, result
         return result
     def exists(kind, ref):

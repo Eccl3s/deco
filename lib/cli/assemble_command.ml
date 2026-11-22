@@ -10,7 +10,9 @@ let assemble selection dry_run =
   let open Config_loader in
   let open Config.Effective in
   let open Assemble in
-  match Cli_common.load_project selection with
+  match
+    Cli_common.load_trusted_project ~command:"assemble" ~dry_run selection
+  with
   | Error code -> code
   | Ok loaded -> (
       if dry_run then (

@@ -4,7 +4,9 @@ let execute selection dry_run =
     prerr_endline "deco: Shell entry requires stdin and stdout to be terminals";
     2)
   else
-    match Cli_common.load_project selection with
+    match
+      Cli_common.load_trusted_project ~command:"shell" ~dry_run selection
+    with
     | Error code -> code
     | Ok loaded ->
         if dry_run then (

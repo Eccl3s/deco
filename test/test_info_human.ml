@@ -15,6 +15,17 @@ let () =
           root = "/project";
           config = "/project/.deco/config.toml";
         };
+      trust =
+        Some
+          {
+            state = "changed";
+            digest = "blake2b-256:abc";
+            trusted_at = Some created;
+            changed =
+              [
+                ("config.toml", "modified"); ("build/Containerfile", "removed");
+              ];
+          };
       podman = { available = true; version = Some "5.7.0" };
       image =
         {
@@ -71,6 +82,13 @@ let () =
   Root:        /project
   Config:      /project/.deco/config.toml
 
+Trust
+  State:       changed
+  Digest:      blake2b-256:abc
+  Approved:    2026-11-11 09:14 UTC (9 days ago)
+    - modified config.toml
+    - removed build/Containerfile
+
 Podman
   Available:   yes
   Version:     5.7.0
@@ -119,6 +137,7 @@ Actions
   let sparse : Info.report =
     {
       project = { full.project with description = None };
+      trust = None;
       podman = { available = false; version = None };
       image =
         {
@@ -157,6 +176,11 @@ Actions
   Description: -
   Root:        /project
   Config:      /project/.deco/config.toml
+
+Trust
+  State:       -
+  Digest:      -
+  Approved:    -
 
 Podman
   Available:   no
@@ -226,6 +250,11 @@ Ignored planned settings (not applied yet):
       container =
         { full.container with incompatibilities = [ "bad\xe2\x80\xaeone" ] };
       mounts = [ { (List.hd full.mounts) with source = "/s\tt" } ];
+      trust =
+        Option.map
+          (fun (t : Info.trust) ->
+            { t with changed = [ ("evil\027[2J", "added") ] })
+          full.trust;
     }
   in
   let out = Info.render_human ~now ~ignored:[ [ "x\027y" ] ] hostile in
@@ -240,4 +269,5 @@ Ignored planned settings (not applied yet):
       "    - bad\\u{202e}one";
       "  /s\\x09t -> /workspace (bind, read-write, relabel private)";
       "  x\\x1by";
+      "    - added evil\\x1b[2J";
     ]

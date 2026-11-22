@@ -62,6 +62,7 @@ let () =
         if pid = 0 then (
           Unix.chdir (temp ^ "/work");
           Unix.putenv "PATH" path;
+          Unix.putenv "XDG_STATE_HOME" (temp ^ "/state");
           Unix.putenv "DECO_TEST_LOG" log;
           Unix.putenv "DECO_TEST_MODE" mode;
           Option.iter (Unix.putenv "TERM") term;

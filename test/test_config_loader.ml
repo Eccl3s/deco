@@ -58,6 +58,10 @@ let () =
       let c = loaded p in
       assert (
         c.project = p && c.source.build = None && not c.effective.build.pull);
+      assert (c.contents = minimal);
+      write path (minimal ^ "\n# comment\r\n");
+      assert ((loaded p).contents = minimal ^ "\n# comment\r\n");
+      write path minimal;
       assert (c.host_paths.build_context = Unix.realpath build);
       assert (c.host_paths.containerfile = Unix.realpath containerfile);
       assert (c.host_paths.workspace_source = None);

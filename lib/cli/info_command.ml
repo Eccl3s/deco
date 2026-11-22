@@ -2,8 +2,22 @@ let execute selection format =
   match Cli_common.load_project selection with
   | Error code -> code
   | Ok loaded -> (
+      (* info reports trust without requiring it. A failure to determine it
+         still prints the report, like an unavailable Podman, but exits 2 as
+         'deco trust' does. *)
+      let trust =
+        match Deco.Trust.check loaded with
+        | Ok status ->
+            List.iter
+              (fun warning -> prerr_endline ("deco: " ^ warning))
+              status.Deco.Trust.warnings;
+            Some status
+        | Error error ->
+            prerr_endline ("deco: " ^ Deco.Trust.error_to_string error);
+            None
+      in
       match
-        Deco.Info.collect
+        Deco.Info.collect ~trust
           ~read_many:(fun commands ->
             Deco.Process.run_many ~forward_signals:true commands)
           ~run:(fun argv -> Deco.Process.run ~forward_signals:true argv)
@@ -16,11 +30,13 @@ let execute selection format =
                 Deco.Info.render_human ~now:(Unix.gettimeofday ())
                   ~ignored:loaded.Deco.Config_loader.ignored_paths report
             | `Json -> Deco.Info.render_json report);
-          match unavailable with
-          | None -> 0
-          | Some reason ->
-              prerr_endline ("deco: " ^ reason);
-              3)
+          Option.iter
+            (fun reason -> prerr_endline ("deco: " ^ reason))
+            unavailable;
+          match (trust, unavailable) with
+          | None, _ -> 2
+          | Some _, Some _ -> 3
+          | Some _, None -> 0)
       | Error error ->
           let message, code =
             match error with

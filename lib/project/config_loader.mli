@@ -1,4 +1,8 @@
 type t = {
+  contents : string;
+      (** The exact bytes of [project.config_path] that were decoded. Consumers
+          that need the configuration's contents, such as the trust digest, use
+          these rather than reading the file again. *)
   ignored_paths : string list list;
   project : Project.t;
   source : Config.t;
@@ -37,12 +41,13 @@ val load :
   (t, error) result
 (** Read once, close reliably, decode, then resolve defaults with core
     validation, then resolve and check host paths, then resolve the user
-    identity. Forward [?host_ids] to [User_identity.resolve]. Forward the
-    optional home override to [Host_paths.resolve], which performs lazy default
-    home lookup. Retain the supplied project and decoded omissions. Known read
-    failures become errors; unexpected programming exceptions are not
-    suppressed. Read-error messages have one exact leading config-path prefix
-    removed when present; other messages are preserved. *)
+    identity. The bytes that were read are kept as [contents]. Forward
+    [?host_ids] to [User_identity.resolve]. Forward the optional home override
+    to [Host_paths.resolve], which performs lazy default home lookup. Retain the
+    supplied project and decoded omissions. Known read failures become errors;
+    unexpected programming exceptions are not suppressed. Read-error messages
+    have one exact leading config-path prefix removed when present; other
+    messages are preserved. *)
 
 val error_to_string : error -> string
 (** Prefix each diagnostic with its config path; join diagnostics with newlines.

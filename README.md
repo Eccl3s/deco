@@ -31,7 +31,7 @@ See [specs/](specs/) for the full CLI and configuration specifications.
 
 ## Getting Started
 
-Deco currently implements `init`, `validate`, `assemble`, `refresh`, `exec`, `shell`, `start`, `stop`, `remove`, `info`, `list`, help, and version output. Other commands
+Deco currently implements `init`, `validate`, `trust`, `assemble`, `refresh`, `exec`, `shell`, `start`, `stop`, `remove`, `info`, `list`, help, and version output. Other commands
 below describe the planned workflow.
 
 Validate an existing project with `deco validate` or select one explicitly with
@@ -45,8 +45,8 @@ exit code 2; success identifies the config path on stdout with exit code 0.
 
 ### Selecting a project
 
-Project commands (`validate`, `assemble`, `refresh`, `exec`, `shell`, `start`,
-`stop`, `remove`, and `info`) find their project in one of three ways:
+Project commands (`validate`, `trust`, `assemble`, `refresh`, `exec`, `shell`,
+`start`, `stop`, `remove`, and `info`) find their project in one of three ways:
 
 - By default, Deco searches the current directory and its parents for
   `.deco/config.toml`.
@@ -168,6 +168,75 @@ deco: container my-project-dev-container belongs to a Deco project with the same
 Run that command only if the old copy is gone. The image reports the same
 conflict and has its own `podman rmi` command. Once both are removed,
 `deco assemble` creates fresh resources for the new location.
+
+### Configuration trust
+
+A project's `.deco/` directory decides what Deco builds and runs on your
+machine, so a cloned repository could otherwise run arbitrary commands the
+first time you use it. Deco therefore requires you to approve a project's
+configuration before `assemble`, `refresh`, `start`, `stop`, `remove`, `exec`,
+or `shell` use it. Run `deco trust` to review and approve it:
+
+```text
+$ deco trust
+Project
+  Name:           my-project
+  Root:           /home/user/my-project
+  Trust state:    untrusted
+
+Build
+  Context:        /home/user/my-project/.deco/build
+...
+Trust this configuration? [y/N] y
+Trusted /home/user/my-project
+```
+
+The review lists the project and its trust state, what changed since the last
+approval, and the security-relevant settings Deco applies: the build context
+(flagged when it is outside `.deco/`), Containerfile, target, pull and cache
+settings, build argument names, the image, the container name, shell, workdir
+and user mode, and the workspace mount (flagged when its source is outside the
+project). Planned settings that are accepted but not applied yet are listed
+with their values, except environment-variable values, which are hidden.
+
+- `-y`/`--yes` approves without asking. Outside a terminal, `deco trust`
+  refuses without `--yes` (exit 2), so scripts and CI must approve
+  explicitly. Declining exits 1 and records nothing.
+- `-d`/`--dry-run` prints the review and records nothing.
+- `--show` prints the trust state, digest, last approval time, and changes.
+- `--revoke` removes every approval for the project.
+
+An approval covers the exact contents of everything under `.deco/`: every file,
+directory, and symlink, plus the configuration file and Containerfile when a
+symlink or `build.containerfile` places them outside `.deco/`. Any change makes
+the project `changed` until it is approved again; reverting to previously
+approved contents is trusted again, since the last 16 approvals are kept.
+Unsupported file types in `.deco/`, such as a FIFO, are an error (exit 2).
+Moving the project makes it `untrusted`. Approvals are stored outside the
+project, in `$XDG_STATE_HOME/deco/trust/` (default
+`~/.local/state/deco/trust/`), one file per project root; nothing in
+`.deco/config.toml` or the environment grants trust.
+
+When the configuration is not trusted, those commands exit 5 before any
+further Podman operation and say why, listing changed entries:
+
+```text
+deco: configuration for /home/user/my-project has changed since it was trusted
+  modified  config.toml
+Run 'deco trust' to review and approve it.
+```
+
+Their dry runs still work and print a note instead. `deco init` approves the
+configuration it writes. `validate`, `info`, `list`, and `trust` itself never
+require trust, and `info` reports the trust state. `stop --no-hooks` and
+`remove --no-hooks` skip the `pre_stop` hook and therefore do not require
+trust; they print a warning when the configuration is not trusted.
+
+Unlike the full v1 specification, hooks are not implemented yet, so
+`--no-hooks` currently only waives the trust requirement; `run` and actions do
+not exist yet and so are not gated; and `remove` has no `--force`, so the
+rule that `remove --no-hooks --force` still requires trust does not apply yet.
+See [specs/deco-trust.md](specs/deco-trust.md) for the full design.
 
 ## Configuration
 
@@ -326,10 +395,11 @@ dune runtest
 
 ## Specifications
 
-Deco is developed against two specifications:
+Deco is developed against three specifications:
 
 - [CLI Specification](specs/deco-cli.md) — Defines commands, options, output formats, exit codes, and lifecycle behaviour.
 - [Config TOML Specification](specs/deco-config.md) — Defines configuration fields, defaults, validation rules, and runtime settings.
+- [Configuration Trust Specification](specs/deco-trust.md) — Defines the trust digest, trust store, `deco trust`, and which commands require trust.
 
 ## License
 
@@ -360,6 +430,11 @@ Run `deco init [PATH]` to create `.deco/config.toml` and
 `deco init --list-templates` lists alpine, debian, fedora, go, podman, python,
 rust, and tumbleweed. Select one with `--template NAME` or `-t NAME`.
 The existing built-in Containerfiles are copied unchanged.
+
+After writing the files, init approves the resulting `.deco/` (see
+[Configuration trust](#configuration-trust)) and prints `Trusted <root>`. With
+`--replace` this approval also covers any other files already in `.deco/`. If
+the approval cannot be recorded, the files are kept and init exits 1.
 
 Use `--dry-run` (`-d`) to preview generated files without writing, or
 `--replace` (`-R`) to replace the two target files while preserving unrelated
@@ -410,8 +485,10 @@ The image ID appears as a placeholder resolved during execution. Use `--project-
 managed container; see [Selecting a project](#selecting-a-project).
 
 Exit codes are 0 for success, 1 for runtime failure, 2 for invalid configuration or
-usage, 3 for unavailable Podman, and 4 for ownership, compatibility, or state
-conflicts. Failed operations retain partial resources; inspect them with Podman
+usage, 3 for unavailable Podman, 4 for ownership, compatibility, or state
+conflicts, and 5 when the configuration is not trusted (see
+[Configuration trust](#configuration-trust)); the other lifecycle commands
+use the same codes. Failed operations retain partial resources; inspect them with Podman
 before retrying. Assemble never automatically rebuilds or replaces resources.
 Hooks and advanced configuration remain unsupported. Automated CLI tests use fake
 Podman responses; disposable live integration coverage is a separate step.
@@ -492,6 +569,8 @@ by container ownership and state checks; image and environment compatibility
 are not required. Missing/unmanaged containers and unsupported states return 4;
 invalid configuration/usage returns 2, unavailable Podman 3, and runtime failure 1.
 The `pre_stop` hook remains deferred. Stop does not remove resources.
+Untrusted configuration returns 5; `--no-hooks` stops anyway with a warning
+(see [Configuration trust](#configuration-trust)).
 
 Run the opt-in disposable integration check with an existing local image that
 supports `sleep` (no images are pulled):
@@ -512,6 +591,8 @@ container dependents is retained; all dependent IDs/names are reported with exit
 code 4. Unmanaged resources and unsupported states also return 4. Invalid
 configuration/usage returns 2, unavailable Podman 3, and runtime failures 1.
 Failures report completed commands without claiming verification succeeded.
+Untrusted configuration returns 5; `--no-hooks` removes anyway with a warning
+(see [Configuration trust](#configuration-trust)).
 
 Unlike the full v1 specification, `remove` does not implement `--force`,
 `--keep-volumes`, named-volume removal, or lifecycle hooks. Removal never changes
@@ -591,6 +672,12 @@ Project
   Root:        /home/user/my-project
   Config:      /home/user/my-project/.deco/config.toml
 
+Trust
+  State:       changed
+  Digest:      blake2b-256:<digest>
+  Approved:    2026-11-12 08:29 UTC (8 days ago)
+    - modified config.toml
+
 Podman
   Available:   yes
   Version:     5.7.0
@@ -656,6 +743,12 @@ Use `--format json` (before or after the command) for a stable object:
     "root": "/home/user/my-project",
     "config": "/home/user/my-project/.deco/config.toml"
   },
+  "trust": {
+    "state": "changed",
+    "digest": "blake2b-256:<digest>",
+    "trusted_at": "2026-11-12T08:29:10Z",
+    "changed": [{ "path": "config.toml", "change": "modified" }]
+  },
   "podman": { "available": true, "version": "5.7.0" },
   "image": {
     "name": "my-project-dev-image",
@@ -696,6 +789,9 @@ Use `--format json` (before or after the command) for a stable object:
 Timestamps are UTC with second precision, so JSON output does not change
 between runs. A missing resource has `exists: false` and `null` for its `id`,
 `created`, and `owned`; `compatible` is `null` unless it was evaluated.
+`trust.state` is `trusted`, `changed`, or `untrusted`; `trusted_at` is the
+matching approval's time when trusted, the latest approval's when changed, and
+`null` when untrusted; `changed` is empty unless the state is `changed`.
 
 `info` exits 0 whenever it can report, including when resources are missing,
 unowned, or incompatible. When Podman is unavailable it still prints the full
@@ -703,7 +799,11 @@ report, with `podman.available` false and every Podman-derived value `null`
 (`-` in human output), reports the problem on stderr, and exits 3. With
 `-p NAME` the project itself cannot be located without Podman, so that case
 exits 3 without a report. Invalid configuration or usage returns 2 and any
-other Podman failure 1, without a report.
+other Podman failure 1, without a report. `info` never requires trust; when
+the trust state cannot be determined, for example because `.deco/` contains a
+FIFO, it prints the report with `trust` set to `null` (`-` in human output),
+reports the problem on stderr, and exits 2, even if Podman is also
+unavailable.
 
 Unlike the full v1 specification, `dns`, `ports`, `hooks`, and `actions` are
 always empty and only the workspace mount is reported, because those settings
@@ -716,7 +816,8 @@ All eight built-in templates can be initialized, validated, and previewed withou
 editing their files. `deco validate` prints ignored paths under
 `Ignored planned settings (not applied yet):` on stdout and succeeds;
 `deco info` ends its human report with the same list. Other commands silently
-ignore those settings. Values are not printed.
+ignore those settings. Values are not printed, except in the `deco trust`
+review, which shows them so that you can see what you are approving.
 
 Only documented v1 keys are tolerated. Unknown keys, nested typos, wrong types,
 invalid TOML, and errors in implemented fields still fail. Planned fields receive

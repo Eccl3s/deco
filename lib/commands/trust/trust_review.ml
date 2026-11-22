@@ -1,0 +1,82 @@
+let render ~now (status : Trust.status) (loaded : Config_loader.t) =
+  let buffer = Buffer.create 1024 in
+  let line fmt =
+    Printf.ksprintf
+      (fun s ->
+        Buffer.add_string buffer s;
+        Buffer.add_char buffer '\n')
+      fmt
+  in
+  let safe = Terminal_text.escape in
+  let section first title =
+    if first then line "%s" title else line "\n%s" title
+  in
+  let field key value = line "  %-15s %s" (key ^ ":") value in
+  let yes_no b = if b then "yes" else "no" in
+  let flag flagged note value =
+    if flagged then value ^ "  [" ^ note ^ "]" else value
+  in
+  let within ~dir path =
+    path = dir || Trust_digest.relative_to ~dir path <> None
+  in
+  let effective = loaded.effective in
+  let root = status.root in
+  section true "Project";
+  field "Name" (safe effective.project.name);
+  field "Root" (safe root);
+  field "Trust state"
+    (Trust.state_to_string status.state
+    ^
+    match (status.state, status.trusted_at) with
+    | Trust.Changed, Some time ->
+        " (last approved " ^ Timestamp.to_human ~now time ^ ")"
+    | (Trust.Trusted | Trust.Changed | Trust.Untrusted), _ -> "");
+  if status.changes <> [] then (
+    section false "Changed since the last approval";
+    List.iter (line "%s") (Trust.render_changes status.changes));
+  let build = effective.build in
+  let host = loaded.host_paths in
+  section false "Build";
+  field "Context"
+    (flag
+       (not (within ~dir:status.deco_dir host.build_context))
+       "outside .deco/" (safe host.build_context));
+  field "Containerfile" (safe host.containerfile);
+  field "Target" (match build.target with Some t -> safe t | None -> "-");
+  field "Pull" (yes_no build.pull);
+  field "No cache" (yes_no build.no_cache);
+  field "Build args"
+    (match build.args with
+    | [] -> "none"
+    | args -> String.concat ", " (List.map (fun (name, _) -> safe name) args));
+  section false "Image";
+  field "Reference" (safe (Config.Effective.image_reference effective.image));
+  section false "Container";
+  field "Name" (safe effective.container.name);
+  field "Shell" (safe effective.container.shell);
+  field "Workdir"
+    (match effective.container.workdir with Some w -> safe w | None -> "-");
+  field "User mode"
+    (match effective.user.mode with
+    | Config.Keep_id -> "keep-id"
+    | Config.Image -> "image");
+  section false "Mounts";
+  (match (effective.mounts.workspace, host.workspace_source) with
+  | Some workspace, Some source ->
+      field "Workspace"
+        (flag
+           (not (within ~dir:root source))
+           "outside the project"
+           (safe source ^ " -> " ^ safe workspace.target ^ " (read-write)"))
+  | Some _, None | None, _ -> field "Workspace" "none");
+  section false "Planned settings (accepted, not applied by this version)";
+  (match Config.Decode.planned_settings loaded.contents with
+  | [] -> line "  none"
+  | settings ->
+      List.iter
+        (fun (path, value) ->
+          line "  %s = %s"
+            (safe (String.concat "." path))
+            (match value with Some value -> safe value | None -> "(hidden)"))
+        settings);
+  Buffer.contents buffer

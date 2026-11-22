@@ -8,6 +8,7 @@ let () =
   let loaded : Config_loader.t =
     {
       ignored_paths = [];
+      contents = "";
       source;
       effective;
       project =
@@ -227,6 +228,7 @@ let () =
   let loaded : Config_loader.t =
     {
       ignored_paths = [];
+      contents = "";
       source;
       effective = Result.get_ok (Config.Resolve.apply source);
       project =

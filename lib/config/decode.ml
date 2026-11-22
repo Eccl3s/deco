@@ -175,8 +175,8 @@ let from_string_with_ignored input =
   match parse input with
   | Error errors -> Error errors
   | Ok tree -> (
-      let tree, paths, planned_errors = Planned.strip tree in
-      ignored := paths;
+      let tree, planned, planned_errors = Planned.strip tree in
+      ignored := List.map fst planned;
       errors := planned_errors @ !errors;
       match
         table []
@@ -199,6 +199,13 @@ let from_string_with_ignored input =
           | _ -> Error (sorted_errors ())))
 
 let from_string input = Result.map fst (from_string_with_ignored input)
+
+let planned_settings input =
+  match parse input with
+  | Error _ -> []
+  | Ok tree ->
+      let _, planned, _ = Planned.strip tree in
+      planned
 
 let project_name input =
   match parse input with

@@ -101,10 +101,14 @@ let () =
                 not
                   (List.exists
                      (fun prefix -> String.starts_with ~prefix entry)
-                     [ "PATH="; "TERM="; "DECO_TEST_" ]))
+                     [ "PATH="; "TERM="; "DECO_TEST_"; "XDG_STATE_HOME=" ]))
           in
           let env =
-            [ "PATH=" ^ path; "DECO_TEST_LOG=" ^ log ]
+            [
+              "PATH=" ^ path;
+              "XDG_STATE_HOME=" ^ temp ^ "/state";
+              "DECO_TEST_LOG=" ^ log;
+            ]
             @ Option.to_list (Option.map (fun term -> "TERM=" ^ term) term)
             @ inherited
           in
@@ -287,6 +291,72 @@ let () =
           let out, _ = run ~path:"/nonexistent" ?term [ "info" ] 3 in
           assert (contains out "  Available:   no\n"))
         terms;
+      (* Trust is reported without being required. *)
+      scenario ~image:(image ~root:temp)
+        ~container:(container ~root:temp "running")
+        ();
+      let trust () = at [ "trust" ] (report [ "info"; "--format"; "json" ]) in
+      let t = trust () in
+      assert (at [ "state" ] t = `String "untrusted");
+      assert (
+        String.starts_with ~prefix:"blake2b-256:"
+          (to_string (at [ "digest" ] t)));
+      assert (at [ "trusted_at" ] t = `Null);
+      assert (at [ "changed" ] t = `List []);
+      ignore (run [ "trust"; "--yes" ] 0);
+      let t = trust () in
+      assert (at [ "state" ] t = `String "trusted");
+      assert (at [ "trusted_at" ] t <> `Null);
+      assert (at [ "changed" ] t = `List []);
+      let containerfile = temp ^ "/.deco/build/Containerfile" in
+      write containerfile "FROM alpine\n";
+      let t = trust () in
+      assert (at [ "state" ] t = `String "changed");
+      assert (at [ "trusted_at" ] t <> `Null);
+      assert (
+        at [ "changed" ] t
+        = `List
+            [
+              `Assoc
+                [
+                  ("path", `String "build/Containerfile");
+                  ("change", `String "modified");
+                ];
+            ]);
+      List.iter
+        (fun term ->
+          let out, err = run ?term [ "info" ] 0 in
+          assert (err = "");
+          let section =
+            "  Config:      " ^ config
+            ^ "\n\nTrust\n  State:       changed\n  Digest:      blake2b-256:"
+          in
+          if not (contains out section) then failwith out;
+          assert (contains out "    - modified build/Containerfile\n\nPodman\n"))
+        terms;
+      (* An unusable record is reported once on stderr; info still succeeds. *)
+      let records = temp ^ "/state/deco/trust" in
+      Array.iter
+        (fun name -> write (Filename.concat records name) "corrupt")
+        (Sys.readdir records);
+      let out, err = run [ "info"; "--format"; "json" ] 0 in
+      assert (at [ "trust"; "state" ] (json out) = `String "untrusted");
+      assert (String.starts_with ~prefix:"deco: Ignoring trust record " err);
+      (* A digest failure still prints the report, with trust unknown, and
+         exits 2. *)
+      let pipe = temp ^ "/.deco/pipe" in
+      Unix.mkfifo pipe 0o600;
+      List.iter
+        (fun term ->
+          let out, err = run ?term [ "info"; "--format"; "json" ] 2 in
+          assert (at [ "trust" ] (json out) = `Null);
+          assert (at [ "container"; "state" ] (json out) = `String "running");
+          assert (contains err "unsupported file type");
+          let out, _ = run ?term [ "info" ] 2 in
+          assert (contains out "Trust\n  State:       -\n"))
+        terms;
+      Unix.unlink pipe;
+      write containerfile "FROM scratch\n";
       (* Any other Podman failure: no report, exit 1. *)
       scenario ~image:(image ~root:temp) ~inspect_fails:true ();
       let out, err = run [ "info" ] 1 in

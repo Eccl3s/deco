@@ -14,6 +14,8 @@ import termios
 import time
 
 binary = str(pathlib.Path(sys.argv[1]).resolve())
+# Keep trust records out of the developer's real state directory.
+state_home = tempfile.TemporaryDirectory(prefix='deco-state-')
 with tempfile.TemporaryDirectory(prefix='deco-shell-pty-') as directory:
     root = pathlib.Path(directory)
     (root / '.deco/build').mkdir(parents=True)
@@ -39,14 +41,19 @@ elif a[0]=='exec':
 else: sys.exit(99)
 ''')
     fake.chmod(0o700)
-    for mode, expected in [('running',17), ('stopped',17), ('interrupt',0), ('missing',4), ('owner',4), ('unavailable',3), ('stdin-only',2), ('stdout-only',2)]:
+    # The first mode runs before the project is trusted.
+    for mode, expected in [('untrusted',5), ('running',17), ('stopped',17), ('interrupt',0), ('missing',4), ('owner',4), ('unavailable',3), ('stdin-only',2), ('stdout-only',2)]:
         (root/'calls').write_text('')
         (root/'started').unlink(missing_ok=True)
+        if mode == 'running':
+            subprocess.run([binary,'--project-dir',str(root),'trust','--yes'],check=True,capture_output=True,
+                           env=dict(os.environ,XDG_STATE_HOME=state_home.name))
         pid, master = pty.fork()
         if pid == 0:
             os.chdir(root)
             os.environ['PATH'] = directory + ':' + os.environ['PATH']
             os.environ['DECO_PTY_MODE'] = mode
+            os.environ['XDG_STATE_HOME'] = state_home.name
             if mode == 'stdin-only':
                 fd=os.open('/dev/null',os.O_WRONLY); os.dup2(fd,1); os.close(fd)
             if mode == 'stdout-only':
@@ -73,7 +80,8 @@ else: sys.exit(99)
             if mode in ('running','stopped'):
                 assert b'31 91' in data and b'GOT:hello' in data,(mode,data)
             calls=(root/'calls').read_text()
-            if mode in ('stdin-only','stdout-only'): assert calls==''
+            if mode in ('stdin-only','stdout-only','untrusted'): assert calls==''
+            if mode == 'untrusted': assert b'is not trusted' in data,(mode,data)
             assert '"stop"' not in calls and '"remove"' not in calls
         finally:
             if status is None:

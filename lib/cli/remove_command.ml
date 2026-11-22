@@ -1,6 +1,9 @@
-let[@warning "-42"] execute selection dry_run keep_image =
+let[@warning "-42"] execute selection dry_run keep_image no_hooks =
   let open Config.Effective in
-  match Cli_common.load_project selection with
+  match
+    Cli_common.load_trusted_project ~no_hooks ~command:"remove" ~dry_run
+      selection
+  with
   | Error code -> code
   | Ok loaded -> (
       if dry_run then (
@@ -12,6 +15,10 @@ let[@warning "-42"] execute selection dry_run keep_image =
             print_string (Deco.Remove_plan.render plan);
             0)
       else
+        (* pre_stop runs here unless [no_hooks] (specs/deco-trust.md §6). Hooks
+           are not implemented yet, so [no_hooks] only waives trust.
+           [remove --force], which still requires trust with [--no-hooks], does
+           not exist yet either. *)
         match
           Deco.Remove.run
             ~read_many:(fun commands ->
@@ -93,7 +100,15 @@ let command =
       & info [ "keep-image" ]
           ~doc:"Keep the configured image without inspecting it.")
   in
+  let no_hooks =
+    Arg.(
+      value & flag
+      & info [ "no-hooks" ]
+          ~doc:
+            "Skip the $(b,pre_stop) hook. The configuration then need not be \
+             trusted; a warning is printed when it is not.")
+  in
   Cmdliner.Cmd.v
     (Cmdliner.Cmd.info "remove" ~exits:Cli_common.exits
        ~doc:"Remove the owned development container and image.")
-    Term.(const execute $ Cli_common.project $ dry_run $ keep_image)
+    Term.(const execute $ Cli_common.project $ dry_run $ keep_image $ no_hooks)

@@ -33,6 +33,7 @@ let () =
           Unix.close stdout;
           Unix.close stderr;
           Unix.putenv "PATH" "/nonexistent";
+          Unix.putenv "XDG_STATE_HOME" (temp ^ "/state");
           List.iter (fun (name, value) -> Unix.putenv name value) env;
           Unix.execv binary (Array.of_list (binary :: args)));
         Unix.close stdout;
@@ -87,6 +88,21 @@ let () =
           "tumbleweed";
         ]
       in
+      let initialized template root =
+        Printf.sprintf
+          "Initialized Deco configuration using template '%s' in %s.\n\
+           Trusted %s\n"
+          template root root
+      in
+      let trust_state path =
+        let show = run temp [ "trust"; "--show"; "--project-dir"; path ] 0 in
+        List.find_map
+          (fun line ->
+            String.split_on_char ':' line |> function
+            | [ "State"; value ] -> Some (String.trim value)
+            | _ -> None)
+          (String.split_on_char '\n' show)
+      in
       let listing = run temp [ "init"; "--list-templates" ] 0 in
       assert (
         listing
@@ -104,14 +120,14 @@ let () =
           let preview = run temp [ "init"; path; "-t"; name; "-d" ] 0 in
           assert (
             contains preview "Runtime: Podman"
+            && contains preview "Trust: approve the resulting .deco/\n"
             && contains preview "--- contents ---");
           assert (not (Sys.file_exists path));
           assert (
             run temp [ "init"; path; "--template=" ^ name ] 0
-            = Printf.sprintf
-                "Initialized Deco configuration using template '%s' in %s.\n"
-                name
+            = initialized name
                 (Filename.concat (Unix.realpath temp) ("generated-" ^ name)));
+          assert (trust_state path = Some "trusted");
           let validation = run temp [ "validate"; "--project-dir"; path ] 0 in
           assert (
             contains validation "Ignored planned settings"
@@ -137,11 +153,18 @@ let () =
           let original = In_channel.with_open_bin file In_channel.input_all in
           ignore (run temp [ "init"; path ] 2);
           assert (In_channel.with_open_bin file In_channel.input_all = original);
+          (* --replace approves all of .deco/, unrelated files included. *)
+          let extra = Filename.concat path ".deco/notes" in
+          write extra "unrelated\n";
+          assert (trust_state path = Some "changed");
+          ignore (run temp [ "init"; path; "-R"; "-d" ] 0);
+          assert (trust_state path = Some "changed");
           assert (
             run temp [ "init"; path; "-R" ] 0
-            = Printf.sprintf
-                "Initialized Deco configuration using template 'debian' in %s.\n"
-                (Filename.concat (Unix.realpath temp) ("generated-" ^ name))))
+            = initialized "debian"
+                (Filename.concat (Unix.realpath temp) ("generated-" ^ name)));
+          assert (trust_state path = Some "trusted");
+          Sys.remove extra)
         names;
       List.iter
         (fun args -> ignore (run temp ("init" :: args) 2))
@@ -159,9 +182,41 @@ let () =
       Unix.mkdir default_root 0o700;
       assert (
         run default_root [ "init" ] 0
-        = Printf.sprintf
-            "Initialized Deco configuration using template 'debian' in %s.\n"
-            (Unix.realpath default_root));
+        = initialized "debian" (Unix.realpath default_root));
+      (* A trust store that cannot be written leaves the files in place. *)
+      let unrecorded = Filename.concat temp "unrecorded" in
+      let blocked = Filename.concat temp "blocked" in
+      write blocked "";
+      ignore
+        (run ~env:[ ("XDG_STATE_HOME", blocked) ] temp [ "init"; unrecorded ] 1);
+      assert (
+        contains !last_errors
+          ("deco: initialized Deco configuration using template 'debian' in "
+         ^ Unix.realpath unrecorded ^ ", but could not trust it: "));
+      assert (
+        contains !last_errors "Run 'deco trust' to review and approve it.\n");
+      assert (Sys.file_exists (Filename.concat unrecorded ".deco/config.toml"));
+      assert (trust_state unrecorded = Some "untrusted");
+      (* Roots are escaped in every line init prints; [run] rejects ESC. *)
+      let hostile_parent = Filename.concat temp "esc\027[2J" in
+      Unix.mkdir hostile_parent 0o700;
+      let hostile_root = Filename.concat hostile_parent "project" in
+      let shown = Filename.concat (Unix.realpath temp) "esc\\x1b[2J/project" in
+      assert (
+        contains
+          (run temp [ "init"; hostile_root; "-d" ] 0)
+          ("Target: " ^ shown ^ "\n"));
+      assert (run temp [ "init"; hostile_root ] 0 = initialized "debian" shown);
+      let hostile_retry = Filename.concat hostile_parent "retry" in
+      ignore
+        (run
+           ~env:[ ("XDG_STATE_HOME", blocked) ]
+           temp [ "init"; hostile_retry ] 1);
+      assert (
+        contains !last_errors
+          ("in "
+          ^ Filename.concat (Unix.realpath temp) "esc\\x1b[2J/retry"
+          ^ ", but could not trust it: "));
       ignore (run default_root [ "validate" ] 0);
       (* Ignored setting paths include author-chosen names, which are escaped
          like any other reported text; [run] rejects raw ESC bytes. *)

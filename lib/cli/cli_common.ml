@@ -8,6 +8,7 @@ let exits =
     Cmd.Exit.info 2 ~doc:"Invalid command usage or project configuration.";
     Cmd.Exit.info 3 ~doc:"Podman is not installed or not usable.";
     Cmd.Exit.info 4 ~doc:"Resource ownership, compatibility, or state conflict.";
+    Cmd.Exit.info 5 ~doc:"Project configuration is not trusted.";
   ]
 
 type selection = Discover | Directory of string | Named of string
@@ -86,6 +87,31 @@ let load_project = function
   | Discover -> load_selected (Deco.Project.discover ~start_dir:(Sys.getcwd ()))
   | Directory directory -> load_selected (Deco.Project.select ~directory)
   | Named name -> load_named name
+
+let load_trusted_project ?(no_hooks = false) ~command ~dry_run selection =
+  match load_project selection with
+  | Error code -> Error code
+  | Ok loaded -> (
+      match Deco.Trust.check loaded with
+      | Error error ->
+          prerr_endline ("deco: " ^ Deco.Trust.error_to_string error);
+          Error 2
+      | Ok status -> (
+          List.iter
+            (fun warning -> prerr_endline ("deco: " ^ warning))
+            status.Deco.Trust.warnings;
+          match status.Deco.Trust.state with
+          | Deco.Trust.Trusted -> Ok loaded
+          | Deco.Trust.Changed | Deco.Trust.Untrusted ->
+              if no_hooks then (
+                prerr_string (Deco.Trust.no_hooks_warning status);
+                Ok loaded)
+              else if dry_run then (
+                prerr_string (Deco.Trust.dry_run_note ~command);
+                Ok loaded)
+              else (
+                prerr_string (Deco.Trust.failure_message ~command status);
+                Error 5)))
 
 let report_execution_result = function
   | Ok outcome -> (

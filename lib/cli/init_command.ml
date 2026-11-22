@@ -4,6 +4,22 @@ module Cmd = Cmdliner.Cmd
 
 let exits = Cli_common.exits
 
+(* specs/deco-trust.md: init approves what it wrote, so the new project
+   is usable without a review. The written files stay on failure. *)
+let trust root =
+  let ( let* ) = Result.bind in
+  let* project =
+    Result.map_error Deco.Project.error_to_string
+      (Deco.Project.select ~directory:root)
+  in
+  let* loaded =
+    Result.map_error Deco.Config_loader.error_to_string
+      (Deco.Config_loader.load project)
+  in
+  Result.map_error Deco.Trust.error_to_string
+    (Deco.Trust.approve ~deco_version:Generated_version.value
+       ~now:(Unix.gettimeofday ()) loaded)
+
 let initialize path template replace dry_run list_templates =
   if list_templates then (
     if path <> None || template <> None || replace || dry_run then (
@@ -40,24 +56,39 @@ let initialize path template replace dry_run list_templates =
             "Target: %s\n\
              Template: %s — %s\n\
              Runtime: Podman\n\
-             Create .deco/: %b\n"
-            plan.Deco.Init.root plan.Deco.Init.template.Deco.Template.name
+             Create .deco/: %b\n\
+             Trust: approve the resulting .deco/\n"
+            (Deco.Terminal_text.escape plan.Deco.Init.root)
+            plan.Deco.Init.template.Deco.Template.name
             plan.Deco.Init.template.Deco.Template.description
             plan.Deco.Init.create_deco;
           List.iter
             (fun (file : Deco.Init.file) ->
               Printf.printf "\n%s %s\n--- contents ---\n%s--- end ---\n"
                 (if file.Deco.Init.original = None then "Create" else "Replace")
-                file.Deco.Init.path file.Deco.Init.contents)
+                (Deco.Terminal_text.escape file.Deco.Init.path)
+                file.Deco.Init.contents)
             plan.Deco.Init.files;
           0)
         else
           match Deco.Init.apply plan with
-          | Ok () ->
-              Printf.printf
-                "Initialized Deco configuration using template '%s' in %s.\n"
-                plan.Deco.Init.template.Deco.Template.name plan.Deco.Init.root;
-              0
+          | Ok () -> (
+              let root = Deco.Terminal_text.escape plan.Deco.Init.root in
+              match trust plan.Deco.Init.root with
+              | Ok () ->
+                  Printf.printf
+                    "Initialized Deco configuration using template '%s' in %s.\n\
+                     Trusted %s\n"
+                    plan.Deco.Init.template.Deco.Template.name root root;
+                  0
+              | Error message ->
+                  Printf.eprintf
+                    "deco: initialized Deco configuration using template '%s' \
+                     in %s, but could not trust it: %s\n\
+                     Run 'deco trust' to review and approve it.\n"
+                    plan.Deco.Init.template.Deco.Template.name root
+                    (Deco.Terminal_text.escape message);
+                  1)
           | Error error -> (
               prerr_endline ("deco: " ^ Deco.Init.error_to_string error);
               match error with
