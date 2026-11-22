@@ -158,7 +158,9 @@ let make (loaded : Config_loader.t) =
              "--init";
              "--pull=never";
            ]
-          @ label_args (labels @ identity)
+          @ label_args
+              (labels @ identity
+              @ [ (Container_runtime.shell_label, c.container.shell) ])
           @ user_create
           @ (match c.container.workdir with
             | None -> []

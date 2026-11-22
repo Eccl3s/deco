@@ -313,3 +313,40 @@ let () =
     contains only_start
       "5. If the container was created or started, run the post_start hook:\n");
   assert (not (contains only_start "post_create"))
+
+(* Containers record the configured shell so hooks are not run with a shell
+   the container may not have. *)
+let () =
+  let source =
+    Result.get_ok
+      (Config.Decode.from_string
+         "project.name='example'\ncontainer.shell='/bin/zsh'\n")
+  in
+  let loaded : Config_loader.t =
+    {
+      ignored_paths = [];
+      contents = "";
+      project =
+        { root = "/project"; config_path = "/project/.deco/config.toml" };
+      source;
+      effective = Result.get_ok (Config.Resolve.apply source);
+      host_paths =
+        {
+          build_context = "/project/.deco/build";
+          containerfile = "/project/.deco/build/Containerfile";
+          workspace_source = None;
+        };
+      identity = User_identity.Image;
+    }
+  in
+  let plan = get (Assemble_plan.make loaded) in
+  let rec pairs = function
+    | Command_plan.Literal "--label" :: Command_plan.Literal value :: rest ->
+        value :: pairs rest
+    | _ :: rest -> pairs rest
+    | [] -> []
+  in
+  assert (List.mem "dev.deco.shell=/bin/zsh" (pairs plan.create));
+  (* The image is not labelled with the shell. *)
+  assert (
+    not (List.exists (String.starts_with ~prefix:"dev.deco.shell") plan.build))

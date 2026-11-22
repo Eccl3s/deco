@@ -358,9 +358,12 @@ conditions under which they run, without running them.
 
 Unlike the full v1 specification, `pre_stop` is skipped with a warning, and
 the stop goes ahead, when the running container cannot run the hook as
-configured: its keep-id user, identity label or configured working directory
-differ from the current configuration (for example after editing `[user]`
-and approving the change, before running `deco refresh`).
+configured: its keep-id user, identity label, configured working directory or
+shell differ from the current configuration (for example after editing
+`[user]` or `container.shell` and approving the change, before running
+`deco refresh`). To make the shell check possible, Deco labels each container
+it creates with `dev.deco.shell`, beyond the labels the specification lists;
+containers created before this label existed are not checked for the shell.
 
 ## Installation
 

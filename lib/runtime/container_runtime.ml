@@ -64,6 +64,8 @@ let incompatibilities ?(selinux_enabled = true) (loaded : Config_loader.t)
   | _ -> check false "Workspace paths disagree");
   List.rev !failures
 
+let shell_label = "dev.deco.shell"
+
 let hook_incompatibilities (loaded : Config_loader.t) (c : Podman.container) =
   let failures = ref [] in
   let check b message = if not b then failures := message :: !failures in
@@ -78,6 +80,16 @@ let hook_incompatibilities (loaded : Config_loader.t) (c : Podman.container) =
   Option.iter
     (fun workdir -> check (c.workdir = workdir) "Working directory differs")
     loaded.effective.container.workdir;
+  (* Containers created before the label existed are not compared. *)
+  (match
+     List.filter_map
+       (fun (k, v) -> if k = shell_label then Some v else None)
+       c.labels
+   with
+  | [] -> ()
+  | [ shell ] ->
+      check (shell = loaded.effective.container.shell) "Container shell differs"
+  | _ -> check false "Shell label is duplicated");
   List.rev !failures
 
 let compatibility ?selinux_enabled loaded image c =

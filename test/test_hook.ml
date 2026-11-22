@@ -200,4 +200,23 @@ let () =
   assert (
     Container_runtime.hook_incompatibilities plain
       (container ~user:"root" ~workdir:"/" ~identity:None ())
-    = [])
+    = []);
+  (* The recorded shell must match the configured one; containers without the
+     label are not compared. configured uses /bin/bash. *)
+  let shell value =
+    {
+      (container ()) with
+      labels =
+        (container ()).labels @ [ (Container_runtime.shell_label, value) ];
+    }
+  in
+  assert (check (shell "/bin/bash") = []);
+  assert (check (shell "sh") = [ "Container shell differs" ]);
+  assert (
+    check
+      {
+        (shell "/bin/bash") with
+        labels =
+          (shell "/bin/bash").labels @ [ (Container_runtime.shell_label, "x") ];
+      }
+    = [ "Shell label is duplicated" ])
