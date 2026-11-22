@@ -280,6 +280,37 @@ let () =
   runtime ~started:true "not running after start"
     (Start.run ~run ~hook:(hook calls) hooked);
   assert (!hook_calls = []);
+  (* A container that was never started still owes post_create, which runs
+     before post_start; a stopped container that ran before runs only
+     post_start. *)
+  let both =
+    {
+      hooked with
+      effective =
+        {
+          hooked.effective with
+          hooks = { hooked.effective.hooks with post_create = Some "setup" };
+        };
+    }
+  in
+  List.iter
+    (fun (state, expected) ->
+      hook_calls := [];
+      let run, calls =
+        fake ~after:(ok (container "running")) (ok (container state))
+      in
+      (match Start.run ~run ~hook:(hook calls) both with
+      | Ok { started = true; _ } -> ()
+      | _ -> assert false);
+      assert (
+        List.rev_map (fun (argv, _) -> List.hd (List.rev argv)) !hook_calls
+        = expected))
+    [
+      ("created", [ "setup"; "echo ready" ]);
+      ("configured", [ "setup"; "echo ready" ]);
+      ("exited", [ "echo ready" ]);
+      ("stopped", [ "echo ready" ]);
+    ];
   (* Invalid plans fail before Podman is invoked. *)
   let invalid =
     {

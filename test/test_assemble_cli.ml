@@ -198,7 +198,8 @@ let () =
       assert (err = "");
       assert (
         contains out
-          "5. If the container was created, run the post_create hook:");
+          "5. If the container is new or had never been started, run the \
+           post_create hook:");
       assert (
         contains out
           "6. If the container was created or started, run the post_start hook:");

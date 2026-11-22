@@ -63,6 +63,11 @@ val inspect :
     overrides the complete detection operation, allowing invocation-scoped
     caching. Never mutate resources or print output. *)
 
+val never_started : string -> bool
+(** Whether a container in this Podman state has never been started ([created]
+    or [configured]). Such a container still owes its [post_create] hook, even
+    when an earlier run created it. *)
+
 val supported_state : string -> bool
 (** Whether assemble and existing-environment inspection support this state. *)
 

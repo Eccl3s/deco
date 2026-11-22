@@ -1,6 +1,6 @@
 type t = {
   start : Command_plan.argument list;
-  post_start : string option;
+  hooks : string list;
   exec : Command_plan.argument list;
 }
 
@@ -19,7 +19,7 @@ let make (loaded : Config_loader.t) ~tty command =
         let plan =
           {
             start = start.Start_plan.start;
-            post_start = Start_plan.post_start_step start;
+            hooks = Start_plan.hook_steps start;
             exec =
               List.mapi
                 (fun i value ->
@@ -48,7 +48,7 @@ let prepare t =
       \   Then reinspect the same container and verify ownership, \
        compatibility, and running state.";
   ]
-  @ Option.to_list t.post_start
+  @ t.hooks
 
 let render t =
   "Exec preview\nNo commands will be run.\n\n"

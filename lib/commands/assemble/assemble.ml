@@ -240,6 +240,13 @@ let run ?execute ?read_many
   in
   let* () = ready image container in
   let* image = ensure_image image in
+  (* A container that an earlier run created but never started still owes
+     post_create. *)
+  let fresh =
+    match container with
+    | Some (c : Podman.container) -> Container_runtime.never_started c.state
+    | None -> true
+  in
   let* container, created = ensure_container image container in
   let* container, started = ensure_running image container in
   let outcome =
@@ -248,13 +255,13 @@ let run ?execute ?read_many
   let* () =
     match on_ready outcome with Ok () -> Ok () | Error cause -> fail cause
   in
-  (* Hooks run in the verified running container: post_create once after a
-     creation, then post_start after any start. *)
+  (* Hooks run in the verified running container: post_create on its first
+     start, then post_start after any start. *)
   let run_hook name =
     match Hook.run ?run:hook loaded ~container_id:container.id name with
     | Ok () -> Ok ()
     | Error failure -> fail (Hook failure)
   in
-  let* () = if created then run_hook Hook.Post_create else Ok () in
+  let* () = if fresh then run_hook Hook.Post_create else Ok () in
   let* () = if started then run_hook Hook.Post_start else Ok () in
   Ok outcome

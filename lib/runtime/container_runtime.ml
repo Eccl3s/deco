@@ -104,6 +104,8 @@ let availability ?run () = Result.map selinux_enabled (Podman.info ?run ())
 let supported_state state =
   List.mem state [ "running"; "created"; "configured"; "exited"; "stopped" ]
 
+let never_started state = List.mem state [ "created"; "configured" ]
+
 let local_selinux ?(root = "/sys/fs/selinux") () =
   try
     ignore (Unix.stat root);

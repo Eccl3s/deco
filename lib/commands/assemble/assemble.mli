@@ -38,7 +38,8 @@ val run :
 (** Inspect, build the missing image, create the missing container and start it,
     verifying each step. [on_ready] is called once the container is verified
     running, before any hook; an error from it fails the run with that cause and
-    runs no hook. Then a created container runs [post_create] and a created or
+    runs no hook. Then a container on its first start (created by this run, or
+    created earlier but never started) runs [post_create], and a created or
     started container runs [post_start], with [hook]; an already running
     container runs no hook. A failed hook stops later hooks and leaves the
     container running. *)

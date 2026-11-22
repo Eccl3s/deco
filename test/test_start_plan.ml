@@ -60,7 +60,7 @@ let () =
     ^ "\n<container-id> is resolved by inspection during execution.\n"
   in
   assert (Start_plan.render plan = expected);
-  assert (plan.post_start = None && Start_plan.post_start_step plan = None);
+  assert (plan.post_start = None && Start_plan.hook_steps plan = []);
   (* A configured post_start hook is listed after the start and its
      verification. *)
   let hooked =
@@ -113,4 +113,29 @@ let () =
   assert (not (contains (Start_plan.render quoted) "container a 'quoted'"));
   assert (
     Start_plan.make (rename "bad\000name")
-    = Error "Command arguments cannot contain NUL bytes")
+    = Error "Command arguments cannot contain NUL bytes");
+  (* A configured post_create is listed before post_start, for a container
+     that had never been started. *)
+  let both =
+    {
+      loaded with
+      effective =
+        {
+          loaded.effective with
+          hooks =
+            {
+              loaded.effective.hooks with
+              post_create = Some "setup";
+              post_start = Some "echo ready";
+            };
+        };
+    }
+  in
+  let rendered = Start_plan.render (get (Start_plan.make both)) in
+  assert (
+    contains rendered
+      "5. If the container was started for the first time, run the post_create \
+       hook:\n");
+  assert (
+    contains rendered
+      "6. If the container was started, run the post_start hook:\n")

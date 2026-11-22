@@ -57,7 +57,8 @@ let render t =
       "Start " ^ t.container_name ^ " if needed.\n";
     ]
     @ Option.to_list
-        (hook Hook.Post_create "If the container was created" t.post_create)
+        (hook Hook.Post_create
+           "If the container is new or had never been started" t.post_create)
     @ Option.to_list
         (hook Hook.Post_start "If the container was created or started"
            t.post_start)

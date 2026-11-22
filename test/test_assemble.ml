@@ -741,6 +741,14 @@ let () =
       "running" ) ->
       ()
   | _ -> assert false);
+  (* A container an earlier run created but never started still gets
+     post_create before post_start. *)
+  (match scenario "created" with
+  | ( Ok { created = false; started = true; _ },
+      [ "start"; "ready"; "post_create"; "post_start" ],
+      "running" ) ->
+      ()
+  | _ -> assert false);
   (match scenario "running" with
   | Ok { created = false; started = false; _ }, [ "ready" ], "running" -> ()
   | _ -> assert false);

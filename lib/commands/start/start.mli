@@ -25,8 +25,9 @@ val run :
     {!Container_runtime.inspect}), then start the container by inspected ID if
     it is not running. After a start, reinspect the same container and require
     unchanged container and image IDs and a running state, then run the
-    [post_start] hook with [hook] (see {!Hook.run}). An already running
-    container runs no hook. Initial reads are batched with [read_many], which
-    defaults to concurrent reads unless only [run] is injected. [probe] supplies
-    local SELinux status. No printing, exit mapping, or signal handling; callers
-    may supply a signal-aware runner. *)
+    [post_start] hook with [hook] (see {!Hook.run}), preceded by [post_create]
+    when the container had never been started. An already running container runs
+    no hook. Initial reads are batched with [read_many], which defaults to
+    concurrent reads unless only [run] is injected. [probe] supplies local
+    SELinux status. No printing, exit mapping, or signal handling; callers may
+    supply a signal-aware runner. *)

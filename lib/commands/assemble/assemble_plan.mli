@@ -50,5 +50,5 @@ val render_multiline : argument list -> string
 
 val render : t -> string
 (** The ordered workflow: inspection, build, create and start, then the
-    configured [post_create] (after a creation) and [post_start] (after a
-    creation or start) hooks. *)
+    configured [post_create] (on a container's first start) and [post_start]
+    (after a creation or start) hooks. *)

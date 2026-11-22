@@ -330,7 +330,7 @@ and compatibility checks, and only for trusted configuration (see
 
 | Hook | Runs in | When |
 | --- | --- | --- |
-| `post_create` | `assemble`, `refresh` | After a new container is created and started, before `post_start` |
+| `post_create` | `assemble`, `refresh`, `start`, `exec`, `shell` | On a container's first start, before `post_start`: after `assemble` or `refresh` creates and starts it, or when a container that was created but never started (for example after an interrupted `assemble`) is started later |
 | `post_start` | `assemble`, `refresh`, `start`, `exec`, `shell` | After every start Deco performs, including `exec` and `shell` starting a stopped container |
 | `pre_enter` | `shell` | Immediately before entering the shell |
 | `pre_stop` | `stop`, `remove`, `refresh` | Before Deco stops a running container |

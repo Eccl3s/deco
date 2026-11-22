@@ -60,6 +60,17 @@ let run ?run ?read_many ?(probe = fun () -> Container_runtime.local_selinux ())
       else if current.container.state <> "running" then
         fail (Runtime "Container is not running after start")
       else
-        match Hook.run ?run:hook loaded ~container_id Hook.Post_start with
-        | Error failure -> fail (Hook failure)
-        | Ok () -> Ok { environment = current; started = true })
+        (* A container that was never started (an earlier assemble created it
+           but did not get as far as starting it) still owes post_create. *)
+        let run_hook name =
+          match Hook.run ?run:hook loaded ~container_id name with
+          | Error failure -> fail (Hook failure)
+          | Ok () -> Ok ()
+        in
+        let* () =
+          if Container_runtime.never_started initial.container.state then
+            run_hook Hook.Post_create
+          else Ok ()
+        in
+        let* () = run_hook Hook.Post_start in
+        Ok { environment = current; started = true })

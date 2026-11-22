@@ -1,6 +1,7 @@
 type t = {
   container_name : string;
   start : Command_plan.argument list;
+  post_create : Command_plan.argument list option;
   post_start : Command_plan.argument list option;
 }
 
@@ -27,13 +28,22 @@ let make (loaded : Config_loader.t) =
       {
         container_name;
         start;
+        post_create = Hook.command loaded Hook.Post_create;
         post_start = Hook.command loaded Hook.Post_start;
       }
 
-let post_start_step plan =
-  Option.map
-    (Hook.render_step ~condition:"If the container was started" Hook.Post_start)
-    plan.post_start
+let hook_steps plan =
+  Option.to_list
+    (Option.map
+       (Hook.render_step
+          ~condition:"If the container was started for the first time"
+          Hook.Post_create)
+       plan.post_create)
+  @ Option.to_list
+      (Option.map
+         (Hook.render_step ~condition:"If the container was started"
+            Hook.Post_start)
+         plan.post_start)
 
 let render plan =
   "Start preview\nNo commands will be run.\n\n"
@@ -51,5 +61,5 @@ let render plan =
          "After starting, reinspect the same container and verify its ID, \
           ownership, compatibility, and running state.";
        ]
-      @ Option.to_list (post_start_step plan))
+      @ hook_steps plan)
   ^ "\n<container-id> is resolved by inspection during execution.\n"

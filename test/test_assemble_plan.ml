@@ -300,7 +300,8 @@ let () =
   assert (
     contains both
       "4. Start example-dev-container if needed.\n\n\
-       5. If the container was created, run the post_create hook:\n\
+       5. If the container is new or had never been started, run the \
+       post_create hook:\n\
       \    podman --remote=false exec \\\n");
   assert (
     contains both
