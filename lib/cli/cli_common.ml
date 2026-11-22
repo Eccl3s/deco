@@ -113,10 +113,6 @@ let load_trusted_project ?(no_hooks = false) ~command ~dry_run selection =
                 prerr_string (Deco.Trust.failure_message ~command status);
                 Error 5)))
 
-let report_hook_failure failure =
-  prerr_endline ("deco: " ^ Deco.Hook.failure_message failure);
-  Deco.Hook.exit_status failure
-
 let report_execution_result = function
   | Ok outcome -> (
       match outcome.Deco.Exec.status with

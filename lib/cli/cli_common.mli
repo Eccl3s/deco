@@ -42,8 +42,4 @@ val load_trusted_project :
     configuration that is not trusted is then allowed, with
     {!Deco.Trust.no_hooks_warning} instead of a failure or the dry-run note. *)
 
-val report_hook_failure : Deco.Hook.failure -> int
-(** Print the failed hook to stderr and return the exit status: the hook's own
-    status when it exited normally, otherwise [1]. *)
-
 val report_execution_result : (Deco.Exec.outcome, Deco.Exec.error) result -> int
