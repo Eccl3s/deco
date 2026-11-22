@@ -48,6 +48,7 @@ let command exec_arguments =
       Info_command.command;
       Remove_command.command;
       List_command.command;
+      Actions_command.command;
       Trust_command.command;
     ]
 

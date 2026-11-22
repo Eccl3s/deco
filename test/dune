@@ -40,7 +40,8 @@
   test_trust
   test_trust_review
   test_trust_cmd
-  test_hook)
+  test_hook
+  test_actions)
  (modules
   :standard
   \
@@ -56,6 +57,7 @@
   test_list_cli
   test_trust_cli
   test_project_cli
+  test_actions_cli
   test_init
   init_test_support
   test_embed_templates
@@ -211,6 +213,14 @@
  (name test_trust_cli)
  (modules test_trust_cli)
  (libraries unix)
+ (deps ../bin/deco.exe)
+ (action
+  (run %{test} %{exe:../bin/deco.exe})))
+
+(test
+ (name test_actions_cli)
+ (modules test_actions_cli)
+ (libraries unix yojson)
  (deps ../bin/deco.exe)
  (action
   (run %{test} %{exe:../bin/deco.exe})))

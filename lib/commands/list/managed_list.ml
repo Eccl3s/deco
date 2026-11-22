@@ -48,32 +48,18 @@ let render_human = function
         | None | Some "" -> "-"
         | Some value -> Terminal_text.escape value
       in
-      let header =
-        [ "PROJECT"; "CONTAINER"; "STATE"; "IMAGE"; "PROJECT ROOT" ]
-      in
-      let columns =
-        [
-          (fun e -> cell e.project);
-          (fun e -> cell e.container);
-          (fun e -> cell (Some e.state));
-          (fun e -> cell e.image);
-          (fun e -> cell e.project_root);
-        ]
-      in
-      (* One multi-line cell per column keeps a single rule under the header;
-         escaping guarantees each value is one line, so rows stay aligned. *)
-      let body =
-        List.map
-          (fun value ->
-            PrintBox.text (String.concat "\n" (List.map value entries)))
-          columns
-      in
-      let table =
-        PrintBox.frame
-          (PrintBox.grid_l ~pad:(PrintBox.hpad 1) ~bars:true
-             [ List.map PrintBox.line header; body ])
-      in
-      PrintBox_text.to_string_with ~style:false table ^ "\n"
+      Text_table.render
+        ~header:[ "PROJECT"; "CONTAINER"; "STATE"; "IMAGE"; "PROJECT ROOT" ]
+        (List.map
+           (fun e ->
+             [
+               cell e.project;
+               cell e.container;
+               cell (Some e.state);
+               cell e.image;
+               cell e.project_root;
+             ])
+           entries)
 
 let render_json entries =
   let optional = function None -> `Null | Some value -> `String value in
