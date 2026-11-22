@@ -66,3 +66,7 @@ let render_multiline command =
       | [] -> ""
       | xs -> " \\\n      " ^ String.concat " \\\n      " xs)
   | [] -> "    " ^ render_command rest
+
+let render_steps steps =
+  String.concat ""
+    (List.mapi (fun i step -> Printf.sprintf "%d. %s\n" (i + 1) step) steps)

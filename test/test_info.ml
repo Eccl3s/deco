@@ -153,6 +153,20 @@ let () =
   assert (r.runtime = { user_mode = "image"; workdir = Some "/"; shell = "sh" });
   assert (r.mounts = [] && r.dns = [] && r.ports = []);
   assert (r.hooks = [] && r.actions = []);
+  (* Configured hooks are listed by name in execution order. *)
+  let hooked =
+    load
+      "[project]\n\
+       name = 'example'\n\
+       [hooks]\n\
+       pre_stop = 'b'\n\
+       post_create = 'a'\n\
+       pre_enter = 'c'\n"
+  in
+  let run, _ = fake (ok (container "running")) in
+  assert (
+    (collect ~loaded:hooked run).hooks
+    = [ "post_create"; "pre_enter"; "pre_stop" ]);
   assert (
     r.trust
     = Some

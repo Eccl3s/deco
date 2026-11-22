@@ -38,7 +38,10 @@ let[@warning "-42"] execute selection dry_run keep_image =
         let result =
           try
             Deco.Refresh.run ~read_many:runners.Build_output.read_many
-              ~execute:runners.Build_output.execute ~progress loaded ~keep_image
+              ~execute:runners.Build_output.execute
+              ~hook:runners.Build_output.hook
+              ~warn:(fun message -> prerr_endline ("deco: " ^ message))
+              ~progress loaded ~keep_image
           with e ->
             runners.Build_output.close false;
             raise e
@@ -52,6 +55,9 @@ let[@warning "-42"] execute selection dry_run keep_image =
               | Deco.Refresh.Planning e -> (e, 2)
               | Deco.Refresh.Conflict e -> (e, 4)
               | Deco.Refresh.Runtime e -> (e, 1)
+              | Deco.Refresh.Hook failure ->
+                  ( Deco.Hook.failure_message failure,
+                    Deco.Hook.exit_status failure )
               | Deco.Refresh.Container_appeared ->
                   ( "A container named " ^ container
                     ^ " appeared during refresh and was not replaced; run deco \
@@ -79,15 +85,39 @@ let[@warning "-42"] execute selection dry_run keep_image =
             let completed mutation =
               List.mem mutation error.Deco.Refresh.completed
             in
-            if
-              error.Deco.Refresh.cause <> Deco.Refresh.Container_appeared
-              && completed Deco.Refresh.Remove_container
-              && not (completed Deco.Refresh.Start_container)
-            then
-              prerr_endline
-                ("deco: Refresh is incomplete: the old container " ^ container
-               ^ " was removed and no replacement is running. Fix the problem \
-                  and run deco refresh again.");
+            (match error.Deco.Refresh.cause with
+            | Deco.Refresh.Hook failure -> (
+                let hook = Deco.Hook.to_string (Deco.Hook.failed failure) in
+                match Deco.Hook.failed failure with
+                | Deco.Hook.Pre_stop ->
+                    prerr_endline
+                      ("deco: The old container " ^ container
+                     ^ " was not stopped or removed.")
+                | Deco.Hook.Post_create | Deco.Hook.Post_start
+                | Deco.Hook.Pre_enter ->
+                    prerr_endline
+                      (if completed Deco.Refresh.Remove_container then
+                         "deco: Refresh is incomplete: the old container "
+                         ^ container
+                         ^ " was removed and the replacement is running, but \
+                            its " ^ hook
+                         ^ " hook failed. Fix the problem and run deco refresh \
+                            again."
+                       else
+                         "deco: The new container " ^ container
+                         ^ " is running, but its " ^ hook ^ " hook failed."))
+            | Deco.Refresh.Container_appeared -> ()
+            | Deco.Refresh.Planning _ | Deco.Refresh.Conflict _
+            | Deco.Refresh.Runtime _ | Deco.Refresh.Podman _ ->
+                if
+                  completed Deco.Refresh.Remove_container
+                  && not (completed Deco.Refresh.Start_container)
+                then
+                  prerr_endline
+                    ("deco: Refresh is incomplete: the old container "
+                   ^ container
+                   ^ " was removed and no replacement is running. Fix the \
+                      problem and run deco refresh again."));
             code)
 
 let command =

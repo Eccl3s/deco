@@ -8,6 +8,7 @@ type cause =
   | Podman of Podman.error
   | Conflict of string
   | Runtime of string
+  | Hook of Hook.failure
 
 type error = { cause : cause; completed : string list }
 
@@ -21,7 +22,8 @@ type outcome = {
 let compatibility = Container_runtime.compatibility
 
 let run ?execute ?read_many
-    ?(probe = fun () -> Container_runtime.local_selinux ()) loaded =
+    ?(probe = fun () -> Container_runtime.local_selinux ()) ?hook
+    ?(on_ready = fun (_ : outcome) -> Ok ()) loaded =
   let concurrent = Option.is_some read_many || Option.is_none execute in
   let injected = execute in
   let execute =
@@ -238,8 +240,28 @@ let run ?execute ?read_many
   in
   let* () = ready image container in
   let* image = ensure_image image in
+  (* A container that an earlier run created but never started still owes
+     post_create. *)
+  let fresh =
+    match container with
+    | Some (c : Podman.container) -> Container_runtime.never_started c.state
+    | None -> true
+  in
   let* container, created = ensure_container image container in
-  (* Lifecycle hooks belong here: post_create when [created], then post_start
-     after [ensure_running] when it started the container. *)
   let* container, started = ensure_running image container in
-  Ok { image_id = image.id; container_id = container.id; created; started }
+  let outcome =
+    { image_id = image.id; container_id = container.id; created; started }
+  in
+  let* () =
+    match on_ready outcome with Ok () -> Ok () | Error cause -> fail cause
+  in
+  (* Hooks run in the verified running container: post_create on its first
+     start, then post_start after any start. *)
+  let run_hook name =
+    match Hook.run ?run:hook loaded ~container_id:container.id name with
+    | Ok () -> Ok ()
+    | Error failure -> fail (Hook failure)
+  in
+  let* () = if fresh then run_hook Hook.Post_create else Ok () in
+  let* () = if started then run_hook Hook.Post_start else Ok () in
+  Ok outcome

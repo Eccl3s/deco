@@ -19,7 +19,7 @@ let contains s fragment =
    setting, [before] its state until [marker] exists, [after] its state once
    it does, and [start] the shell action for podman start. *)
 let script ~root ~marker ?(project = "example") ?label_root ?(init = true)
-    ?(missing = false) ~before ~after ~start () =
+    ?(missing = false) ?(hook = "exit 96") ~before ~after ~start () =
   let labels ?(root = root) project =
     Printf.sprintf
       {|{"dev.deco.managed":"true","dev.deco.project":"%s","dev.deco.project-root":%s}|}
@@ -53,6 +53,7 @@ let script ~root ~marker ?(project = "example") ?label_root ?(init = true)
          "  if test -f '" ^ marker ^ "'; then printf '%s' '" ^ container after
          ^ "'; else printf '%s' '" ^ container before ^ "'; fi ;;");
       "'start --') test \"$3\" = cid || exit 98; " ^ start ^ " ;;";
+      "'exec --') test \"$3 $4 $5\" = 'cid sh -lc' || exit 95; " ^ hook ^ " ;;";
       "*) exit 99 ;;";
       "esac";
       "";
@@ -158,7 +159,7 @@ let () =
               let out, err = run ~path:"/nonexistent" ?term args 0 in
               assert (contains out "Start preview" && err = "");
               assert (contains out "example-dev-container");
-              assert (contains out "post_start hook is deferred"))
+              assert (not (contains out "post_start")))
             [
               [ "start"; "-d" ];
               [ "start"; "--dry-run" ];
@@ -254,4 +255,45 @@ let () =
             1,
             "",
             "not running after start" );
-        ])
+        ];
+      (* post_start runs after Deco starts the container, never for one that is
+         already running; a failure keeps the container running and its exit
+         status becomes Deco's. *)
+      write
+        (temp ^ "/.deco/config.toml")
+        "[project]\nname='example'\n[hooks]\npost_start='echo ready'\n";
+      ignore (run [ "trust"; "--yes" ] 0);
+      List.iter
+        (fun term ->
+          let out, err = run ~path:"/nonexistent" ?term [ "start"; "-d" ] 0 in
+          assert (err = "" && calls () = "");
+          assert (
+            contains out
+              "5. If the container was started, run the post_start hook:\n");
+          assert (contains out "'echo ready'");
+          let scenario ~before ~hook expected =
+            (try Unix.unlink marker with Unix.Unix_error _ -> ());
+            write fake
+              (script ~root:temp ~marker ~before ~after:"running" ~start:touch
+                 ~hook ());
+            run ~path:(temp ^ "/fake:/usr/bin:/bin") ?term [ "start" ] expected
+          in
+          let out, err =
+            scenario ~before:"exited" ~hook:"echo hook-output; exit 0" 0
+          in
+          assert (err = "hook-output\n");
+          assert (out = "Started example-dev-container\n");
+          assert (contains (calls ()) "exec -- cid sh -lc echo ready");
+          let out, err =
+            scenario ~before:"running" ~hook:"echo hook-output; exit 0" 0
+          in
+          assert (out = "Already running: example-dev-container\n" && err = "");
+          assert (not (contains (calls ()) "exec"));
+          let out, err = scenario ~before:"exited" ~hook:"exit 7" 7 in
+          assert (out = "");
+          assert (
+            err
+            = "deco: post_start hook failed with exit status 7\n\
+               deco: Started example-dev-container; it remains running.\n");
+          assert (not (contains (calls ()) "stop")))
+        [ None; Some "xterm-256color" ])

@@ -54,13 +54,45 @@ let () =
        container fails; run deco assemble.\n"
     ^ "3. If the container is not running, start it:\n"
     ^ "    podman --remote=false start \\\n      -- '<container-id>'"
-    ^ "\n   Already-running containers require no mutation.\n"
+    ^ "\n   Already-running containers require no mutation and run no hook.\n"
     ^ "4. After starting, reinspect the same container and verify its ID, \
        ownership, compatibility, and running state.\n"
-    ^ "The post_start hook is deferred and is not run.\n\n"
-    ^ "<container-id> is resolved by inspection during execution.\n"
+    ^ "\n<container-id> is resolved by inspection during execution.\n"
   in
   assert (Start_plan.render plan = expected);
+  assert (plan.post_start = None && Start_plan.hook_steps plan = []);
+  (* A configured post_start hook is listed after the start and its
+     verification. *)
+  let hooked =
+    {
+      loaded with
+      effective =
+        {
+          loaded.effective with
+          hooks = { loaded.effective.hooks with post_start = Some "echo ready" };
+        };
+    }
+  in
+  let plan = get (Start_plan.make hooked) in
+  assert (
+    Start_plan.render plan
+    = "Start preview\nNo commands will be run.\n\n"
+      ^ "1. Check Podman availability.\n"
+      ^ "2. Inspect the configured image and container example-dev-container; \
+         verify ownership, compatibility, and supported state. A missing \
+         container fails; run deco assemble.\n"
+      ^ "3. If the container is not running, start it:\n"
+      ^ "    podman --remote=false start \\\n      -- '<container-id>'"
+      ^ "\n   Already-running containers require no mutation and run no hook.\n"
+      ^ "4. After starting, reinspect the same container and verify its ID, \
+         ownership, compatibility, and running state.\n"
+      ^ "5. If the container was started, run the post_start hook:\n"
+      ^ "    podman --remote=false exec \\\n\
+        \      -- '<container-id>' \\\n\
+        \      sh \\\n\
+        \      -lc \\\n\
+        \      'echo ready'\n"
+      ^ "\n<container-id> is resolved by inspection during execution.\n");
   let rename name =
     {
       loaded with
@@ -81,4 +113,29 @@ let () =
   assert (not (contains (Start_plan.render quoted) "container a 'quoted'"));
   assert (
     Start_plan.make (rename "bad\000name")
-    = Error "Command arguments cannot contain NUL bytes")
+    = Error "Command arguments cannot contain NUL bytes");
+  (* A configured post_create is listed before post_start, for a container
+     that had never been started. *)
+  let both =
+    {
+      loaded with
+      effective =
+        {
+          loaded.effective with
+          hooks =
+            {
+              loaded.effective.hooks with
+              post_create = Some "setup";
+              post_start = Some "echo ready";
+            };
+        };
+    }
+  in
+  let rendered = Start_plan.render (get (Start_plan.make both)) in
+  assert (
+    contains rendered
+      "5. If the container was started for the first time, run the post_create \
+       hook:\n");
+  assert (
+    contains rendered
+      "6. If the container was started, run the post_start hook:\n")

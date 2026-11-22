@@ -3,10 +3,13 @@ import datetime
 import json
 import os
 import pathlib
+import pty
+import select
 import signal
 import subprocess
 import sys
 import tempfile
+import time
 import tomllib
 
 binary=str(pathlib.Path(sys.argv[1]).resolve())
@@ -129,8 +132,65 @@ with tempfile.TemporaryDirectory(prefix='deco-debian-workflow-') as directory:
         assert result.stdout.splitlines()==['dev','/workspace','verified'],result.stdout
         [entry]=listed()
         assert entry['container_id']==refreshed_container and entry['state']=='running',entry
+        # Lifecycle hooks: each appends its name to a marker in the workspace,
+        # which the hooks see as their working directory.
+        config_path=root/'.deco/config.toml'
+        hook_names=['post_create','post_start','pre_enter','pre_stop']
+        config_path.write_text(originals[config_path].decode()+'\n[hooks]\n'+''.join(
+            '%s = "printf \'%s\\\\n\' >> .deco-hooks"\n'%(hook,hook) for hook in hook_names))
+        deco('--project-dir',str(root),'trust','--yes')
+        marker=root/'.deco-hooks'
+        def ran():
+            if not marker.exists(): return []
+            names=marker.read_text().split(); marker.unlink(); return names
+        result=deco('--project-dir',str(root),'assemble','--dry-run')
+        assert 'post_create hook' in result.stdout and 'post_start hook' in result.stdout,result.stdout
+        assert ran()==[]
+        # Already running: assemble repeats no hook.
+        deco('--project-dir',str(root),'assemble')
+        assert ran()==[]
+        deco('--project-dir',str(root),'stop')
+        assert ran()==['pre_stop'] and not running()
+        deco('--project-dir',str(root),'start')
+        assert ran()==['post_start'] and running()
+        deco('--project-dir',str(root),'stop','--no-hooks')
+        assert ran()==[] and not running()
+        # exec starts the stopped container and runs post_start first.
+        result=deco('--project-dir',str(root),'exec','--','/bin/sh','-c','cat .deco-hooks')
+        assert result.stdout=='post_start\n',result.stdout
+        assert ran()==['post_start'] and running()
+        # shell runs pre_enter immediately before entry.
+        pid,master=pty.fork()
+        if pid==0:
+            os.environ.update(env)
+            os.execv(binary,[binary,'--project-dir',str(root),'shell'])
+        data=b''; status=None; sent=False; deadline=time.monotonic()+120
+        try:
+            while time.monotonic()<deadline:
+                if select.select([master],[],[],0.1)[0]:
+                    try: data+=os.read(master,4096)
+                    except OSError: pass
+                if not sent and (b'$ ' in data or b'# ' in data):
+                    os.write(master,b'exit 0\n'); sent=True
+                child,result_status=os.waitpid(pid,os.WNOHANG)
+                if child: status=result_status; break
+        finally:
+            if status is None:
+                os.kill(pid,signal.SIGKILL); os.waitpid(pid,0)
+            os.close(master)
+        assert status is not None and os.waitstatus_to_exitcode(status)==0,(status,data)
+        assert ran()==['pre_enter'],data
+        result=deco('--project-dir',str(root),'refresh','--keep-image')
+        assert ran()==['pre_stop','post_create','post_start'] and running()
+        # A new container runs post_create before post_start.
+        deco('--project-dir',str(root),'remove','--keep-image')
+        assert ran()==['pre_stop']
+        deco('--project-dir',str(root),'assemble')
+        assert ran()==['post_create','post_start'] and running()
+        # Restoring the original configuration restores its earlier approval.
+        config_path.write_bytes(originals[config_path])
         deco('--project-dir',str(root),'remove')
-        assert listed()==[]
+        assert ran()==[] and listed()==[]
         # After remove, info still succeeds and reports both resources missing.
         report=info('--project-dir',str(root))
         for kind in ('image','container'):

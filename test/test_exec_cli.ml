@@ -24,7 +24,7 @@ let () =
       write (temp ^ "/.deco/build/Containerfile") "FROM scratch\n";
       let log = temp ^ "/calls" in
       let fake = temp ^ "/fake/podman" in
-      let run ?(path = temp ^ "/fake") args expected =
+      let run ?(path = temp ^ "/fake") ?(env = []) args expected =
         let out = temp ^ "/out" and err = temp ^ "/err" in
         let fd p =
           Unix.openfile p [ Unix.O_CREAT; Unix.O_TRUNC; Unix.O_WRONLY ] 0o600
@@ -36,6 +36,7 @@ let () =
           Unix.putenv "PATH" path;
           Unix.putenv "XDG_STATE_HOME" (temp ^ "/state");
           Unix.putenv "DECO_TEST_LOG" log;
+          List.iter (fun (key, value) -> Unix.putenv key value) env;
           Unix.dup2 o Unix.stdout;
           Unix.dup2 e Unix.stderr;
           Unix.close o;
@@ -64,7 +65,9 @@ case "$1 $2" in
   'info --format') printf '{}';;
   'image exists'|'container exists') exit 0;;
   'image inspect') printf '%s' '[{"Id":"iid","Labels":{"dev.deco.managed":"true","dev.deco.project":"example","dev.deco.project-root":"ROOT"},"Config":{"WorkingDir":"/"}}]';;
-  'container inspect') printf '%s' '[{"Id":"cid","Image":"iid","State":{"Status":"running"},"Config":{"Labels":{"dev.deco.managed":"true","dev.deco.project":"example","dev.deco.project-root":"ROOT"},"WorkingDir":"/"},"HostConfig":{"UsernsMode":"","Init":true},"Mounts":[]}]';;
+  'container inspect') state=running; if [ -n "$DECO_TEST_STOPPED" ] && [ ! -f "$DECO_TEST_LOG.started" ]; then state=exited; fi; printf '%s' '[{"Id":"cid","Image":"iid","State":{"Status":"'"$state"'"},"Config":{"Labels":{"dev.deco.managed":"true","dev.deco.project":"example","dev.deco.project-root":"ROOT"},"WorkingDir":"/"},"HostConfig":{"UsernsMode":"","Init":true},"Mounts":[]}]';;
+  'start --') [ "$3" = cid ] || exit 93; : > "$DECO_TEST_LOG.started";;
+  'exec --') printf '%s\n' "$*" >> "$DECO_TEST_LOG"; printf 'hook-output\n'; exit "${DECO_TEST_HOOK_STATUS:-0}";;
   'exec --interactive') shift; shift; [ "$1" = -- ] || exit 90; shift; [ "$1" = cid ] || exit 91; shift; exec "$@";;
   *) exit 92;;
 esac
@@ -117,4 +120,48 @@ esac
       let out, err =
         run ~path:"/nonexistent" [ "exec"; "-d"; "--"; "echo"; "-h"; "" ] 0
       in
-      assert (contains out "Exec preview" && err = ""))
+      assert (contains out "Exec preview" && err = "");
+      (* A stopped container is started and post_start runs before the
+         command; a failed hook prevents it and its status is returned. *)
+      write config
+        "[project]\nname='example'\n[hooks]\npost_start='echo ready'\n";
+      ignore (run [ "trust"; "--yes" ] 0);
+      let out, err =
+        run ~path:"/nonexistent" [ "exec"; "-d"; "--"; "true" ] 0
+      in
+      assert (err = "");
+      assert (
+        contains out
+          "4. If the container was started, run the post_start hook:\n");
+      assert (contains out "5. Execute the command:");
+      let scenario ?(stopped = true) status args expected =
+        (try Unix.unlink log with Unix.Unix_error _ -> ());
+        (try Unix.unlink (log ^ ".started") with Unix.Unix_error _ -> ());
+        run
+          ~env:
+            ((if stopped then [ ("DECO_TEST_STOPPED", "1") ] else [])
+            @ [ ("DECO_TEST_HOOK_STATUS", string_of_int status) ])
+          ("exec" :: "--" :: args) expected
+      in
+      let hook_calls () =
+        if Sys.file_exists log then
+          List.length
+            (List.filter
+               (fun line -> String.starts_with ~prefix:"exec -- cid" line)
+               (String.split_on_char '\n'
+                  (In_channel.with_open_bin log In_channel.input_all)))
+        else 0
+      in
+      let out, err = scenario 0 [ "/bin/printf"; "command" ] 0 in
+      (* Hook output goes to stderr, leaving stdout to the command. *)
+      assert (out = "command" && err = "hook-output\n");
+      assert (hook_calls () = 1);
+      let out, err = scenario ~stopped:false 0 [ "/bin/printf"; "command" ] 0 in
+      assert (out = "command" && err = "" && hook_calls () = 0);
+      let out, err = scenario 4 [ "/bin/printf"; "command" ] 4 in
+      assert (out = "");
+      assert (
+        err
+        = "hook-output\n\
+           deco: post_start hook failed with exit status 4\n\
+           deco: Container was started and remains available.\n"))

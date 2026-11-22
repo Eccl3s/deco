@@ -80,4 +80,21 @@ let () =
           [ "shell"; "--dry-run"; "--project-dir"; temp ];
           [ "--project-dir"; temp; "shell"; "-d" ];
         ];
+      assert (not (Sys.file_exists log));
+      (* Dry runs list the hooks in order without invoking Podman. *)
+      write config
+        "[project]\n\
+         name='example'\n\
+         [hooks]\n\
+         post_start='echo a'\n\
+         pre_enter='echo b'\n";
+      ignore (run [ "trust"; "--yes" ] 0);
+      let out, err = run ~path:"/nonexistent" [ "shell"; "-d" ] 0 in
+      assert (err = "");
+      assert (
+        contains out
+          "4. If the container was started, run the post_start hook:\n");
+      assert (
+        contains out "5. Immediately before entering, run the pre_enter hook:\n");
+      assert (contains out "6. Enter the configured interactive shell:\n");
       assert (not (Sys.file_exists log)))

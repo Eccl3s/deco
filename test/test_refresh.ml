@@ -332,3 +332,152 @@ let () =
   with
   | Error { cause = Planning _; completed = [] } -> ()
   | _ -> failwith "expected a planning error"
+
+(* Hooks: pre_stop before the old container stops, then post_create and
+   post_start in the replacement after it is reported as started. A failed
+   pre_stop changes no container; a failed post hook is a partial refresh with
+   the replacement running. No hook runs in a container that appeared. *)
+let () =
+  let source =
+    Result.get_ok
+      (Config.Decode.from_string
+         "project.name='example'\n\
+          hooks={pre_stop='a',post_create='b',post_start='c'}\n")
+  in
+  let loaded : Config_loader.t =
+    {
+      ignored_paths = [];
+      contents = "";
+      source;
+      effective = Result.get_ok (Config.Resolve.apply source);
+      project =
+        { root = "/project"; config_path = "/project/.deco/config.toml" };
+      host_paths =
+        {
+          build_context = "/project/.deco/build";
+          containerfile = "/project/.deco/build/Containerfile";
+          workspace_source = None;
+        };
+      identity = User_identity.Image;
+    }
+  in
+  let running () =
+    { cid = "oldc"; state = "running"; image_id = "old"; owner = Owned }
+  in
+  let refresh ?(fail = "") w =
+    let hook argv =
+      let name, container =
+        match List.rev argv with
+        | "a" :: "-lc" :: "sh" :: c :: _ -> ("pre_stop", c)
+        | "b" :: "-lc" :: "sh" :: c :: _ -> ("post_create", c)
+        | "c" :: "-lc" :: "sh" :: c :: _ -> ("post_start", c)
+        | _ -> failwith ("Unexpected hook: " ^ String.concat " " argv)
+      in
+      (* Hooks run in the container that is running at that moment. *)
+      let current = Option.get w.container in
+      assert (current.cid = container && current.state = "running");
+      w.mutations <- name :: w.mutations;
+      Ok
+        {
+          Process.status = Unix.WEXITED (if name = fail then 8 else 0);
+          stdout = "";
+          stderr = "";
+        }
+    in
+    Refresh.run ~execute:(execute w) ~hook
+      ~probe:(fun () -> Some false)
+      ~progress:(fun event ->
+        w.mutations <-
+          (match event with
+          | Refresh.Container_started -> "progress:started"
+          | _ -> "progress")
+          :: w.mutations)
+      loaded ~keep_image:false
+  in
+  let mutations w =
+    List.filter (fun m -> m <> "progress") (List.rev w.mutations)
+  in
+  let w =
+    world ~image:{ id = "old"; owned = Owned } ~container:(running ()) ()
+  in
+  assert (Result.is_ok (refresh w));
+  assert (
+    mutations w
+    = [
+        "build";
+        "pre_stop";
+        "stop";
+        "rm";
+        "create";
+        "start";
+        "progress:started";
+        "post_create";
+        "post_start";
+      ]);
+  (* A failed pre_stop leaves the old container running; only the build
+     completed. *)
+  let w =
+    world ~image:{ id = "old"; owned = Owned } ~container:(running ()) ()
+  in
+  (match refresh ~fail:"pre_stop" w with
+  | Error
+      {
+        cause = Hook (Hook.Exited { hook = Pre_stop; status = WEXITED 8 });
+        completed = [ Build_image ];
+      } ->
+      ()
+  | _ -> assert false);
+  assert (mutations w = [ "build"; "pre_stop" ]);
+  assert ((Option.get w.container).cid = "oldc");
+  assert ((Option.get w.container).state = "running");
+  (* A failed post_create after the removal: the replacement is running and
+     post_start does not run. *)
+  List.iter
+    (fun (fail, ran) ->
+      let w =
+        world ~image:{ id = "old"; owned = Owned } ~container:(running ()) ()
+      in
+      (match refresh ~fail w with
+      | Error
+          {
+            cause = Hook failure;
+            completed =
+              [
+                Build_image;
+                Stop_container;
+                Remove_container;
+                Create_container;
+                Start_container;
+              ];
+          } ->
+          assert (Hook.to_string (Hook.failed failure) = fail)
+      | _ -> assert false);
+      assert (
+        mutations w
+        = [
+            "build";
+            "pre_stop";
+            "stop";
+            "rm";
+            "create";
+            "start";
+            "progress:started";
+          ]
+          @ ran);
+      assert ((Option.get w.container).state = "running");
+      assert ((Option.get w.container).cid <> "oldc"))
+    [
+      ("post_create", [ "post_create" ]);
+      ("post_start", [ "post_create"; "post_start" ]);
+    ];
+  (* A container that appears after the removal is refused before any hook
+     runs in it. *)
+  let w =
+    world
+      ~image:{ id = "old"; owned = Owned }
+      ~container:(running ()) ~intruder:"exited" ()
+  in
+  (match refresh w with
+  | Error { cause = Container_appeared; _ } -> ()
+  | _ -> assert false);
+  assert (mutations w = [ "build"; "pre_stop"; "stop"; "rm"; "start" ])

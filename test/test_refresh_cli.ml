@@ -73,6 +73,8 @@ case "$1 $2" in
  'build --file') test "$MODE" = buildfail && exit 1; touch "$L.built";;
  'create --name') touch "$L.created"; printf '%s\n' "$NEW";;
  'start --') test "$MODE" = startfail && exit 125; touch "$L.started";;
+ 'exec --') case "$MODE:$6" in prestopfail:a|postcreatefail:b) exit 8;; esac
+   printf 'hook-%s\n' "$6";;
  *) exit 99;;
 esac
 |}
@@ -140,6 +142,7 @@ let () =
             | "build" :: _ -> Some "build"
             | "create" :: _ -> Some "create"
             | "start" :: _ -> Some "start"
+            | "exec" :: rest -> Some ("hook:" ^ List.hd (List.rev rest))
             | _ -> None)
       in
       let install mode =
@@ -278,4 +281,82 @@ let () =
       assert (not (contains out "Created and started"));
       assert (contains err "appeared during refresh and was not replaced");
       assert (not (contains err "Refresh is incomplete"));
-      assert (mutations () = [ "build"; "stop"; "rm" ]))
+      assert (mutations () = [ "build"; "stop"; "rm" ]);
+
+      (* Hooks: pre_stop before the stop, post_create and post_start after the
+         replacement is reported. *)
+      write
+        (temp ^ "/.deco/config.toml")
+        "[project]\n\
+         name='example'\n\
+         [hooks]\n\
+         pre_stop='a'\n\
+         post_create='b'\n\
+         post_start='c'\n";
+      ignore (run [ "trust"; "--yes" ] 0);
+      reset ();
+      let out, err = run ~path:"/nonexistent" [ "refresh"; "-d" ] 0 in
+      assert (err = "" && not (Sys.file_exists log));
+      List.iter
+        (fun text ->
+          if not (contains out text) then failwith (text ^ "\n" ^ out))
+        [
+          "3. If the container is running, run the pre_stop hook:\n";
+          "4. If the container is running, stop it";
+          "5. If the container exists, remove it";
+          "8. After creating the replacement, run the post_create hook:\n";
+          "9. After starting the replacement, run the post_start hook:\n";
+          "steps 3 to 5 are skipped";
+          "A failed pre_stop hook leaves the existing container running";
+          "A failure after step 5 is a partial refresh";
+        ];
+      install "ok";
+      let out, err = run [ "refresh" ] 0 in
+      assert (err = "hook-a\nhook-b\nhook-c\n");
+      assert (
+        out
+        = "Rebuilt image example-dev-image:latest\n\
+           Stopped and removed container example-dev-container\n\
+           Created and started example-dev-container\n");
+      assert (
+        mutations ()
+        = [
+            "build";
+            "hook:a";
+            "stop";
+            "rm";
+            "create";
+            "start";
+            "hook:b";
+            "hook:c";
+          ]);
+      (* A failed pre_stop changes no container. *)
+      install "prestopfail";
+      let out, err = run [ "refresh" ] 8 in
+      assert (out = "Rebuilt image example-dev-image:latest\n");
+      assert (
+        err
+        = "deco: pre_stop hook failed with exit status 8\n\
+           deco: Completed command: image build.\n\
+           deco: The old container example-dev-container was not stopped or \
+           removed.\n");
+      assert (mutations () = [ "build"; "hook:a" ]);
+      (* A failed post_create after the removal is a partial refresh. *)
+      install "postcreatefail";
+      let out, err = run [ "refresh" ] 8 in
+      assert (
+        out
+        = "Rebuilt image example-dev-image:latest\n\
+           Stopped and removed container example-dev-container\n\
+           Created and started example-dev-container\n");
+      assert (String.starts_with ~prefix:"hook-a\n" err);
+      assert (contains err "deco: post_create hook failed with exit status 8\n");
+      assert (
+        contains err
+          "deco: Refresh is incomplete: the old container \
+           example-dev-container was removed and the replacement is running, \
+           but its post_create hook failed. Fix the problem and run deco \
+           refresh again.\n");
+      assert (
+        mutations ()
+        = [ "build"; "hook:a"; "stop"; "rm"; "create"; "start"; "hook:b" ]))

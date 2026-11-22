@@ -221,6 +221,96 @@ let () =
   (match Start.run ~run loaded with
   | Error { cause = Start.Conflict _; started = true } -> ()
   | _ -> assert false);
+  (* post_start runs once in the verified started container, after the
+     reinspection; an already running container runs no hook. *)
+  let hooked =
+    {
+      loaded with
+      effective =
+        {
+          effective with
+          hooks = { effective.hooks with post_start = Some "echo ready" };
+        };
+    }
+  in
+  let hook_calls = ref [] in
+  let hook ?(status = Unix.WEXITED 0) calls argv =
+    hook_calls := (argv, List.length !calls) :: !hook_calls;
+    Ok { Process.status; stdout = ""; stderr = "" }
+  in
+  let post_start =
+    [
+      "podman"; "--remote=false"; "exec"; "--"; "cid"; "sh"; "-lc"; "echo ready";
+    ]
+  in
+  let run, calls =
+    fake ~after:(ok (container "running")) (ok (container "exited"))
+  in
+  (match Start.run ~run ~hook:(hook calls) hooked with
+  | Ok { started = true; _ } -> ()
+  | _ -> assert false);
+  (* Every Podman call, including the reinspection, came first. *)
+  assert (!hook_calls = [ (post_start, List.length !calls) ]);
+  assert (List.hd !calls = container_inspect "cid");
+  hook_calls := [];
+  let run, calls = fake (ok (container "running")) in
+  (match Start.run ~run ~hook:(hook calls) hooked with
+  | Ok { started = false; _ } -> ()
+  | _ -> assert false);
+  assert (!hook_calls = []);
+  (* A failed hook leaves the container running and keeps its status. *)
+  let run, calls =
+    fake ~after:(ok (container "running")) (ok (container "exited"))
+  in
+  (match Start.run ~run ~hook:(hook ~status:(Unix.WEXITED 7) calls) hooked with
+  | Error
+      {
+        cause =
+          Start.Hook (Hook.Exited { hook = Post_start; status = WEXITED 7 });
+        started = true;
+      } ->
+      ()
+  | _ -> assert false);
+  assert (not (List.mem (Podman_command.stop "cid") !calls));
+  (* A failed verification runs no hook. *)
+  hook_calls := [];
+  let run, calls =
+    fake ~after:(ok (container "exited")) (ok (container "exited"))
+  in
+  runtime ~started:true "not running after start"
+    (Start.run ~run ~hook:(hook calls) hooked);
+  assert (!hook_calls = []);
+  (* A container that was never started still owes post_create, which runs
+     before post_start; a stopped container that ran before runs only
+     post_start. *)
+  let both =
+    {
+      hooked with
+      effective =
+        {
+          hooked.effective with
+          hooks = { hooked.effective.hooks with post_create = Some "setup" };
+        };
+    }
+  in
+  List.iter
+    (fun (state, expected) ->
+      hook_calls := [];
+      let run, calls =
+        fake ~after:(ok (container "running")) (ok (container state))
+      in
+      (match Start.run ~run ~hook:(hook calls) both with
+      | Ok { started = true; _ } -> ()
+      | _ -> assert false);
+      assert (
+        List.rev_map (fun (argv, _) -> List.hd (List.rev argv)) !hook_calls
+        = expected))
+    [
+      ("created", [ "setup"; "echo ready" ]);
+      ("configured", [ "setup"; "echo ready" ]);
+      ("exited", [ "echo ready" ]);
+      ("stopped", [ "echo ready" ]);
+    ];
   (* Invalid plans fail before Podman is invoked. *)
   let invalid =
     {

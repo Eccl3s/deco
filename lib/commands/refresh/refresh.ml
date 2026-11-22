@@ -19,6 +19,7 @@ type cause =
   | Conflict of string
   | Runtime of string
   | Container_appeared
+  | Hook of Hook.failure
 
 type error = { cause : cause; completed : mutation list }
 
@@ -29,8 +30,9 @@ type progress =
   | No_container
   | Container_started
 
-let run ?execute ?read_many ?probe ?(progress = fun (_ : progress) -> ())
-    (loaded : Config_loader.t) ~keep_image =
+let run ?execute ?read_many ?probe ?hook ?warn
+    ?(progress = fun (_ : progress) -> ()) (loaded : Config_loader.t)
+    ~keep_image =
   let injected = execute in
   let execute =
     Option.value ~default:(fun output argv -> Process.run ~output argv) execute
@@ -111,7 +113,7 @@ let run ?execute ?read_many ?probe ?(progress = fun (_ : progress) -> ())
     match container with
     | Podman.Absent -> Ok (false, false)
     | Present _ -> (
-        match Remove.run ~run:capture loaded ~keep_image:true with
+        match Remove.run ~run:capture ?hook ?warn loaded ~keep_image:true with
         | Ok outcome ->
             if outcome.stopped then record Stop_container;
             if outcome.container_removed then record Remove_container;
@@ -129,20 +131,32 @@ let run ?execute ?read_many ?probe ?(progress = fun (_ : progress) -> ())
               | Podman e -> Podman e
               | Conflict e -> Conflict e
               | Runtime e -> Runtime e
-              | Image_in_use _ -> Conflict "Image is in use"))
+              | Image_in_use _ -> Conflict "Image is in use"
+              | Hook failure -> Hook failure))
   in
   progress
     (if container_removed then Container_removed { stopped } else No_container);
-  match Assemble.run ?execute:injected ?read_many ?probe loaded with
-  | Ok outcome when not outcome.created ->
-      (* Another container took the configured name after removal; it was
-         reused (and possibly started) by assemble, not recreated by refresh. *)
+  (* The replacement is recorded and reported as soon as it is running, so a
+     failed hook after it is reported against a started container. A container
+     that appeared after the removal was reused by assemble rather than
+     created; it is refused before any hook runs. *)
+  let ready = ref false and appeared = ref false in
+  let on_ready (outcome : Assemble.outcome) =
+    ready := true;
+    if not outcome.created then (
+      appeared := true;
       if outcome.started then record Start_container;
-      fail Container_appeared
-  | Ok outcome ->
+      Error (Assemble.Conflict "Container appeared"))
+    else (
       record Create_container;
       if outcome.started then record Start_container;
       progress Container_started;
+      Ok ())
+  in
+  match
+    Assemble.run ?execute:injected ?read_many ?probe ?hook ~on_ready loaded
+  with
+  | Ok outcome ->
       Ok
         {
           stopped;
@@ -151,18 +165,22 @@ let run ?execute ?read_many ?probe ?(progress = fun (_ : progress) -> ())
           image_id = outcome.image_id;
           container_id = outcome.container_id;
         }
+  | Error _ when !appeared -> fail Container_appeared
   | Error error ->
-      List.iter
-        (fun command ->
-          match String.split_on_char ' ' command with
-          | [ "podman"; "--remote=false"; "build" ] -> record Build_image
-          | [ "podman"; "--remote=false"; "create" ] -> record Create_container
-          | [ "podman"; "--remote=false"; "start" ] -> record Start_container
-          | _ -> ())
-        error.completed;
+      if not !ready then
+        List.iter
+          (fun command ->
+            match String.split_on_char ' ' command with
+            | [ "podman"; "--remote=false"; "build" ] -> record Build_image
+            | [ "podman"; "--remote=false"; "create" ] ->
+                record Create_container
+            | [ "podman"; "--remote=false"; "start" ] -> record Start_container
+            | _ -> ())
+          error.completed;
       fail
         (match error.cause with
         | Assemble.Planning e -> Planning e
         | Podman e -> Podman e
         | Conflict e -> Conflict e
-        | Runtime e -> Runtime e)
+        | Runtime e -> Runtime e
+        | Hook failure -> Hook failure)

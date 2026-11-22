@@ -33,6 +33,13 @@ type workspace = {
 
 type mounts = { workspace : workspace option }
 
+type hooks = Config_types.hooks = {
+  post_create : string option;
+  post_start : string option;
+  pre_enter : string option;
+  pre_stop : string option;
+}
+
 type t = {
   project : project;
   image : image;
@@ -40,9 +47,14 @@ type t = {
   user : user;
   container : container;
   mounts : mounts;
+  hooks : hooks;  (** Configured lifecycle hooks; all [None] when omitted. *)
 }
 
 val image_reference : image -> string
 (** The configured image as Podman references it when building, inspecting and
     removing it: [name:tag]. The parts are joined as configured, with no
     normalisation; validation has already checked their syntax. *)
+
+val configured_hooks : hooks -> (string * string) list
+(** The configured hooks as [(key, command)] pairs in execution order:
+    [post_create], [post_start], [pre_enter], [pre_stop]. *)

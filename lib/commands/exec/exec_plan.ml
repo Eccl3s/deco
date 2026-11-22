@@ -1,16 +1,13 @@
 type t = {
   start : Command_plan.argument list;
+  hooks : string list;
   exec : Command_plan.argument list;
 }
 
 let make (loaded : Config_loader.t) ~tty command =
   if command = [] then Error "At least one command argument is required"
   else
-    let user =
-      match loaded.identity with
-      | User_identity.Image -> None
-      | Keep_id { name; _ } -> Some name
-    in
+    let user = User_identity.exec_user loaded.identity in
     let argv =
       Podman_command.exec ~tty ~user ~workdir:loaded.effective.container.workdir
         ~container:"" command
@@ -22,6 +19,7 @@ let make (loaded : Config_loader.t) ~tty command =
         let plan =
           {
             start = start.Start_plan.start;
+            hooks = Start_plan.hook_steps start;
             exec =
               List.mapi
                 (fun i value ->
@@ -39,15 +37,22 @@ let make (loaded : Config_loader.t) ~tty command =
         then Error "Command arguments cannot contain NUL bytes"
         else Ok plan
 
+let prepare t =
+  [
+    "Check Podman availability.";
+    "Inspect the configured image and container; verify ownership, \
+     compatibility, and supported state.";
+    "If the container is not running, start it:\n"
+    ^ Command_plan.render_multiline t.start
+    ^ "\n\
+      \   Then reinspect the same container and verify ownership, \
+       compatibility, and running state.";
+  ]
+  @ t.hooks
+
 let render t =
   "Exec preview\nNo commands will be run.\n\n"
-  ^ "1. Check Podman availability.\n"
-  ^ "2. Inspect the configured image and container; verify ownership, \
-     compatibility, and supported state.\n"
-  ^ "3. If the container is not running, start it:\n"
-  ^ Command_plan.render_multiline t.start
-  ^ "\n"
-  ^ "   Then reinspect the same container and verify ownership, compatibility, \
-     and running state.\n" ^ "4. Execute the command:\n"
-  ^ Command_plan.render_multiline t.exec
-  ^ "\n\n" ^ "<container-id> is resolved by inspection during execution.\n"
+  ^ Command_plan.render_steps
+      (prepare t
+      @ [ "Execute the command:\n" ^ Command_plan.render_multiline t.exec ])
+  ^ "\n<container-id> is resolved by inspection during execution.\n"

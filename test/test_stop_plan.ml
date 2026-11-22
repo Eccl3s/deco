@@ -83,3 +83,63 @@ let () =
   assert (
     Stop_plan.make (rename "bad\000name")
     = Error "Command arguments cannot contain NUL bytes")
+
+let () =
+  let source =
+    Result.get_ok
+      (Config.Decode.from_string
+         "project.name='example'\nhooks.pre_stop='echo bye'\n")
+  in
+  let effective = Result.get_ok (Config.Resolve.apply source) in
+  let loaded : Config_loader.t =
+    {
+      ignored_paths = [];
+      contents = "";
+      project =
+        { root = "/project"; config_path = "/project/.deco/config.toml" };
+      source;
+      effective;
+      host_paths =
+        {
+          build_context = "/project/.deco/build";
+          containerfile = "/project/.deco/build/Containerfile";
+          workspace_source = None;
+        };
+      identity = User_identity.Image;
+    }
+  in
+  let contains text fragment =
+    let rec loop i =
+      i + String.length fragment <= String.length text
+      && (String.sub text i (String.length fragment) = fragment || loop (i + 1))
+    in
+    loop 0
+  in
+  (* pre_stop is listed before the stop, and omitted with --no-hooks. *)
+  let hooked = Stop_plan.render (get (Stop_plan.make loaded)) in
+  assert (
+    contains hooked "3. If the container is running, run the pre_stop hook:\n");
+  assert (contains hooked "'echo bye'");
+  assert (contains hooked "4. If the container is running, stop it:\n");
+  assert (contains hooked "A failed hook leaves the container running");
+  let skipped = Stop_plan.render (get (Stop_plan.make ~hooks:false loaded)) in
+  assert (not (contains skipped "pre_stop"));
+  assert (contains skipped "3. If the container is running, stop it:\n");
+  let removal keep_image hooks =
+    Remove_plan.render (get (Remove_plan.make ~hooks loaded ~keep_image))
+  in
+  List.iter
+    (fun keep_image ->
+      let hooked = removal keep_image true in
+      assert (
+        contains hooked
+          "2. If the container is running, run the pre_stop hook:\n");
+      assert (
+        contains hooked
+          "3. If the container is running, stop it and verify shutdown:\n");
+      let skipped = removal keep_image false in
+      assert (not (contains skipped "pre_stop"));
+      assert (
+        contains skipped
+          "2. If the container is running, stop it and verify shutdown:\n"))
+    [ false; true ]

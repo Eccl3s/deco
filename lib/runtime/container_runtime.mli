@@ -14,6 +14,19 @@ val incompatibilities :
     [selinux_enabled] (default [true]) decides whether a missing relabel option
     can be verified. *)
 
+val shell_label : string
+(** ["dev.deco.shell"]: the [container.shell] a container was created with,
+    recorded so hooks are not run with a shell the container may not have. *)
+
+val hook_incompatibilities : Config_loader.t -> Podman.container -> string list
+(** The ways the container differs from the loaded configuration that matter for
+    running a hook in it with the configured user, workdir and shell: the
+    keep-id user and identity label, an explicitly configured workdir, and the
+    shell recorded in {!shell_label} (not compared when the label is absent, as
+    on containers created before it existed). Unlike {!incompatibilities}, the
+    image and init are not compared, so a container whose image was rebuilt
+    since it was created can still run hooks. *)
+
 val compatibility :
   ?selinux_enabled:bool ->
   Config_loader.t ->
@@ -55,6 +68,11 @@ val inspect :
     SELinux detection is lazy. [probe] supplies local status; [selinux]
     overrides the complete detection operation, allowing invocation-scoped
     caching. Never mutate resources or print output. *)
+
+val never_started : string -> bool
+(** Whether a container in this Podman state has never been started ([created]
+    or [configured]). Such a container still owes its [post_create] hook, even
+    when an earlier run created it. *)
 
 val supported_state : string -> bool
 (** Whether assemble and existing-environment inspection support this state. *)

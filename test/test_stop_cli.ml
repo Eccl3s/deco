@@ -1,4 +1,5 @@
 let write p s = Out_channel.with_open_bin p (fun c -> output_string c s)
+let read p = In_channel.with_open_bin p In_channel.input_all
 
 let rec cleanup p =
   if (Unix.lstat p).st_kind = Unix.S_DIR then (
@@ -162,4 +163,70 @@ let () =
           ("paused", 4, "");
           ("failure", 1, "");
           ("verify", 1, "");
-        ])
+        ];
+      (* pre_stop runs before the stop and its output streams; a failure keeps
+         the container running and returns the hook's status; --no-hooks
+         skips it. *)
+      write config "[project]\nname='example'\n[hooks]\npre_stop='echo bye'\n";
+      ignore (run [ "trust"; "--yes" ] 0);
+      (try Unix.unlink log with Unix.Unix_error _ -> ());
+      let out, err = run ~path:"/nonexistent" [ "stop"; "-d" ] 0 in
+      assert (err = "" && contains out "run the pre_stop hook:\n");
+      let out, _ = run ~path:"/nonexistent" [ "stop"; "-d"; "--no-hooks" ] 0 in
+      assert (not (contains out "pre_stop"));
+      assert (not (Sys.file_exists log));
+      let labels =
+        Printf.sprintf
+          {|"dev.deco.managed":"true","dev.deco.project":"example","dev.deco.project-root":%s|}
+          (Yojson.Basic.to_string (`String temp))
+      in
+      let fixture state =
+        Printf.sprintf
+          {|[{"Id":"cid","Image":"unrelated","State":{"Status":"%s"},"Config":{"Labels":{%s}},"HostConfig":{"UsernsMode":""},"Mounts":[]}]|}
+          state labels
+      in
+      let stopped = temp ^ "/stopped" and removed = temp ^ "/removed" in
+      List.iter
+        (fun (args, hook_status, expected) ->
+          (try Unix.unlink stopped with Unix.Unix_error _ -> ());
+          (try Unix.unlink removed with Unix.Unix_error _ -> ());
+          (try Unix.unlink log with Unix.Unix_error _ -> ());
+          write fake
+            ("#!/bin/sh\n\
+              shift\n\
+              case \"$1 $2\" in\n\
+              'version ') exit 0;;\n\
+              'container exists'|'image exists') exit 1;;\n\
+              'image inspect') exit 125;;\n\
+              'container inspect') if test -f '" ^ removed
+           ^ "'; then exit 125; elif test -f '" ^ stopped
+           ^ "'; then printf '%s' '" ^ fixture "exited"
+           ^ "'; else printf '%s' '" ^ fixture "running"
+           ^ "'; fi;;\n\
+              'exec --') printf 'hook %s\\n' \"$*\" >> \"$DECO_TEST_LOG\"; \
+              printf 'hook-output\\n'; exit " ^ string_of_int hook_status
+           ^ ";;\n'stop --') printf 'stop\\n' >> \"$DECO_TEST_LOG\"; touch '"
+           ^ stopped ^ "';;\n*) exit 99;;\nesac\n");
+          let out, err =
+            run ~path:(temp ^ "/fake:/usr/bin:/bin") ("stop" :: args) expected
+          in
+          let calls = if Sys.file_exists log then read log else "" in
+          match (args, expected) with
+          | [], 0 ->
+              assert (err = "hook-output\n");
+              assert (out = "Stopped example-dev-container\n");
+              assert (
+                String.starts_with
+                  ~prefix:"hook exec -- cid sh -lc echo bye\nstop\n" calls)
+          | [ "--no-hooks" ], 0 ->
+              assert (err = "" && contains out "Stopped example-dev-container\n");
+              assert (not (contains calls "hook"))
+          | _ ->
+              assert (out = "");
+              assert (
+                err
+                = "hook-output\n\
+                   deco: pre_stop hook failed with exit status 6; the \
+                   container was not stopped\n");
+              assert (calls = "hook exec -- cid sh -lc echo bye\n"))
+        [ ([], 0, 0); ([ "--no-hooks" ], 0, 0); ([], 6, 6) ])

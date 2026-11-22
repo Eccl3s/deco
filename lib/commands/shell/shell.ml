@@ -1,4 +1,4 @@
-let run ?execute ?read_many ?probe (loaded : Config_loader.t) ~tty =
+let run ?execute ?read_many ?probe ?hook (loaded : Config_loader.t) ~tty =
   if not tty then
     Error
       {
@@ -7,5 +7,8 @@ let run ?execute ?read_many ?probe (loaded : Config_loader.t) ~tty =
         started = false;
       }
   else
-    Exec.run ?execute ?read_many ?probe loaded ~tty:true
+    Exec.run ?execute ?read_many ?probe ?hook
+      ~before_exec:(fun ~container_id ->
+        Hook.run ?run:hook loaded ~container_id Hook.Pre_enter)
+      loaded ~tty:true
       [ loaded.effective.container.shell ]

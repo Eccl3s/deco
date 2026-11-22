@@ -127,6 +127,8 @@ let report_execution_result = function
         | Deco.Exec.Planning e -> (e, 2)
         | Deco.Exec.Conflict e -> (e, 4)
         | Deco.Exec.Runtime e -> (e, 1)
+        | Deco.Exec.Hook failure ->
+            (Deco.Hook.failure_message failure, Deco.Hook.exit_status failure)
         | Deco.Exec.Podman (Deco.Podman.Unavailable e) -> (e, 3)
         | Deco.Exec.Podman
             ( Deco.Podman.Runtime { operation; message }

@@ -61,6 +61,16 @@ let () =
              ];
          ])
   in
+  let hooked =
+    {
+      loaded with
+      effective =
+        {
+          loaded.effective with
+          hooks = { loaded.effective.hooks with post_start = Some "echo ready" };
+        };
+    }
+  in
   List.iter
     (fun state ->
       List.iter
@@ -115,7 +125,52 @@ let () =
             Result.get_ok (Exec.run ~execute loaded ~tty:false [ "true" ])
           in
           assert (!executed && outcome.status = status);
-          assert (outcome.started = (state <> "running")))
+          assert (outcome.started = (state <> "running"));
+          (* post_start runs between the start and the command, only when the
+             container was started; a failure prevents the command. *)
+          List.iter
+            (fun hook_status ->
+              started := false;
+              executed := false;
+              let hooks = ref [] in
+              let hook argv =
+                assert (not !executed);
+                hooks := argv :: !hooks;
+                Ok { Process.status = hook_status; stdout = ""; stderr = "" }
+              in
+              let result =
+                Exec.run ~execute ~hook hooked ~tty:false [ "true" ]
+              in
+              let expected_hooks =
+                if state = "running" then []
+                else
+                  [
+                    [
+                      "podman";
+                      "--remote=false";
+                      "exec";
+                      "--";
+                      "cid";
+                      "sh";
+                      "-lc";
+                      "echo ready";
+                    ];
+                  ]
+              in
+              assert (!hooks = expected_hooks);
+              match (result, state, hook_status) with
+              | Ok outcome, "running", _ | Ok outcome, _, Unix.WEXITED 0 ->
+                  assert (!executed && outcome.status = status)
+              | ( Error
+                    {
+                      cause = Exec.Hook (Hook.Exited { status = WEXITED 3; _ });
+                      started = true;
+                    },
+                  _,
+                  Unix.WEXITED 3 ) ->
+                  assert (not !executed)
+              | _ -> assert false)
+            [ Unix.WEXITED 0; Unix.WEXITED 3 ])
         [ Unix.WEXITED 0; Unix.WEXITED 17; Unix.WSIGNALED Sys.sigterm ])
     [ "running"; "created"; "configured"; "exited"; "stopped" ];
   let execute _ _ = failwith "Invalid plan invoked runner" in

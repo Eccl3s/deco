@@ -4,6 +4,10 @@ type ids = { uid : int; gid : int }
 
 type t = Image | Keep_id of { name : string; host : ids; container : ids }
 
+val exec_user : t -> string option
+(** The [--user] value for commands Deco runs in the container: the account name
+    for keep-id, [None] (the container's user) for image mode. *)
+
 val resolve :
   ?host_ids:(unit -> (ids, string) result) ->
   Config.Effective.user ->

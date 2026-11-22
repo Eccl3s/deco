@@ -26,6 +26,8 @@ type t = {
   build : string list;
   create : argument list;
   steps : step list;
+  post_create : argument list option;
+  post_start : argument list option;
 }
 
 type error = string
@@ -40,13 +42,33 @@ let render t =
   let command operation =
     (List.find (fun step -> step.operation = operation) t.steps).command
   in
+  let hook name condition =
+    Option.map (fun command -> Hook.render_step ~condition name command ^ "\n")
+  in
+  let steps =
+    [
+      "Check for an existing Deco project environment.\n";
+      "Build image " ^ t.image_name ^ " if missing.\n\n"
+      ^ render_multiline (command Build)
+      ^ "\n";
+      "Create container " ^ t.container_name ^ " if missing.\n\n"
+      ^ render_multiline (command Create)
+      ^ "\n";
+      "Start " ^ t.container_name ^ " if needed.\n";
+    ]
+    @ Option.to_list
+        (hook Hook.Post_create
+           "If the container is new or had never been started" t.post_create)
+    @ Option.to_list
+        (hook Hook.Post_start "If the container was created or started"
+           t.post_start)
+  in
   "Assemble preview\nNo commands will be run.\n\n"
-  ^ "1. Check for an existing Deco project environment.\n\n" ^ "2. Build image "
-  ^ t.image_name ^ " if missing.\n\n"
-  ^ render_multiline (command Build)
-  ^ "\n\n" ^ "3. Create container " ^ t.container_name ^ " if missing.\n\n"
-  ^ render_multiline (command Create)
-  ^ "\n\n" ^ "4. Start " ^ t.container_name ^ " if needed.\n\n"
+  ^ Command_plan.render_steps steps
+  ^ (if Option.is_some t.post_create || Option.is_some t.post_start then
+       "An already running container runs no hook. A failed hook leaves the \
+        container running.\n\n"
+     else "")
   ^ "<image-id> is resolved when assembling the environment.\n"
 
 let make (loaded : Config_loader.t) =
@@ -136,7 +158,9 @@ let make (loaded : Config_loader.t) =
              "--init";
              "--pull=never";
            ]
-          @ label_args (labels @ identity)
+          @ label_args
+              (labels @ identity
+              @ [ (Container_runtime.shell_label, c.container.shell) ])
           @ user_create
           @ (match c.container.workdir with
             | None -> []
@@ -213,4 +237,6 @@ let make (loaded : Config_loader.t) =
             build;
             create;
             steps;
+            post_create = Hook.command loaded Hook.Post_create;
+            post_start = Hook.command loaded Hook.Post_start;
           }

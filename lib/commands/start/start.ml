@@ -3,12 +3,13 @@ type cause =
   | Podman of Podman.error
   | Conflict of string
   | Runtime of string
+  | Hook of Hook.failure
 
 type error = { cause : cause; started : bool }
 type outcome = { environment : Container_runtime.environment; started : bool }
 
 let run ?run ?read_many ?(probe = fun () -> Container_runtime.local_selinux ())
-    loaded =
+    ?hook loaded =
   let injected = run in
   let run = Option.value ~default:(fun argv -> Process.run argv) run in
   let read_many =
@@ -58,4 +59,18 @@ let run ?run ?read_many ?(probe = fun () -> Container_runtime.local_selinux ())
       then fail (Conflict "Resource ID changed after start")
       else if current.container.state <> "running" then
         fail (Runtime "Container is not running after start")
-      else Ok { environment = current; started = true })
+      else
+        (* A container that was never started (an earlier assemble created it
+           but did not get as far as starting it) still owes post_create. *)
+        let run_hook name =
+          match Hook.run ?run:hook loaded ~container_id name with
+          | Error failure -> fail (Hook failure)
+          | Ok () -> Ok ()
+        in
+        let* () =
+          if Container_runtime.never_started initial.container.state then
+            run_hook Hook.Post_create
+          else Ok ()
+        in
+        let* () = run_hook Hook.Post_start in
+        Ok { environment = current; started = true })

@@ -2,6 +2,13 @@ open Deco
 
 let get = function Ok x -> x | Error e -> failwith e
 
+let contains text fragment =
+  let rec loop i =
+    i + String.length fragment <= String.length text
+    && (String.sub text i (String.length fragment) = fragment || loop (i + 1))
+  in
+  loop 0
+
 let () =
   let source =
     Result.get_ok (Config.Decode.from_string "[project]\nname = 'example'\n")
@@ -66,6 +73,26 @@ let () =
           @ [ "--user"; "dev"; "--workdir"; "/workspace"; "--"; "cid"; "true" ]))
     [ false; true ];
   assert (Result.is_error (Exec_plan.make loaded ~tty:false []));
+  (* The post_start hook is listed after the start and before the command. *)
+  let render loaded =
+    Exec_plan.render (get (Exec_plan.make loaded ~tty:false [ "true" ]))
+  in
+  let hooked =
+    {
+      loaded with
+      effective =
+        {
+          loaded.effective with
+          hooks = { loaded.effective.hooks with post_start = Some "echo ready" };
+        };
+    }
+  in
+  let step = "4. If the container was started, run the post_start hook:\n" in
+  let plain = render loaded and hooked = render hooked in
+  assert (not (contains plain "post_start"));
+  assert (contains plain "4. Execute the command:");
+  assert (contains hooked step && contains hooked "5. Execute the command:");
+  assert (contains hooked "'echo ready'");
   let rejects loaded command =
     assert (
       Exec_plan.make loaded ~tty:false command

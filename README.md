@@ -230,12 +230,12 @@ Their dry runs still work and print a note instead. `deco init` approves the
 configuration it writes. `validate`, `info`, `list`, and `trust` itself never
 require trust, and `info` reports the trust state. `stop --no-hooks` and
 `remove --no-hooks` skip the `pre_stop` hook and therefore do not require
-trust; they print a warning when the configuration is not trusted.
+trust; they print a warning when the configuration is not trusted. The trust
+review lists every configured hook command in full.
 
-Unlike the full v1 specification, hooks are not implemented yet, so
-`--no-hooks` currently only waives the trust requirement; `run` and actions do
-not exist yet and so are not gated; and `remove` has no `--force`, so the
-rule that `remove --no-hooks --force` still requires trust does not apply yet.
+Unlike the full v1 specification, `run` and actions do not exist yet and so
+are not gated, and `remove` has no `--force`, so the rule that
+`remove --no-hooks --force` still requires trust does not apply yet.
 See [specs/deco-trust.md](specs/deco-trust.md) for the full design.
 
 ## Configuration
@@ -308,6 +308,62 @@ deco refresh
 ```
 
 Changes to the Containerfile do not automatically trigger a rebuild when running `deco assemble`.
+
+### Lifecycle hooks
+
+The optional `[hooks]` table holds shell commands that Deco runs inside the
+container at fixed points of the lifecycle:
+
+```toml
+[hooks]
+post_create = "npm install"
+post_start = "echo Ready"
+pre_enter = "echo Entering dev shell"
+pre_stop = "echo Stopping"
+```
+
+Every hook runs as `<container.shell> -lc <command>` through `podman exec`, as
+the configured user and in `container.workdir`, without a TTY or stdin. Its
+output (stdout and stderr) streams to Deco's stderr, so it never mixes into
+Deco's stdout, such as the output of a redirected `deco exec`. Hooks run only after the usual ownership
+and compatibility checks, and only for trusted configuration (see
+[Configuration trust](#configuration-trust)).
+
+| Hook | Runs in | When |
+| --- | --- | --- |
+| `post_create` | `assemble`, `refresh`, `start`, `exec`, `shell` | On a container's first start, before `post_start`: after `assemble` or `refresh` creates and starts it, or when a container that was created but never started (for example after an interrupted `assemble`) is started later |
+| `post_start` | `assemble`, `refresh`, `start`, `exec`, `shell` | After every start Deco performs, including `exec` and `shell` starting a stopped container |
+| `pre_enter` | `shell` | Immediately before entering the shell |
+| `pre_stop` | `stop`, `remove`, `refresh` | Before Deco stops a running container |
+
+A container that is already running repeats no hook, and `pre_stop` is skipped
+when the container is already stopped. `stop --no-hooks` and
+`remove --no-hooks` skip `pre_stop`.
+
+Hooks fail fast: a nonzero exit stops the command before any later step, and
+Deco exits with the hook's own exit status (1 if it was killed by a signal).
+
+- A failed `post_create` or `post_start` leaves the container running;
+  `post_start` does not run after a failed `post_create`.
+- A failed `pre_enter` prevents shell entry.
+- A failed `pre_stop` prevents the stop or removal, and leaves the container
+  running. During `refresh` it leaves the old container unchanged.
+- A refresh whose `post_create` or `post_start` fails after the old container
+  was removed is reported as a partial refresh: the replacement is running and
+  the old container is not restored. Run `deco refresh` again once the hook is
+  fixed.
+
+Every `--dry-run` preview lists the hook commands in execution order, with the
+conditions under which they run, without running them.
+
+Unlike the full v1 specification, `pre_stop` is skipped with a warning, and
+the stop goes ahead, when the running container cannot run the hook as
+configured: its keep-id user, identity label, configured working directory or
+shell differ from the current configuration (for example after editing
+`[user]` or `container.shell` and approving the change, before running
+`deco refresh`). To make the shell check possible, Deco labels each container
+it creates with `dev.deco.shell`, beyond the labels the specification lists;
+containers created before this label existed are not checked for the shell.
 
 ## Installation
 
@@ -478,7 +534,7 @@ FROM alpine:3.23
 CMD ["sleep", "infinity"]
 ```
 
-Run `deco assemble --dry-run` (or `-d`) to preview four high-level steps and complete,
+Run `deco assemble --dry-run` (or `-d`) to preview the high-level steps, including any configured hooks, and complete,
 multiline Podman build/create commands without invoking Podman or writing files.
 The image ID appears as a placeholder resolved during execution. Use `--project-dir PATH` before or after `assemble` to select a project.
 `--project NAME` is accepted too, but only finds a project that already has a
@@ -490,7 +546,10 @@ conflicts, and 5 when the configuration is not trusted (see
 [Configuration trust](#configuration-trust)); the other lifecycle commands
 use the same codes. Failed operations retain partial resources; inspect them with Podman
 before retrying. Assemble never automatically rebuilds or replaces resources.
-Hooks and advanced configuration remain unsupported. Automated CLI tests use fake
+Advanced configuration remains unsupported. Configured hooks run after the
+start: `post_create` then `post_start` for a new container, only `post_start`
+for a started one, and none for a container that was already running (see
+[Lifecycle hooks](#lifecycle-hooks)). Automated CLI tests use fake
 Podman responses; disposable live integration coverage is a separate step.
 
 Compact build output requires both stdin and stdout to be terminals. Press `t`
@@ -502,7 +561,8 @@ to expand the full log permanently. Redirected output, `NO_COLOR`, and
 Run `deco exec -- COMMAND ARG...` in an assembled environment, for example
 `deco exec -- cargo test`. The separator is required. Arguments are passed
 without shell evaluation. Compatible stopped containers start automatically;
-missing containers require `deco assemble`. Hooks remain unsupported.
+missing containers require `deco assemble`. When `exec` starts a stopped
+container, `post_start` runs before the command; a failed hook prevents it.
 
 Stdin is inherited; a TTY is allocated when stdin and stdout are both terminals.
 Command exit codes pass through unchanged; abnormal termination returns 1.
@@ -531,8 +591,12 @@ first; exiting the shell leaves the container running. Normal exit codes pass
 through; abnormal termination returns 1. Podman retains its existing container
 environment behavior; arbitrary host environment variables are not copied.
 
-Use `deco shell --dry-run` (or `-d`) without a terminal to preview entry.
-The `post_start` and `pre_enter` hooks remain deferred and are not executed.
+When `shell` starts a stopped container, `post_start` runs first; `pre_enter`
+then runs immediately before every entry, and a failed `pre_enter` prevents
+entry with the hook's exit status.
+
+Use `deco shell --dry-run` (or `-d`) without a terminal to preview entry,
+including the hooks that would run.
 Run `dune build @test-shell-pty` for opt-in Linux PTY tests using Python 3's
 standard library and fake Podman; ordinary tests require no Python.
 
@@ -556,8 +620,10 @@ afterwards, returns 1; changed IDs return 4. When the start command completed
 but verification failed, the error says so. Invalid configuration/usage returns
 2 and unavailable Podman 3.
 
-Unlike the full v1 specification, the `post_start` hook is not run; the dry-run
-preview notes this. Use `-p NAME` to start a listed project from any directory,
+After Deco starts the container, it runs `post_start`; an already running
+container runs no hook. A failed hook leaves the container running and returns
+the hook's exit status. The dry-run preview lists the hook. Use `-p NAME` to
+start a listed project from any directory,
 for example `deco start -p my-project`.
 
 ### Stop the development container
@@ -568,9 +634,11 @@ Run `deco stop` to stop a running managed container, or `deco stop --dry-run`
 by container ownership and state checks; image and environment compatibility
 are not required. Missing/unmanaged containers and unsupported states return 4;
 invalid configuration/usage returns 2, unavailable Podman 3, and runtime failure 1.
-The `pre_stop` hook remains deferred. Stop does not remove resources.
-Untrusted configuration returns 5; `--no-hooks` stops anyway with a warning
-(see [Configuration trust](#configuration-trust)).
+For a running container, `pre_stop` runs first; a failed hook leaves the
+container running and returns the hook's exit status. Stop does not remove
+resources. `--no-hooks` skips `pre_stop`; untrusted configuration returns 5
+unless `--no-hooks` is given, which stops anyway with a warning (see
+[Configuration trust](#configuration-trust)).
 
 Run the opt-in disposable integration check with an existing local image that
 supports `sleep` (no images are pulled):
@@ -591,11 +659,14 @@ container dependents is retained; all dependent IDs/names are reported with exit
 code 4. Unmanaged resources and unsupported states also return 4. Invalid
 configuration/usage returns 2, unavailable Podman 3, and runtime failures 1.
 Failures report completed commands without claiming verification succeeded.
-Untrusted configuration returns 5; `--no-hooks` removes anyway with a warning
-(see [Configuration trust](#configuration-trust)).
+A running container runs `pre_stop` before it is stopped; a failed hook
+prevents the removal and returns the hook's exit status. `--no-hooks` skips
+`pre_stop`; untrusted configuration returns 5 unless `--no-hooks` is given,
+which removes anyway with a warning (see
+[Configuration trust](#configuration-trust)).
 
 Unlike the full v1 specification, `remove` does not implement `--force`,
-`--keep-volumes`, named-volume removal, or lifecycle hooks. Removal never changes
+`--keep-volumes`, or named-volume removal. Removal never changes
 unrelated dependent containers or prunes parent images. Only `deco remove` is
 supported as the removal command.
 
@@ -715,7 +786,8 @@ Ports
   none
 
 Hooks
-  none
+  post_create
+  post_start
 
 Actions
   none
@@ -781,7 +853,7 @@ Use `--format json` (before or after the command) for a stable object:
   ],
   "dns": [],
   "ports": [],
-  "hooks": [],
+  "hooks": ["post_create", "post_start"],
   "actions": []
 }
 ```
@@ -805,8 +877,8 @@ FIFO, it prints the report with `trust` set to `null` (`-` in human output),
 reports the problem on stderr, and exits 2, even if Podman is also
 unavailable.
 
-Unlike the full v1 specification, `dns`, `ports`, `hooks`, and `actions` are
-always empty and only the workspace mount is reported, because those settings
+`hooks` names the configured hooks in execution order. Unlike the full v1
+specification, `dns`, `ports`, and `actions` are always empty and only the workspace mount is reported, because those settings
 are not applied yet; any that are configured appear under
 `Ignored planned settings` in the human report instead.
 
@@ -825,7 +897,7 @@ structural/type checks only: semantic constraints such as port ranges, capabilit
 names, namespace conflicts, and host path existence are deferred.
 
 Capabilities, network settings, environment injection, devices/security options,
-additional mounts, secrets, actions, and hooks remain inactive. In particular,
+additional mounts, secrets, and actions remain inactive. In particular,
 accepting the Podman template does not enable its nested-Podman setup, and
 accepting capability-drop settings does not apply capability restrictions.
 This compatibility policy lasts until each setting is implemented; the v1

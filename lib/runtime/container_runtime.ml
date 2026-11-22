@@ -64,6 +64,34 @@ let incompatibilities ?(selinux_enabled = true) (loaded : Config_loader.t)
   | _ -> check false "Workspace paths disagree");
   List.rev !failures
 
+let shell_label = "dev.deco.shell"
+
+let hook_incompatibilities (loaded : Config_loader.t) (c : Podman.container) =
+  let failures = ref [] in
+  let check b message = if not b then failures := message :: !failures in
+  (match loaded.identity with
+  | User_identity.Image -> ()
+  | Keep_id { name; container; _ } ->
+      check (c.user = name) "Container user differs";
+      check
+        (Ownership.identity c.labels
+        = Ok (Some { Ownership.uid = container.uid; gid = container.gid }))
+        "Identity label differs");
+  Option.iter
+    (fun workdir -> check (c.workdir = workdir) "Working directory differs")
+    loaded.effective.container.workdir;
+  (* Containers created before the label existed are not compared. *)
+  (match
+     List.filter_map
+       (fun (k, v) -> if k = shell_label then Some v else None)
+       c.labels
+   with
+  | [] -> ()
+  | [ shell ] ->
+      check (shell = loaded.effective.container.shell) "Container shell differs"
+  | _ -> check false "Shell label is duplicated");
+  List.rev !failures
+
 let compatibility ?selinux_enabled loaded image c =
   match incompatibilities ?selinux_enabled loaded image c with
   | [] -> Ok ()
@@ -87,6 +115,8 @@ let availability ?run () = Result.map selinux_enabled (Podman.info ?run ())
 
 let supported_state state =
   List.mem state [ "running"; "created"; "configured"; "exited"; "stopped" ]
+
+let never_started state = List.mem state [ "created"; "configured" ]
 
 let local_selinux ?(root = "/sys/fs/selinux") () =
   try

@@ -11,5 +11,9 @@ val render_command : argument list -> string
 val render_multiline : argument list -> string
 (** Indented POSIX shell command with continuations between argument groups. *)
 
+val render_steps : string list -> string
+(** Number the steps from 1 in order, one per line group: each step is prefixed
+    with ["N. "] and followed by a newline. Steps may span several lines. *)
+
 val quote : string -> string
 (** Quote a literal argument for POSIX shell display. *)

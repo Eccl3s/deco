@@ -146,3 +146,28 @@ let () =
       assert (user.uid = Some (Config.Id expected));
       assert (user.gid = Some (Config.Id expected)))
     [ ("-5", -5); ("0x1F", 31); ("0o17", 15) ]
+
+let () =
+  let c =
+    ok "project.name='x'\n[hooks]\npost_create='npm install'\npre_stop=''"
+  in
+  assert (
+    c.hooks
+    = Some
+        {
+          post_create = Some "npm install";
+          post_start = None;
+          pre_enter = None;
+          pre_stop = Some "";
+        });
+  assert ((ok "project.name='x'").hooks = None);
+  List.iter
+    (fun (input, path) ->
+      match bad ("project.name='x'\n" ^ input) with
+      | [ Schema_error e ] -> assert (e.path = path)
+      | _ -> failwith ("Expected one hook error: " ^ input))
+    [
+      ("hooks.post_start=1", [ "hooks"; "post_start" ]);
+      ("hooks.post_strat='x'", [ "hooks"; "post_strat" ]);
+      ("hooks='x'", [ "hooks" ]);
+    ]

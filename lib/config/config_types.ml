@@ -34,6 +34,13 @@ type workspace = {
 
 type mounts = { workspace : workspace option }
 
+type hooks = {
+  post_create : string option;
+  post_start : string option;
+  pre_enter : string option;
+  pre_stop : string option;
+}
+
 type t = {
   project : project;
   image : image option;
@@ -41,4 +48,5 @@ type t = {
   user : user option;
   container : container option;
   mounts : mounts option;
+  hooks : hooks option;
 }

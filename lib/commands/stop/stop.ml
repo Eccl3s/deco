@@ -5,10 +5,12 @@ type cause =
   | Podman of Podman.error
   | Conflict of string
   | Runtime of string
+  | Hook of Hook.failure
 
 type error = { cause : cause; stop_completed : bool }
 
-let run ?run ?read_many ?container_id ?(check_availability = true) loaded =
+let run ?run ?read_many ?container_id ?(check_availability = true)
+    ?(hooks = true) ?hook ?(warn = fun (_ : string) -> ()) loaded =
   let injected_run = run in
   let run = Option.value ~default:(fun argv -> Process.run argv) run in
   let stop_completed = ref false in
@@ -23,7 +25,7 @@ let run ?run ?read_many ?container_id ?(check_availability = true) loaded =
     | Error (Container_runtime.Conflict e) -> fail (Conflict e)
   in
   let* plan =
-    match Stop_plan.make loaded with
+    match Stop_plan.make ~hooks loaded with
     | Ok plan -> Ok plan
     | Error e -> fail (Planning e)
   in
@@ -74,6 +76,22 @@ let run ?run ?read_many ?container_id ?(check_availability = true) loaded =
   else if container.state <> "running" then
     Ok { container_id = container.id; stopped = false }
   else
+    let* () =
+      if (not hooks) || Hook.configured loaded Hook.Pre_stop = None then Ok ()
+      else
+        match Container_runtime.hook_incompatibilities loaded container with
+        | [] -> (
+            match
+              Hook.run ?run:hook loaded ~container_id:container.id Hook.Pre_stop
+            with
+            | Ok () -> Ok ()
+            | Error failure -> fail (Hook failure))
+        | reasons ->
+            warn
+              ("Skipping the pre_stop hook: the container cannot run it as \
+                configured (" ^ String.concat "; " reasons ^ ")");
+            Ok ()
+    in
     let argv =
       Command_plan.resolve ~image_id:"" ~container_id:container.id plan.stop
     in

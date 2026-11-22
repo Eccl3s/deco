@@ -1,4 +1,9 @@
-type t = { container_name : string; start : Command_plan.argument list }
+type t = {
+  container_name : string;
+  start : Command_plan.argument list;
+  post_create : Command_plan.argument list option;
+  post_start : Command_plan.argument list option;
+}
 
 let make (loaded : Config_loader.t) =
   let argv = Podman_command.start "" in
@@ -18,19 +23,43 @@ let make (loaded : Config_loader.t) =
            | Command_plan.Image_id | Command_plan.Container_id -> false)
          start
   then Error "Command arguments cannot contain NUL bytes"
-  else Ok { container_name; start }
+  else
+    Ok
+      {
+        container_name;
+        start;
+        post_create = Hook.command loaded Hook.Post_create;
+        post_start = Hook.command loaded Hook.Post_start;
+      }
+
+let hook_steps plan =
+  Option.to_list
+    (Option.map
+       (Hook.render_step
+          ~condition:"If the container was started for the first time"
+          Hook.Post_create)
+       plan.post_create)
+  @ Option.to_list
+      (Option.map
+         (Hook.render_step ~condition:"If the container was started"
+            Hook.Post_start)
+         plan.post_start)
 
 let render plan =
   "Start preview\nNo commands will be run.\n\n"
-  ^ "1. Check Podman availability.\n"
-  ^ "2. Inspect the configured image and container "
-  ^ Command_plan.quote plan.container_name
-  ^ "; verify ownership, compatibility, and supported state. A missing \
-     container fails; run deco assemble.\n"
-  ^ "3. If the container is not running, start it:\n"
-  ^ Command_plan.render_multiline plan.start
-  ^ "\n   Already-running containers require no mutation.\n"
-  ^ "4. After starting, reinspect the same container and verify its ID, \
-     ownership, compatibility, and running state.\n"
-  ^ "The post_start hook is deferred and is not run.\n\n"
-  ^ "<container-id> is resolved by inspection during execution.\n"
+  ^ Command_plan.render_steps
+      ([
+         "Check Podman availability.";
+         "Inspect the configured image and container "
+         ^ Command_plan.quote plan.container_name
+         ^ "; verify ownership, compatibility, and supported state. A missing \
+            container fails; run deco assemble.";
+         "If the container is not running, start it:\n"
+         ^ Command_plan.render_multiline plan.start
+         ^ "\n\
+           \   Already-running containers require no mutation and run no hook.";
+         "After starting, reinspect the same container and verify its ID, \
+          ownership, compatibility, and running state.";
+       ]
+      @ hook_steps plan)
+  ^ "\n<container-id> is resolved by inspection during execution.\n"

@@ -27,6 +27,13 @@ type workspace = {
 
 type mounts = { workspace : workspace option }
 
+type hooks = Config_types.hooks = {
+  post_create : string option;
+  post_start : string option;
+  pre_enter : string option;
+  pre_stop : string option;
+}
+
 type t = {
   project : project;
   image : image;
@@ -34,6 +41,17 @@ type t = {
   user : user;
   container : container;
   mounts : mounts;
+  hooks : hooks;
 }
 
 let image_reference (image : image) = image.name ^ ":" ^ image.tag
+
+let configured_hooks (hooks : hooks) =
+  List.filter_map
+    (fun (name, value) -> Option.map (fun value -> (name, value)) value)
+    [
+      ("post_create", hooks.post_create);
+      ("post_start", hooks.post_start);
+      ("pre_enter", hooks.pre_enter);
+      ("pre_stop", hooks.pre_stop);
+    ]
