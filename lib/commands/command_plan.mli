@@ -5,6 +5,11 @@ val resolve :
   image_id:string -> container_id:string -> argument list -> string list
 
 (* Substitute inspected resource IDs into a command template. *)
+val escape_literals : argument list -> argument list
+(** Escape each {!Literal} with {!Terminal_text.escape}, keeping placeholders,
+    for previews of commands taken from configuration, which do not require
+    trust. *)
+
 val render_command : argument list -> string
 
 (* POSIX shell representation; symbolic IDs are explicitly marked placeholders. *)

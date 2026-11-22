@@ -167,6 +167,12 @@ let () =
   assert (
     (collect ~loaded:hooked run).hooks
     = [ "post_create"; "pre_enter"; "pre_stop" ]);
+  (* Configured actions are listed by name, sorted. *)
+  let with_actions =
+    load "[project]\nname = 'example'\n[actions]\ntest = 't'\nbuild = 'b'\n"
+  in
+  let run, _ = fake (ok (container "running")) in
+  assert ((collect ~loaded:with_actions run).actions = [ "build"; "test" ]);
   assert (
     r.trust
     = Some

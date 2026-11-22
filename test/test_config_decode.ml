@@ -171,3 +171,19 @@ let () =
       ("hooks.post_strat='x'", [ "hooks"; "post_strat" ]);
       ("hooks='x'", [ "hooks" ]);
     ]
+
+let () =
+  let c = ok "project.name='x'\n[actions]\ntest='make test'\nb='y'" in
+  assert (c.actions = Some [ ("test", "make test"); ("b", "y") ]);
+  assert ((ok "project.name='x'\nactions={a='1'}").actions = Some [ ("a", "1") ]);
+  assert ((ok "project.name='x'").actions = None);
+  List.iter
+    (fun (input, path) ->
+      match bad ("project.name='x'\n" ^ input) with
+      | [ Schema_error e ] -> assert (e.path = path)
+      | _ -> failwith ("Expected one action error: " ^ input))
+    [
+      ("actions.test=1", [ "actions"; "test" ]);
+      ("actions.test=['a']", [ "actions"; "test" ]);
+      ("actions='x'", [ "actions" ]);
+    ]

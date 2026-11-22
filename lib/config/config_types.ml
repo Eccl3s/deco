@@ -49,4 +49,5 @@ type t = {
   container : container option;
   mounts : mounts option;
   hooks : hooks option;
+  actions : (string * string) list option;
 }

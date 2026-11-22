@@ -42,6 +42,7 @@ type t = {
   container : container;
   mounts : mounts;
   hooks : hooks;
+  actions : (string * string) list;
 }
 
 let image_reference (image : image) = image.name ^ ":" ^ image.tag

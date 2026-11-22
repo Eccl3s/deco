@@ -88,8 +88,9 @@ type report = {
   actions : string list;
 }
 (** [hooks] names the configured lifecycle hooks in execution order:
-    [post_create], [post_start], [pre_enter], [pre_stop]. [dns], [ports] and
-    [actions] are always empty until those settings are implemented. *)
+    [post_create], [post_start], [pre_enter], [pre_stop]. [actions] names the
+    configured actions sorted by name. [dns] and [ports] are always empty until
+    those settings are implemented. *)
 
 val state_of_podman : string -> string
 (** Simplify a Podman state: [running] stays [running]; [created], [configured],

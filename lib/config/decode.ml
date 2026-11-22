@@ -190,7 +190,14 @@ let from_string_with_ignored input =
       match
         table []
           [
-            "project"; "image"; "build"; "user"; "container"; "mounts"; "hooks";
+            "project";
+            "image";
+            "build";
+            "user";
+            "container";
+            "mounts";
+            "hooks";
+            "actions";
           ]
           tree
       with
@@ -203,10 +210,20 @@ let from_string_with_ignored input =
           let container = field [] fields "container" container in
           let mounts = field [] fields "mounts" mounts in
           let hooks = field [] fields "hooks" hooks in
+          let actions = field [] fields "actions" args in
           match (!errors, project) with
           | [], Some project ->
               Ok
-                ( { project; image; build; user; container; mounts; hooks },
+                ( {
+                    project;
+                    image;
+                    build;
+                    user;
+                    container;
+                    mounts;
+                    hooks;
+                    actions;
+                  },
                   !ignored )
           | [], None ->
               invalid_arg "Config.Decode: missing project without schema error"

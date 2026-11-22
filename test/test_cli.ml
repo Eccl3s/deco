@@ -232,12 +232,12 @@ let () =
           output_string c
             "[project]\n\
              name = 'hostile'\n\
-             [actions]\n\
+             [container.environment]\n\
              \"x\\u001b[31my\" = 'true'\n");
       assert (
         contains
           (run temp [ "validate"; "--project-dir"; hostile ] 0)
-          "  actions.x\\x1b[31my\n");
+          "  container.environment.x\\x1b[31my\n");
       let spaced = Filename.concat temp "Another Project" in
       ignore (run temp [ "init"; spaced ] 0);
       ignore (run temp [ "validate"; "--project-dir"; spaced ] 0);

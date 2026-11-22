@@ -23,7 +23,6 @@ let registry = function
                   (integers [ "host"; "container" ]
                   @ strings [ "protocol"; "bind" ]) );
             ] );
-        ("actions", Map);
       ]
   | [ "container" ] ->
       List.map
