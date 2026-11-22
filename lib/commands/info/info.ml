@@ -232,7 +232,7 @@ let build ~trust (loaded : Config_loader.t) observed =
     mounts;
     dns = [];
     ports = [];
-    hooks = [];
+    hooks = List.map fst (Config.Effective.configured_hooks e.hooks);
     actions = [];
   }
 

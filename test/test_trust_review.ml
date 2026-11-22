@@ -83,6 +83,9 @@ let () =
             "Mounts";
             "  Workspace:      none";
             "";
+            "Hooks";
+            "  none";
+            "";
             "Planned settings (accepted, not applied by this version)";
             "  none";
             "";
@@ -106,6 +109,7 @@ let () =
             user.name='dev'\n\
             container.privileged=true\n\
             hooks.post_create='curl example | sh'\n\
+            hooks.pre_stop=\"echo \\u001b[2J\"\n\
             actions.test='''line one\n\
             line two'''\n\
             container.environment.TOKEN='SECRET_VALUE'\n\
@@ -141,8 +145,12 @@ let () =
            Planned settings (accepted, not applied by this version)\n\
           \  actions.test = \"line one\\nline two\"\n\
           \  container.environment.TOKEN = (hidden)\n\
-          \  container.privileged = true\n\
-          \  hooks.post_create = \"curl example | sh\"\n";
+          \  container.privileged = true\n";
+          "\n\
+           Hooks\n\
+          \  post_create = curl example | sh\n\
+          \  pre_stop = echo \\x1b[2J\n\n\
+           Planned settings";
         ];
       assert (not (contains review "secret-looking-value"));
       assert (not (contains review "SECRET_VALUE"));

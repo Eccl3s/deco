@@ -114,3 +114,21 @@ let () =
   in
   assert (
     c.image.name = "REGISTRY.example:5000/team/demo" && c.image.tag = "Dev")
+
+let () =
+  let none =
+    {
+      Config.Effective.post_create = None;
+      post_start = None;
+      pre_enter = None;
+      pre_stop = None;
+    }
+  in
+  let c = resolve (decode "") in
+  assert (c.hooks = none);
+  assert (Config.Effective.configured_hooks c.hooks = []);
+  let c = resolve (decode "hooks={pre_stop='stop',post_start='go'}") in
+  assert (c.hooks = { none with post_start = Some "go"; pre_stop = Some "stop" });
+  assert (
+    Config.Effective.configured_hooks c.hooks
+    = [ ("post_start", "go"); ("pre_stop", "stop") ])

@@ -20,12 +20,12 @@
     Tables from the v1 specification that the current commands do not need are
     intentionally not modelled yet: [[container.namespaces]],
     [[container.secrets]], [[network]], [[network.ports]], [[mounts.volumes]],
-    [[hooks]], [[container.environment]], and [[actions]]. Runtime environment
-    files, privileged mode, devices, capabilities, security options, and user
-    modes ["host-user"] and ["root"] are also deferred. Future parsing must
-    reject deferred features rather than silently ignore them. Generated
-    templates will explicitly select ["keep-id"] with account ["dev"]; omitted
-    user configuration retains the v1 ["image"] default. *)
+    [[container.environment]], and [[actions]]. Runtime environment files,
+    privileged mode, devices, capabilities, security options, and user modes
+    ["host-user"] and ["root"] are also deferred. Future parsing must reject
+    deferred features rather than silently ignore them. Generated templates will
+    explicitly select ["keep-id"] with account ["dev"]; omitted user
+    configuration retains the v1 ["image"] default. *)
 
 (** User identity strategy from [[user.mode]]. *)
 type user_mode =
@@ -109,6 +109,18 @@ type mounts = {
 }
 (** The [[mounts]] table. Only the workspace mount is modelled. *)
 
+type hooks = {
+  post_create : string option;
+      (** Runs once after each container creation, before [post_start]. *)
+  post_start : string option;
+      (** Runs after every container start that Deco performs. *)
+  pre_enter : string option;  (** Runs immediately before [deco shell] entry. *)
+  pre_stop : string option;
+      (** Runs before Deco stops or removes a running container. *)
+}
+(** The [[hooks]] table: lifecycle commands run inside the container through
+    [<container.shell> -lc <command>]. Every key is optional. *)
+
 type t = {
   project : project;  (** Required: the [[project]] table must be present. *)
   image : image option;  (** [[image]]; [None] when omitted. *)
@@ -116,5 +128,6 @@ type t = {
   user : user option;  (** [[user]]; [None] is equivalent to mode ["image"]. *)
   container : container option;  (** [[container]]; [None] when omitted. *)
   mounts : mounts option;  (** [[mounts]]; [None] when omitted. *)
+  hooks : hooks option;  (** [[hooks]]; [None] when omitted. *)
 }
 (** The top-level configuration, mirroring [.deco/config.toml]. *)

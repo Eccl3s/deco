@@ -69,6 +69,13 @@ let render ~now (status : Trust.status) (loaded : Config_loader.t) =
            "outside the project"
            (safe source ^ " -> " ^ safe workspace.target ^ " (read-write)"))
   | Some _, None | None, _ -> field "Workspace" "none");
+  section false "Hooks";
+  (match Config.Effective.configured_hooks effective.hooks with
+  | [] -> line "  none"
+  | hooks ->
+      List.iter
+        (fun (name, command) -> line "  %s = %s" name (safe command))
+        hooks);
   section false "Planned settings (accepted, not applied by this version)";
   (match Config.Decode.planned_settings loaded.contents with
   | [] -> line "  none"

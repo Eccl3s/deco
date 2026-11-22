@@ -25,7 +25,7 @@ let () =
        container.cap_drop=['ALL']\n\
        container.privileged=true\n\
        network.ports=[{host=8080,container=80}]\n\
-       hooks.post_create=\"say \\\"hi\\\"\\nthen\\t\\\\ done\"\n\
+       hooks.post_create='supported-not-listed'\n\
        actions={}\n\
        container.environment.TOKEN='SECRET_VALUE'\n\
        container.name='supported-not-listed'"
@@ -34,7 +34,6 @@ let () =
         ([ "container"; "cap_drop" ], Some "[\"ALL\"]");
         ([ "container"; "environment"; "TOKEN" ], None);
         ([ "container"; "privileged" ], Some "true");
-        ([ "hooks"; "post_create" ], Some {|"say \"hi\"\nthen\t\\ done"|});
         ([ "network"; "ports[0]"; "container" ], Some "80");
         ([ "network"; "ports[0]"; "host" ], Some "8080");
       ]);
@@ -64,7 +63,7 @@ let () =
           mounts.volumes=[{source='/missing/path',target='/volume'}]\n\
           container.devices=['/missing/device']\n\
           container.secrets=[{name='unavailable'}]\n\
-          hooks.pre_stop='never run'")
+          hooks.pre_stop='supported'")
   in
   assert (List.mem [ "network"; "ports[0]"; "host" ] paths);
   assert (List.mem [ "mounts"; "volumes[0]"; "source" ] paths);

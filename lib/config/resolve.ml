@@ -82,4 +82,13 @@ let apply (config : Config_types.t) =
             user;
             container;
             mounts = { workspace };
+            hooks =
+              Option.value config.hooks
+                ~default:
+                  {
+                    post_create = None;
+                    post_start = None;
+                    pre_enter = None;
+                    pre_stop = None;
+                  };
           }

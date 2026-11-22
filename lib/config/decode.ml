@@ -172,6 +172,15 @@ let from_string_with_ignored input =
     record [ "workspace" ] (fun p f ->
         { workspace = field p f "workspace" workspace })
   in
+  let hooks =
+    record [ "post_create"; "post_start"; "pre_enter"; "pre_stop" ] (fun p f ->
+        {
+          post_create = field p f "post_create" string;
+          post_start = field p f "post_start" string;
+          pre_enter = field p f "pre_enter" string;
+          pre_stop = field p f "pre_stop" string;
+        })
+  in
   match parse input with
   | Error errors -> Error errors
   | Ok tree -> (
@@ -180,7 +189,9 @@ let from_string_with_ignored input =
       errors := planned_errors @ !errors;
       match
         table []
-          [ "project"; "image"; "build"; "user"; "container"; "mounts" ]
+          [
+            "project"; "image"; "build"; "user"; "container"; "mounts"; "hooks";
+          ]
           tree
       with
       | None -> Error (sorted_errors ())
@@ -191,9 +202,12 @@ let from_string_with_ignored input =
           let user = field [] fields "user" user in
           let container = field [] fields "container" container in
           let mounts = field [] fields "mounts" mounts in
+          let hooks = field [] fields "hooks" hooks in
           match (!errors, project) with
           | [], Some project ->
-              Ok ({ project; image; build; user; container; mounts }, !ignored)
+              Ok
+                ( { project; image; build; user; container; mounts; hooks },
+                  !ignored )
           | [], None ->
               invalid_arg "Config.Decode: missing project without schema error"
           | _ -> Error (sorted_errors ())))

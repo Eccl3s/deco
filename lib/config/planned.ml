@@ -23,10 +23,6 @@ let registry = function
                   (integers [ "host"; "container" ]
                   @ strings [ "protocol"; "bind" ]) );
             ] );
-        ( "hooks",
-          Table
-            (strings [ "post_create"; "post_start"; "pre_enter"; "pre_stop" ])
-        );
         ("actions", Map);
       ]
   | [ "container" ] ->
