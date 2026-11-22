@@ -83,7 +83,7 @@ let () =
           "failed build leaves the existing container unchanged";
           "fails instead of reusing it";
           "old container is not restored";
-          "hooks and named volumes are not applied";
+          "Named volumes are not applied";
           "<container-id>";
           "<image-id>";
         ];
@@ -132,4 +132,63 @@ let () =
       assert (
         Refresh_plan.make bad_container ~keep_image
         = Error "Command arguments cannot contain NUL bytes"))
+    [ false; true ]
+
+(* Hooks appear in execution order: pre_stop before the stop, post_create and
+   post_start after the start. *)
+let () =
+  let source =
+    Result.get_ok
+      (Config.Decode.from_string
+         "project.name='example'\n\
+          hooks={pre_stop='a',post_create='b',post_start='c'}\n")
+  in
+  let loaded : Config_loader.t =
+    {
+      ignored_paths = [];
+      contents = "";
+      project =
+        { root = "/project"; config_path = "/project/.deco/config.toml" };
+      source;
+      effective = Result.get_ok (Config.Resolve.apply source);
+      host_paths =
+        {
+          build_context = "/project/.deco/build";
+          containerfile = "/project/.deco/build/Containerfile";
+          workspace_source = None;
+        };
+      identity = User_identity.Image;
+    }
+  in
+  List.iter
+    (fun keep_image ->
+      let preview =
+        Refresh_plan.render
+          (Result.get_ok (Refresh_plan.make loaded ~keep_image))
+      in
+      let index text =
+        let rec loop i =
+          if i + String.length text > String.length preview then
+            failwith ("Missing from preview: " ^ text ^ "\n" ^ preview)
+          else if String.sub preview i (String.length text) = text then i
+          else loop (i + 1)
+        in
+        loop 0
+      in
+      let order =
+        [
+          "2. ";
+          "3. If the container is running, run the pre_stop hook:";
+          "4. If the container is running, stop it";
+          "5. If the container exists, remove it";
+          "6. Create the replacement container";
+          "7. Start the container";
+          "8. After creating the replacement, run the post_create hook:";
+          "9. After starting the replacement, run the post_start hook:";
+          "steps 3 to 5 are skipped";
+          "A failure after step 5";
+        ]
+      in
+      let positions = List.map index order in
+      assert (positions = List.sort compare positions))
     [ false; true ]

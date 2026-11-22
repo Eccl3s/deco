@@ -34,6 +34,9 @@ type failure =
   | Launch of { hook : name; error : Process.error }
       (** The hook command could not be run at all. *)
 
+val failed : failure -> name
+(** The hook that failed. *)
+
 val failure_message : failure -> string
 (** A one-line description, such as
     ["post_start hook failed with exit status 7"]. *)

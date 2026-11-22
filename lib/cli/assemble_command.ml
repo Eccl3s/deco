@@ -35,7 +35,8 @@ let assemble selection dry_run =
             else if outcome.started then "Started"
             else "Already running:"
           in
-          Printf.printf "%s %s\n%!" action loaded.effective.container.name
+          Printf.printf "%s %s\n%!" action loaded.effective.container.name;
+          Ok ()
         in
         let result =
           try

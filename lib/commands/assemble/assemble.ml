@@ -23,7 +23,7 @@ let compatibility = Container_runtime.compatibility
 
 let run ?execute ?read_many
     ?(probe = fun () -> Container_runtime.local_selinux ()) ?hook
-    ?(on_ready = fun (_ : outcome) -> ()) loaded =
+    ?(on_ready = fun (_ : outcome) -> Ok ()) loaded =
   let concurrent = Option.is_some read_many || Option.is_none execute in
   let injected = execute in
   let execute =
@@ -245,7 +245,9 @@ let run ?execute ?read_many
   let outcome =
     { image_id = image.id; container_id = container.id; created; started }
   in
-  on_ready outcome;
+  let* () =
+    match on_ready outcome with Ok () -> Ok () | Error cause -> fail cause
+  in
   (* Hooks run in the verified running container: post_create once after a
      creation, then post_start after any start. *)
   let run_hook name =

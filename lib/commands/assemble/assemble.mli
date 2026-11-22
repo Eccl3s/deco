@@ -32,12 +32,13 @@ val run :
   ?read_many:(string list list -> (Process.result, Process.error) result list) ->
   ?probe:(unit -> bool option) ->
   ?hook:Hook.runner ->
-  ?on_ready:(outcome -> unit) ->
+  ?on_ready:(outcome -> (unit, cause) result) ->
   Config_loader.t ->
   (outcome, error) result
 (** Inspect, build the missing image, create the missing container and start it,
     verifying each step. [on_ready] is called once the container is verified
-    running, before any hook. Then a created container runs [post_create] and a
-    created or started container runs [post_start], with [hook]; an already
-    running container runs no hook. A failed hook stops later hooks and leaves
-    the container running. *)
+    running, before any hook; an error from it fails the run with that cause and
+    runs no hook. Then a created container runs [post_create] and a created or
+    started container runs [post_start], with [hook]; an already running
+    container runs no hook. A failed hook stops later hooks and leaves the
+    container running. *)

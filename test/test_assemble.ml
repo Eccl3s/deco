@@ -722,7 +722,10 @@ let () =
       let code = if name = fail then 4 else 0 in
       Ok { Process.status = Unix.WEXITED code; stdout = ""; stderr = "" }
     in
-    let on_ready (_ : Assemble.outcome) = events := "ready" :: !events in
+    let on_ready (_ : Assemble.outcome) =
+      events := "ready" :: !events;
+      Ok ()
+    in
     let result = Assemble.run ~execute ~hook ~on_ready loaded in
     (result, List.rev !events, !state)
   in

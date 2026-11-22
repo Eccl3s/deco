@@ -52,6 +52,8 @@ type failure =
   | Exited of { hook : name; status : Unix.process_status }
   | Launch of { hook : name; error : Process.error }
 
+let failed = function Exited { hook; _ } | Launch { hook; _ } -> hook
+
 let failure_message = function
   | Exited { hook; status = Unix.WEXITED code } ->
       Printf.sprintf "%s hook failed with exit status %d" (to_string hook) code

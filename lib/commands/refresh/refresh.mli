@@ -23,7 +23,10 @@ type cause =
           removed, so no replacement was created. The appeared container was
           left in place, and may have been started. *)
   | Hook of Hook.failure
-      (** A hook failed in the replacement container, which is left running. *)
+      (** A hook failed. A failed [pre_stop] leaves the old container running
+          and unchanged. A failed [post_create] or [post_start] leaves the
+          replacement running; [completed] then includes [Remove_container] when
+          an old container was removed: a partial refresh. *)
 
 type error = { cause : cause; completed : mutation list }
 (** [completed] lists successful mutations in order. Unless the cause is
@@ -46,6 +49,7 @@ val run :
   ?read_many:(string list list -> (Process.result, Process.error) result list) ->
   ?probe:(unit -> bool option) ->
   ?hook:Hook.runner ->
+  ?warn:(string -> unit) ->
   ?progress:(progress -> unit) ->
   Config_loader.t ->
   keep_image:bool ->
@@ -55,8 +59,11 @@ val run :
     [keep_image] require the image to exist. Then rebuild the image unless
     [keep_image] (the build inherits the terminal) while the old container keeps
     running, so a failed build changes no container. Then stop and remove the
-    old container (via {!Remove.run}) and create and start the replacement (via
-    {!Assemble.run}), failing with [Container_appeared] if assemble reused a
-    container instead of creating one. [read_many] batches the initial
-    inspections only. [progress] is called as each stage completes. The previous
-    image is left in place, and no output, hooks, or volumes are handled. *)
+    old container (via {!Remove.run}, which runs [pre_stop] with [hook] and
+    passes skip warnings to [warn]) and create and start the replacement (via
+    {!Assemble.run}, which then runs [post_create] and [post_start]), failing
+    with [Container_appeared], before any hook, if assemble reused a container
+    instead of creating one. [read_many] batches the initial inspections only.
+    [progress] is called as each stage completes; [Container_started] comes
+    before the replacement's hooks. The previous image is left in place, and no
+    output or volumes are handled. *)
