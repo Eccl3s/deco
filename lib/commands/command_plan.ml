@@ -21,6 +21,13 @@ let quote s =
   then s
   else "'" ^ String.concat "'\\''" (String.split_on_char '\'' s) ^ "'"
 
+let escape_literals command =
+  List.map
+    (function
+      | Literal s -> Literal (Terminal_text.escape s)
+      | (Image_id | Container_id) as placeholder -> placeholder)
+    command
+
 let render_command command =
   String.concat " "
     (List.map

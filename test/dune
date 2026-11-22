@@ -18,6 +18,8 @@
   test_info_human
   test_shell
   test_exec
+  test_run_plan
+  test_run
   test_selinux
   test_assemble
   test_podman
@@ -58,6 +60,7 @@
   test_trust_cli
   test_project_cli
   test_actions_cli
+  test_run_cli
   test_init
   init_test_support
   test_embed_templates
@@ -221,6 +224,14 @@
  (name test_actions_cli)
  (modules test_actions_cli)
  (libraries unix yojson)
+ (deps ../bin/deco.exe)
+ (action
+  (run %{test} %{exe:../bin/deco.exe})))
+
+(test
+ (name test_run_cli)
+ (modules test_run_cli)
+ (libraries unix yojson str)
  (deps ../bin/deco.exe)
  (action
   (run %{test} %{exe:../bin/deco.exe})))

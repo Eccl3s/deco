@@ -25,8 +25,8 @@ val render_step :
   condition:string -> name -> Command_plan.argument list -> string
 (** A dry-run step for {!Command_plan.render_steps}:
     ["<condition>, run the <hook> hook:"] followed by the indented command, with
-    each argument escaped with {!Terminal_text.escape} because previews do not
-    require trust. *)
+    its arguments escaped by {!Command_plan.escape_literals} because previews do
+    not require trust. *)
 
 type runner = string list -> (Process.result, Process.error) result
 

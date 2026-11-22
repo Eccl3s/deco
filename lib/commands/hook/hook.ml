@@ -36,15 +36,7 @@ let command loaded name =
 
 let render_step ~condition name command =
   condition ^ ", run the " ^ to_string name ^ " hook:\n"
-  ^ Command_plan.render_multiline
-      (List.map
-         (function
-           | Command_plan.Literal s ->
-               Command_plan.Literal (Terminal_text.escape s)
-           | (Command_plan.Image_id | Command_plan.Container_id) as placeholder
-             ->
-               placeholder)
-         command)
+  ^ Command_plan.render_multiline (Command_plan.escape_literals command)
 
 type runner = string list -> (Process.result, Process.error) result
 
