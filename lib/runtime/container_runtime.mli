@@ -14,6 +14,13 @@ val incompatibilities :
     [selinux_enabled] (default [true]) decides whether a missing relabel option
     can be verified. *)
 
+val hook_incompatibilities : Config_loader.t -> Podman.container -> string list
+(** The ways the container differs from the loaded configuration that matter for
+    running a hook in it with the configured user and workdir: the keep-id user
+    and identity label, and an explicitly configured workdir. Unlike
+    {!incompatibilities}, the image and init are not compared, so a container
+    whose image was rebuilt since it was created can still run hooks. *)
+
 val compatibility :
   ?selinux_enabled:bool ->
   Config_loader.t ->

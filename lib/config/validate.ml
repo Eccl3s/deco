@@ -135,6 +135,22 @@ let check (config : Config_types.t) =
           error [ "user"; "name" ] "Must be omitted in image mode"
       | Image, None -> ())
     config.user;
+  Option.iter
+    (fun (hooks : hooks) ->
+      List.iter
+        (fun (key, value) ->
+          optional [ "hooks"; key ]
+            (fun path value ->
+              if String.contains value '\000' then
+                error path "Must not contain NUL bytes")
+            value)
+        [
+          ("post_create", hooks.post_create);
+          ("post_start", hooks.post_start);
+          ("pre_enter", hooks.pre_enter);
+          ("pre_stop", hooks.pre_stop);
+        ])
+    config.hooks;
   match !errors with
   | [] -> Ok ()
   | errors -> Error (List.sort Diagnostic.compare errors)

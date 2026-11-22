@@ -6,13 +6,15 @@ val inspect : string -> string -> string list
 val start : string -> string list
 
 val exec :
+  ?interactive:bool ->
   tty:bool ->
   user:string option ->
   workdir:string option ->
   container:string ->
   string list ->
   string list
-(** Construct an exec argument vector without evaluating command arguments. *)
+(** Construct an exec argument vector without evaluating command arguments.
+    [interactive] (default [true]) keeps stdin attached with [--interactive]. *)
 
 val version : string list
 

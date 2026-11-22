@@ -8,8 +8,9 @@ let inspect kind name =
 
 let start container = [ "podman"; "--remote=false"; "start"; "--"; container ]
 
-let exec ~tty ~user ~workdir ~container command =
-  [ "podman"; "--remote=false"; "exec"; "--interactive" ]
+let exec ?(interactive = true) ~tty ~user ~workdir ~container command =
+  [ "podman"; "--remote=false"; "exec" ]
+  @ (if interactive then [ "--interactive" ] else [])
   @ (if tty then [ "--tty" ] else [])
   @ (match user with None -> [] | Some value -> [ "--user"; value ])
   @ (match workdir with None -> [] | Some value -> [ "--workdir"; value ])

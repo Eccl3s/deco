@@ -6,11 +6,7 @@ type t = {
 let make (loaded : Config_loader.t) ~tty command =
   if command = [] then Error "At least one command argument is required"
   else
-    let user =
-      match loaded.identity with
-      | User_identity.Image -> None
-      | Keep_id { name; _ } -> Some name
-    in
+    let user = User_identity.exec_user loaded.identity in
     let argv =
       Podman_command.exec ~tty ~user ~workdir:loaded.effective.container.workdir
         ~container:"" command

@@ -1,6 +1,8 @@
 type ids = { uid : int; gid : int }
 type t = Image | Keep_id of { name : string; host : ids; container : ids }
 
+let exec_user = function Image -> None | Keep_id { name; _ } -> Some name
+
 let default_host_ids () =
   try Ok { uid = Unix.getuid (); gid = Unix.getgid () }
   with Unix.Unix_error (reason, operation, _) ->
