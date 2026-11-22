@@ -167,6 +167,7 @@ type runners = {
     (Deco.Process.result, Deco.Process.error) result;
   read_many :
     string list list -> (Deco.Process.result, Deco.Process.error) result list;
+  hook : string list -> (Deco.Process.result, Deco.Process.error) result;
   close : bool -> unit;
 }
 
@@ -188,4 +189,9 @@ let runners ~label ~image =
   let read_many commands =
     Deco.Process.run_many ~forward_signals:true ~poll:status.tick commands
   in
-  { execute; read_many; close = status.finish }
+  let hook argv =
+    (* Hook output streams to the terminal, so the status line ends first. *)
+    status.finish true;
+    Deco.Process.run ~output:Deco.Process.Inherit ~forward_signals:true argv
+  in
+  { execute; read_many; hook; close = status.finish }

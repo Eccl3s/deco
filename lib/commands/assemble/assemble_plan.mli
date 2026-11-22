@@ -28,6 +28,10 @@ type t = private {
   build : string list;
   create : argument list;
   steps : step list;
+  post_create : argument list option;
+      (** The configured [post_create] hook; [None] when it is not set. *)
+  post_start : argument list option;
+      (** The configured [post_start] hook; [None] when it is not set. *)
 }
 
 type error = string
@@ -45,3 +49,6 @@ val render_multiline : argument list -> string
 (** Indented POSIX shell command with continuations between argument groups. *)
 
 val render : t -> string
+(** The ordered workflow: inspection, build, create and start, then the
+    configured [post_create] (after a creation) and [post_start] (after a
+    creation or start) hooks. *)

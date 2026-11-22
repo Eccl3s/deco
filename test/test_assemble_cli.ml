@@ -153,7 +153,7 @@ let () =
                  ])
         | _ -> assert false
       in
-      let creation fail =
+      let creation ?(hook_status = 0) fail =
         write fake
           ("#!/bin/sh\nshift\ncase \"$1 $2\" in\n'image inspect') printf '%s' '"
          ^ image
@@ -164,7 +164,10 @@ let () =
          ^ body "running" ^ "'; else printf '%s' '" ^ body "created"
          ^ "'; fi;;\n\
             create*) printf x > \"$DECO_TEST_LOG.created\"; printf '%s' '" ^ id
-         ^ "';;\nstart*) "
+         ^ "';;\n\
+            exec*) printf '%s\\n' \"$*\" >> \"$DECO_TEST_LOG.hooks\"; printf \
+            'hook-output\\n'; exit " ^ string_of_int hook_status
+         ^ ";;\nstart*) "
           ^ (if fail then "exit 125"
              else "printf x > \"$DECO_TEST_LOG.started\"")
           ^ ";;\nesac\n")
@@ -181,4 +184,69 @@ let () =
         "#!/bin/sh\n\
          shift\n\
          case \"$1\" in version|info) exit 0;; *) exit 125;; esac\n";
-      ignore (run [ "assemble" ] 1))
+      ignore (run [ "assemble" ] 1);
+      (* Dry runs list the configured hooks after the start. *)
+      write config
+        "[project]\n\
+         name='example'\n\
+         [hooks]\n\
+         post_create='echo created'\n\
+         post_start='echo started'\n";
+      ignore (run [ "trust"; "--yes" ] 0);
+      (try Unix.unlink log with Unix.Unix_error _ -> ());
+      let out, err = run [ "assemble"; "-d" ] 0 in
+      assert (err = "");
+      assert (
+        contains out
+          "5. If the container was created, run the post_create hook:");
+      assert (
+        contains out
+          "6. If the container was created or started, run the post_start hook:");
+      assert (not (Sys.file_exists log));
+      (* A new container runs post_create then post_start, after the status
+         line; a failed hook returns its status and stops later hooks. *)
+      let hooks () =
+        let path = log ^ ".hooks" in
+        let lines =
+          if Sys.file_exists path then (
+            let text = In_channel.with_open_bin path In_channel.input_all in
+            Unix.unlink path;
+            String.split_on_char '\n' (String.trim text))
+          else []
+        in
+        List.map
+          (fun line ->
+            match List.rev (String.split_on_char ' ' line) with
+            | last :: _ -> last
+            | [] -> "")
+          lines
+      in
+      let reset () =
+        List.iter
+          (fun suffix ->
+            try Unix.unlink (log ^ suffix) with Unix.Unix_error _ -> ())
+          [ ".created"; ".started"; ".hooks" ]
+      in
+      reset ();
+      creation false;
+      let out, err = run [ "assemble" ] 0 in
+      assert (err = "");
+      assert (
+        out
+        = "Created and started example-dev-container\n\
+           hook-output\n\
+           hook-output\n");
+      assert (hooks () = [ "created"; "started" ]);
+      (* Already running: no hook. *)
+      let out, err = run [ "assemble" ] 0 in
+      assert (out = "Already running: example-dev-container\n" && err = "");
+      assert (hooks () = []);
+      reset ();
+      creation ~hook_status:3 false;
+      let out, err = run [ "assemble" ] 3 in
+      assert (out = "Created and started example-dev-container\nhook-output\n");
+      assert (
+        err
+        = "deco: post_create hook failed with exit status 3\n\
+           deco: Container example-dev-container was left running.\n");
+      assert (hooks () = [ "created" ]))

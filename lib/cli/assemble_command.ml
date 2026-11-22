@@ -26,30 +26,38 @@ let assemble selection dry_run =
       else
         let image = Config.Effective.image_reference loaded.effective.image in
         let runners = Build_output.runners ~label:"Starting" ~image in
+        (* The container is reported as soon as it is running, before the
+           output of any hook. *)
+        let on_ready outcome =
+          runners.Build_output.close true;
+          let action =
+            if outcome.created then "Created and started"
+            else if outcome.started then "Started"
+            else "Already running:"
+          in
+          Printf.printf "%s %s\n%!" action loaded.effective.container.name
+        in
         let result =
           try
             Deco.Assemble.run ~read_many:runners.Build_output.read_many
-              ~execute:runners.Build_output.execute loaded
+              ~execute:runners.Build_output.execute
+              ~hook:runners.Build_output.hook ~on_ready loaded
           with e ->
             runners.Build_output.close false;
             raise e
         in
         runners.Build_output.close (Result.is_ok result);
         match result with
-        | Ok outcome ->
-            let action =
-              if outcome.created then "Created and started"
-              else if outcome.started then "Started"
-              else "Already running:"
-            in
-            Printf.printf "%s %s\n" action loaded.effective.container.name;
-            0
+        | Ok _ -> 0
         | Error error ->
             let message, code =
               match error.cause with
               | Deco.Assemble.Planning e -> (e, 2)
               | Conflict e -> (e, 4)
               | Runtime e -> (e, 1)
+              | Hook failure ->
+                  ( Deco.Hook.failure_message failure,
+                    Deco.Hook.exit_status failure )
               | Podman (Deco.Podman.Unavailable e) -> (e, 3)
               | Podman
                   ( Deco.Podman.Runtime { operation; message }
@@ -57,16 +65,23 @@ let assemble selection dry_run =
                   (operation ^ ": " ^ message, 1)
             in
             prerr_endline ("deco: " ^ message);
-            if error.completed <> [] then
-              prerr_endline
-                ("deco: "
-                ^
-                if List.mem "podman --remote=false create" error.completed then
-                  "Container " ^ loaded.effective.container.name
-                  ^ " was created but could not be prepared."
-                else
-                  "Image build completed; the environment could not be \
-                   prepared.");
+            (match error.cause with
+            | Hook _ ->
+                prerr_endline
+                  ("deco: Container " ^ loaded.effective.container.name
+                 ^ " was left running.")
+            | Deco.Assemble.Planning _ | Conflict _ | Runtime _ | Podman _ ->
+                if error.completed <> [] then
+                  prerr_endline
+                    ("deco: "
+                    ^
+                    if List.mem "podman --remote=false create" error.completed
+                    then
+                      "Container " ^ loaded.effective.container.name
+                      ^ " was created but could not be prepared."
+                    else
+                      "Image build completed; the environment could not be \
+                       prepared."));
             code)
 
 let command =

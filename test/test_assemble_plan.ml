@@ -254,3 +254,61 @@ let () =
   assert (
     Assemble_plan.render custom_plan
     = Assemble_plan.render (get (Assemble_plan.make custom)))
+
+(* Configured hooks follow the start in execution order; without hooks the
+   preview ends at the start. *)
+let () =
+  let load text =
+    let source = Result.get_ok (Config.Decode.from_string text) in
+    ({
+       ignored_paths = [];
+       contents = "";
+       project =
+         { root = "/project"; config_path = "/project/.deco/config.toml" };
+       source;
+       effective = Result.get_ok (Config.Resolve.apply source);
+       host_paths =
+         {
+           build_context = "/project/.deco/build";
+           containerfile = "/project/.deco/build/Containerfile";
+           workspace_source = None;
+         };
+       identity = User_identity.Image;
+     }
+      : Config_loader.t)
+  in
+  let render text =
+    Assemble_plan.render (get (Assemble_plan.make (load text)))
+  in
+  let contains rendered text =
+    let rec loop i =
+      i + String.length text <= String.length rendered
+      && (String.sub rendered i (String.length text) = text || loop (i + 1))
+    in
+    loop 0
+  in
+  let plain = render "project.name='example'\n" in
+  assert (not (contains plain "hook"));
+  assert (
+    contains plain
+      "4. Start example-dev-container if needed.\n\n<image-id> is resolved");
+  let both =
+    render
+      "project.name='example'\n\
+       hooks={post_create='make setup',post_start='echo ready'}\n"
+  in
+  assert (
+    contains both
+      "4. Start example-dev-container if needed.\n\n\
+       5. If the container was created, run the post_create hook:\n\
+      \    podman --remote=false exec \\\n");
+  assert (
+    contains both
+      "6. If the container was created or started, run the post_start hook:\n");
+  assert (contains both "'make setup'" && contains both "'echo ready'");
+  assert (contains both "An already running container runs no hook.");
+  let only_start = render "project.name='example'\nhooks.post_start='x'\n" in
+  assert (
+    contains only_start
+      "5. If the container was created or started, run the post_start hook:\n");
+  assert (not (contains only_start "post_create"))

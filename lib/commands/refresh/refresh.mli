@@ -22,6 +22,8 @@ type cause =
       (** A container with the configured name appeared after the old one was
           removed, so no replacement was created. The appeared container was
           left in place, and may have been started. *)
+  | Hook of Hook.failure
+      (** A hook failed in the replacement container, which is left running. *)
 
 type error = { cause : cause; completed : mutation list }
 (** [completed] lists successful mutations in order. Unless the cause is
@@ -43,6 +45,7 @@ val run :
   ?execute:Assemble.runner ->
   ?read_many:(string list list -> (Process.result, Process.error) result list) ->
   ?probe:(unit -> bool option) ->
+  ?hook:Hook.runner ->
   ?progress:(progress -> unit) ->
   Config_loader.t ->
   keep_image:bool ->

@@ -641,3 +641,125 @@ let () =
       { c with userns = "keep-id:uid=1000" };
       { c with userns = "keep-id:uid=1000,gid=1001,uid=1000" };
     ]
+
+(* Hooks: post_create once after a creation, then post_start after any start,
+   both after on_ready and in the verified container; nothing for a running
+   container; a failed hook stops later hooks and leaves the container
+   running. *)
+let () =
+  let source =
+    Result.get_ok
+      (Config.Decode.from_string
+         "project.name='example'\n\
+          hooks={post_create='echo created',post_start='echo started'}\n")
+  in
+  let loaded : Config_loader.t =
+    {
+      ignored_paths = [];
+      contents = "";
+      source;
+      effective = Result.get_ok (Config.Resolve.apply source);
+      project =
+        { root = "/project"; config_path = "/project/.deco/config.toml" };
+      host_paths =
+        {
+          build_context = "/project/.deco/build";
+          containerfile = "/project/.deco/build/Containerfile";
+          workspace_source = None;
+        };
+      identity = Image;
+    }
+  in
+  let id = String.make 64 'b' in
+  let labels =
+    {|{"dev.deco.managed":"true","dev.deco.project":"example","dev.deco.project-root":"/project"}|}
+  in
+  let scenario ?(fail = "") initial =
+    let state = ref initial and events = ref [] in
+    let response ?(code = 0) stdout =
+      Ok { Process.status = Unix.WEXITED code; stdout; stderr = "" }
+    in
+    let container () =
+      Printf.sprintf
+        {|[{"Id":"%s","Image":"iid","Config":{"Labels":%s,"User":"","WorkingDir":"/"},"HostConfig":{"Init":true,"UsernsMode":""},"State":{"Status":"%s"},"Mounts":[]}]|}
+        id labels !state
+    in
+    let execute _ argv =
+      match argv with
+      | [ "podman"; "--remote=false"; "version" ] -> response ""
+      | [ "podman"; "--remote=false"; "image"; "inspect"; "--"; _ ] ->
+          response
+            (Printf.sprintf
+               {|[{"Id":"iid","Labels":%s,"Config":{"User":"","WorkingDir":"/"}}]|}
+               labels)
+      | [ "podman"; "--remote=false"; "container"; "inspect"; "--"; _ ] ->
+          if !state = "absent" then response ~code:125 ""
+          else response (container ())
+      | [ "podman"; "--remote=false"; "container"; "exists"; "--"; _ ] ->
+          response ~code:(if !state = "absent" then 1 else 0) ""
+      | "podman" :: "--remote=false" :: "create" :: _ ->
+          events := "create" :: !events;
+          state := "created";
+          response (id ^ "\n")
+      | [ "podman"; "--remote=false"; "start"; "--"; _ ] ->
+          events := "start" :: !events;
+          state := "running";
+          response id
+      | _ -> failwith ("Unexpected command: " ^ String.concat " " argv)
+    in
+    let hook argv =
+      let name =
+        match List.rev argv with
+        | "echo created" :: "-lc" :: "sh" :: container :: "--" :: _ ->
+            assert (container = id);
+            "post_create"
+        | "echo started" :: "-lc" :: "sh" :: container :: "--" :: _ ->
+            assert (container = id);
+            "post_start"
+        | _ -> failwith ("Unexpected hook: " ^ String.concat " " argv)
+      in
+      events := name :: !events;
+      let code = if name = fail then 4 else 0 in
+      Ok { Process.status = Unix.WEXITED code; stdout = ""; stderr = "" }
+    in
+    let on_ready (_ : Assemble.outcome) = events := "ready" :: !events in
+    let result = Assemble.run ~execute ~hook ~on_ready loaded in
+    (result, List.rev !events, !state)
+  in
+  (match scenario "absent" with
+  | ( Ok { created = true; started = true; _ },
+      [ "create"; "start"; "ready"; "post_create"; "post_start" ],
+      "running" ) ->
+      ()
+  | _ -> assert false);
+  (match scenario "exited" with
+  | ( Ok { created = false; started = true; _ },
+      [ "start"; "ready"; "post_start" ],
+      "running" ) ->
+      ()
+  | _ -> assert false);
+  (match scenario "running" with
+  | Ok { created = false; started = false; _ }, [ "ready" ], "running" -> ()
+  | _ -> assert false);
+  (match scenario ~fail:"post_create" "absent" with
+  | ( Error
+        {
+          cause =
+            Hook (Hook.Exited { hook = Post_create; status = Unix.WEXITED 4 });
+          _;
+        },
+      [ "create"; "start"; "ready"; "post_create" ],
+      "running" ) ->
+      ()
+  | _ -> assert false);
+  match scenario ~fail:"post_start" "exited" with
+  | ( Error
+        {
+          cause =
+            Hook (Hook.Exited { hook = Post_start; status = Unix.WEXITED 4 });
+          _;
+        },
+      [ "start"; "ready"; "post_start" ],
+      "running" ) ->
+      ()
+  | _ -> assert false

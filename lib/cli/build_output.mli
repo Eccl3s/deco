@@ -22,7 +22,12 @@ type runners = {
   read_many :
     string list list -> (Deco.Process.result, Deco.Process.error) result list;
       (** Concurrent read-only commands, forwarding signals. *)
-  close : bool -> unit;  (** Close the status line; call exactly once. *)
+  hook : string list -> (Deco.Process.result, Deco.Process.error) result;
+      (** Run a lifecycle hook with inherited output, forwarding signals. The
+          status line is closed as complete first. *)
+  close : bool -> unit;
+      (** Close the status line. Closing an already closed status line does
+          nothing. *)
 }
 (** Process runners for commands that build an image and then create and start a
     container, such as [assemble] and [refresh]. *)

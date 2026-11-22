@@ -38,7 +38,8 @@ let[@warning "-42"] execute selection dry_run keep_image =
         let result =
           try
             Deco.Refresh.run ~read_many:runners.Build_output.read_many
-              ~execute:runners.Build_output.execute ~progress loaded ~keep_image
+              ~execute:runners.Build_output.execute
+              ~hook:runners.Build_output.hook ~progress loaded ~keep_image
           with e ->
             runners.Build_output.close false;
             raise e
@@ -52,6 +53,9 @@ let[@warning "-42"] execute selection dry_run keep_image =
               | Deco.Refresh.Planning e -> (e, 2)
               | Deco.Refresh.Conflict e -> (e, 4)
               | Deco.Refresh.Runtime e -> (e, 1)
+              | Deco.Refresh.Hook failure ->
+                  ( Deco.Hook.failure_message failure,
+                    Deco.Hook.exit_status failure )
               | Deco.Refresh.Container_appeared ->
                   ( "A container named " ^ container
                     ^ " appeared during refresh and was not replaced; run deco \

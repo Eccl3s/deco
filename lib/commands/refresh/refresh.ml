@@ -19,6 +19,7 @@ type cause =
   | Conflict of string
   | Runtime of string
   | Container_appeared
+  | Hook of Hook.failure
 
 type error = { cause : cause; completed : mutation list }
 
@@ -29,7 +30,7 @@ type progress =
   | No_container
   | Container_started
 
-let run ?execute ?read_many ?probe ?(progress = fun (_ : progress) -> ())
+let run ?execute ?read_many ?probe ?hook ?(progress = fun (_ : progress) -> ())
     (loaded : Config_loader.t) ~keep_image =
   let injected = execute in
   let execute =
@@ -134,7 +135,7 @@ let run ?execute ?read_many ?probe ?(progress = fun (_ : progress) -> ())
   in
   progress
     (if container_removed then Container_removed { stopped } else No_container);
-  match Assemble.run ?execute:injected ?read_many ?probe loaded with
+  match Assemble.run ?execute:injected ?read_many ?probe ?hook loaded with
   | Ok outcome when not outcome.created ->
       (* Another container took the configured name after removal; it was
          reused (and possibly started) by assemble, not recreated by refresh. *)
@@ -166,4 +167,5 @@ let run ?execute ?read_many ?probe ?(progress = fun (_ : progress) -> ())
         | Assemble.Planning e -> Planning e
         | Podman e -> Podman e
         | Conflict e -> Conflict e
-        | Runtime e -> Runtime e)
+        | Runtime e -> Runtime e
+        | Hook failure -> Hook failure)
