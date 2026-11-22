@@ -4,9 +4,10 @@ type t = {
   stop : Command_plan.argument list;
   remove_container : Command_plan.argument list;
   remove_image : Command_plan.argument list option;
+  pre_stop : string option;
 }
 
-let make (loaded : Config_loader.t) ~keep_image =
+let make ?(hooks = true) (loaded : Config_loader.t) ~keep_image =
   let symbolic placeholder argv =
     List.mapi
       (fun i value ->
@@ -38,30 +39,50 @@ let make (loaded : Config_loader.t) ~keep_image =
          commands
   then Error "Command arguments cannot contain NUL bytes"
   else
-    Ok { container_name; image_reference; stop; remove_container; remove_image }
+    Ok
+      {
+        container_name;
+        image_reference;
+        stop;
+        remove_container;
+        remove_image;
+        pre_stop = Stop_plan.pre_stop_step loaded ~hooks;
+      }
 
 let render plan =
   "Remove preview\nNo commands will be run.\n\n"
-  ^ "1. Check Podman availability and inspect container "
-  ^ Command_plan.quote plan.container_name
-  ^ (match plan.image_reference with
-    | None -> ".\n"
-    | Some reference -> " and image " ^ Command_plan.quote reference ^ ".\n")
-  ^ "   Verify project ownership and supported container state before changing \
-     selected resources.\n"
-  ^ "2. If the container is running, stop it and verify shutdown:\n"
-  ^ Command_plan.render_multiline plan.stop
-  ^ "\n" ^ "3. If the container exists, remove it and verify absence:\n"
-  ^ Command_plan.render_multiline plan.remove_container
-  ^ "\n"
+  ^ Command_plan.render_steps
+      ([
+         "Check Podman availability and inspect container "
+         ^ Command_plan.quote plan.container_name
+         ^ (match plan.image_reference with
+           | None -> "."
+           | Some reference ->
+               " and image " ^ Command_plan.quote reference ^ ".")
+         ^ "\n\
+           \   Verify project ownership and supported container state before \
+            changing selected resources.";
+       ]
+      @ Option.to_list plan.pre_stop
+      @ [
+          "If the container is running, stop it and verify shutdown:\n"
+          ^ Command_plan.render_multiline plan.stop;
+          "If the container exists, remove it and verify absence:\n"
+          ^ Command_plan.render_multiline plan.remove_container;
+        ]
+      @
+      match plan.remove_image with
+      | None -> []
+      | Some command ->
+          [
+            "If the image exists, check remaining dependent containers.\n\
+            \   If any remain, retain the image and report a conflict.";
+            "Otherwise, remove the owned image and verify absence:\n"
+            ^ Command_plan.render_multiline command;
+          ])
   ^ (match plan.remove_image with
     | None -> "The image is kept; no image operations are planned.\n"
-    | Some command ->
-        "4. If the image exists, check remaining dependent containers.\n"
-        ^ "   If any remain, retain the image and report a conflict.\n"
-        ^ "5. Otherwise, remove the owned image and verify absence:\n"
-        ^ Command_plan.render_multiline command
-        ^ "\n")
+    | Some _ -> "")
   ^ "Missing selected resources are successful no-ops.\n\n" ^ "<container-id>"
   ^ (if Option.is_some plan.remove_image then " and <image-id> are" else " is")
   ^ " resolved by inspection during execution.\n"

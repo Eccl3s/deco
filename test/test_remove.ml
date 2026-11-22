@@ -253,3 +253,103 @@ let () =
                Ok { Process.status = Unix.WEXITED 0; stdout; stderr = "" })
              ())))
     [ "bad"; "{}"; "[{}]"; {|[{"Id":"c","ImageID":"i","Names":42}]|} ]
+
+(* pre_stop runs before a running container is stopped and removed; a failure
+   prevents both, and hooks:false skips it. *)
+let () =
+  let source =
+    Result.get_ok
+      (Config.Decode.from_string
+         "project.name='example'\nhooks.pre_stop='echo bye'\n")
+  in
+  let effective = Result.get_ok (Config.Resolve.apply source) in
+  let loaded : Config_loader.t =
+    {
+      ignored_paths = [];
+      contents = "";
+      project =
+        { root = "/project"; config_path = "/project/.deco/config.toml" };
+      source;
+      effective;
+      host_paths =
+        {
+          build_context = "/project/.deco/build";
+          containerfile = "/project/.deco/build/Containerfile";
+          workspace_source = None;
+        };
+      identity = User_identity.Image;
+    }
+  in
+  let scenario ?(hooks = true) ?(hook_status = Unix.WEXITED 0) () =
+    let events = ref [] and stopped = ref false and removed = ref false in
+    let response ?(code = 0) stdout =
+      Ok { Process.status = Unix.WEXITED code; stdout; stderr = "" }
+    in
+    let container state =
+      Yojson.Basic.to_string
+        (`List
+           [
+             `Assoc
+               [
+                 ("Id", `String "cid");
+                 ("Image", `String "iid");
+                 ("State", `Assoc [ ("Status", `String state) ]);
+                 ( "Config",
+                   `Assoc
+                     [
+                       ( "Labels",
+                         `Assoc
+                           [
+                             ("dev.deco.managed", `String "true");
+                             ("dev.deco.project", `String "example");
+                             ("dev.deco.project-root", `String "/project");
+                           ] );
+                     ] );
+                 ("HostConfig", `Assoc [ ("UsernsMode", `String "") ]);
+                 ("Mounts", `List []);
+               ];
+           ])
+    in
+    let run argv =
+      match argv with
+      | [ "podman"; "--remote=false"; "version" ] -> response ""
+      | [ "podman"; "--remote=false"; "container"; "inspect"; "--"; _ ] ->
+          if !removed then response ~code:125 ""
+          else response (container (if !stopped then "exited" else "running"))
+      | [ "podman"; "--remote=false"; "container"; "exists"; "--"; _ ] ->
+          response ~code:1 ""
+      | [ "podman"; "--remote=false"; "stop"; "--"; "cid" ] ->
+          events := "stop" :: !events;
+          stopped := true;
+          response ""
+      | [ "podman"; "--remote=false"; "container"; "rm"; "--"; "cid" ] ->
+          events := "rm" :: !events;
+          removed := true;
+          response ""
+      | _ -> failwith ("Unexpected command: " ^ String.concat " " argv)
+    in
+    let hook _ =
+      events := "pre_stop" :: !events;
+      Ok { Process.status = hook_status; stdout = ""; stderr = "" }
+    in
+    let result = Remove.run ~run ~hooks ~hook loaded ~keep_image:true in
+    (result, List.rev !events)
+  in
+  (match scenario () with
+  | ( Ok { container_removed = true; stopped = true; _ },
+      [ "pre_stop"; "stop"; "rm" ] ) ->
+      ()
+  | _ -> assert false);
+  (match scenario ~hooks:false () with
+  | Ok { container_removed = true; _ }, [ "stop"; "rm" ] -> ()
+  | _ -> assert false);
+  match scenario ~hook_status:(Unix.WEXITED 6) () with
+  | ( Error
+        {
+          cause =
+            Remove.Hook (Hook.Exited { hook = Pre_stop; status = WEXITED 6 });
+          completed = [];
+        },
+      [ "pre_stop" ] ) ->
+      ()
+  | _ -> assert false

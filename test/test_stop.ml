@@ -220,3 +220,122 @@ let () =
   assert (
     Result.is_error
       (Stop.run ~run:(fun _ -> failwith "Invalid plan touched runtime") invalid))
+
+(* pre_stop runs before stopping a running container, never for a stopped one
+   or with hooks disabled; a failure prevents the stop; a container that cannot
+   run the hook as configured is stopped with a warning instead. *)
+let () =
+  let load text =
+    let source = Result.get_ok (Config.Decode.from_string text) in
+    let effective = Result.get_ok (Config.Resolve.apply source) in
+    ({
+       ignored_paths = [];
+       contents = "";
+       project =
+         { root = "/project"; config_path = "/project/.deco/config.toml" };
+       source;
+       effective;
+       host_paths =
+         {
+           build_context = "/project/.deco/build";
+           containerfile = "/project/.deco/build/Containerfile";
+           workspace_source = None;
+         };
+       identity = User_identity.Image;
+     }
+      : Config_loader.t)
+  in
+  let hooked = load "project.name='example'\nhooks.pre_stop='echo bye'\n" in
+  let container ?(workdir = "/") state =
+    Yojson.Basic.to_string
+      (`List
+         [
+           `Assoc
+             [
+               ("Id", `String "cid");
+               ("Image", `String "iid");
+               ("State", `Assoc [ ("Status", `String state) ]);
+               ( "Config",
+                 `Assoc
+                   [
+                     ( "Labels",
+                       `Assoc
+                         [
+                           ("dev.deco.managed", `String "true");
+                           ("dev.deco.project", `String "example");
+                           ("dev.deco.project-root", `String "/project");
+                         ] );
+                     ("WorkingDir", `String workdir);
+                   ] );
+               ("HostConfig", `Assoc [ ("UsernsMode", `String "") ]);
+               ("Mounts", `List []);
+             ];
+         ])
+  in
+  let scenario ?(hooks = true) ?(hook_status = Unix.WEXITED 0) ?workdir loaded
+      state =
+    let events = ref [] and warnings = ref [] and stopped = ref false in
+    let response stdout =
+      Ok { Process.status = Unix.WEXITED 0; stdout; stderr = "" }
+    in
+    let run argv =
+      match argv with
+      | [ "podman"; "--remote=false"; "version" ] -> response ""
+      | [ "podman"; "--remote=false"; "container"; "inspect"; "--"; _ ] ->
+          response (container ?workdir (if !stopped then "exited" else state))
+      | [ "podman"; "--remote=false"; "stop"; "--"; "cid" ] ->
+          events := "stop" :: !events;
+          stopped := true;
+          response ""
+      | _ -> failwith ("Unexpected command: " ^ String.concat " " argv)
+    in
+    let hook argv =
+      (match List.rev argv with
+      | "echo bye" :: "-lc" :: "sh" :: "cid" :: "--" :: _ -> ()
+      | _ -> assert false);
+      events := "pre_stop" :: !events;
+      Ok { Process.status = hook_status; stdout = ""; stderr = "" }
+    in
+    let result =
+      Stop.run ~run ~hooks ~hook
+        ~warn:(fun message -> warnings := message :: !warnings)
+        loaded
+    in
+    (result, List.rev !events, !warnings)
+  in
+  (match scenario hooked "running" with
+  | Ok { stopped = true; _ }, [ "pre_stop"; "stop" ], [] -> ()
+  | _ -> assert false);
+  (match scenario hooked "exited" with
+  | Ok { stopped = false; _ }, [], [] -> ()
+  | _ -> assert false);
+  (match scenario ~hooks:false hooked "running" with
+  | Ok { stopped = true; _ }, [ "stop" ], [] -> ()
+  | _ -> assert false);
+  (match scenario ~hook_status:(Unix.WEXITED 5) hooked "running" with
+  | ( Error
+        {
+          cause =
+            Stop.Hook (Hook.Exited { hook = Pre_stop; status = WEXITED 5 });
+          stop_completed = false;
+        },
+      [ "pre_stop" ],
+      [] ) ->
+      ()
+  | _ -> assert false);
+  let workdir =
+    load
+      "project.name='example'\n\
+       container.workdir='/workspace'\n\
+       hooks.pre_stop='echo bye'\n"
+  in
+  (match scenario ~workdir:"/workspace" workdir "running" with
+  | Ok { stopped = true; _ }, [ "pre_stop"; "stop" ], [] -> ()
+  | _ -> assert false);
+  match scenario ~workdir:"/old" workdir "running" with
+  | Ok { stopped = true; _ }, [ "stop" ], [ warning ] ->
+      assert (
+        warning
+        = "Skipping the pre_stop hook: the container cannot run it as \
+           configured (Working directory differs)")
+  | _ -> assert false

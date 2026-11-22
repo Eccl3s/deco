@@ -7,7 +7,9 @@ let[@warning "-42"] execute selection dry_run keep_image no_hooks =
   | Error code -> code
   | Ok loaded -> (
       if dry_run then (
-        match Deco.Remove_plan.make loaded ~keep_image with
+        match
+          Deco.Remove_plan.make ~hooks:(not no_hooks) loaded ~keep_image
+        with
         | Error message ->
             prerr_endline ("deco: " ^ message);
             2
@@ -15,15 +17,15 @@ let[@warning "-42"] execute selection dry_run keep_image no_hooks =
             print_string (Deco.Remove_plan.render plan);
             0)
       else
-        (* pre_stop runs here unless [no_hooks] (specs/deco-trust.md §6). Hooks
-           are not implemented yet, so [no_hooks] only waives trust.
-           [remove --force], which still requires trust with [--no-hooks], does
-           not exist yet either. *)
+        (* [remove --force], which still requires trust with [--no-hooks]
+           (specs/deco-trust.md §6), does not exist yet. *)
         match
           Deco.Remove.run
             ~read_many:(fun commands ->
               Deco.Process.run_many ~forward_signals:true commands)
             ~run:(fun argv -> Deco.Process.run ~forward_signals:true argv)
+            ~hooks:(not no_hooks)
+            ~warn:(fun message -> prerr_endline ("deco: " ^ message))
             loaded ~keep_image
         with
         | Ok outcome ->
@@ -46,6 +48,10 @@ let[@warning "-42"] execute selection dry_run keep_image no_hooks =
               | Deco.Remove.Planning e -> (e, 2)
               | Deco.Remove.Conflict e -> (e, 4)
               | Deco.Remove.Runtime e -> (e, 1)
+              | Deco.Remove.Hook failure ->
+                  ( Deco.Hook.failure_message failure
+                    ^ "; nothing was stopped or removed",
+                    Deco.Hook.exit_status failure )
               | Deco.Remove.Image_in_use _ ->
                   ("Image is still used by dependent containers:", 4)
               | Deco.Remove.Podman (Deco.Podman.Unavailable e) -> (e, 3)
@@ -69,7 +75,8 @@ let[@warning "-42"] execute selection dry_run keep_image no_hooks =
                         ^ ")"))
                   dependents
             | Deco.Remove.Planning _ | Deco.Remove.Conflict _
-            | Deco.Remove.Runtime _ | Deco.Remove.Podman _ ->
+            | Deco.Remove.Runtime _ | Deco.Remove.Podman _ | Deco.Remove.Hook _
+              ->
                 ());
             List.iter
               (fun mutation ->

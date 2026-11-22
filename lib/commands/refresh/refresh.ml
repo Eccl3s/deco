@@ -111,7 +111,7 @@ let run ?execute ?read_many ?probe ?(progress = fun (_ : progress) -> ())
     match container with
     | Podman.Absent -> Ok (false, false)
     | Present _ -> (
-        match Remove.run ~run:capture loaded ~keep_image:true with
+        match Remove.run ~run:capture ~hooks:false loaded ~keep_image:true with
         | Ok outcome ->
             if outcome.stopped then record Stop_container;
             if outcome.container_removed then record Remove_container;
@@ -129,7 +129,8 @@ let run ?execute ?read_many ?probe ?(progress = fun (_ : progress) -> ())
               | Podman e -> Podman e
               | Conflict e -> Conflict e
               | Runtime e -> Runtime e
-              | Image_in_use _ -> Conflict "Image is in use"))
+              | Image_in_use _ -> Conflict "Image is in use"
+              | Hook failure -> Runtime (Hook.failure_message failure)))
   in
   progress
     (if container_removed then Container_removed { stopped } else No_container);

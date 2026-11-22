@@ -6,7 +6,7 @@ let execute selection dry_run no_hooks =
   | Error code -> code
   | Ok loaded -> (
       if dry_run then (
-        match Deco.Stop_plan.make loaded with
+        match Deco.Stop_plan.make ~hooks:(not no_hooks) loaded with
         | Error message ->
             prerr_endline ("deco: " ^ message);
             2
@@ -14,13 +14,13 @@ let execute selection dry_run no_hooks =
             print_string (Deco.Stop_plan.render plan);
             0)
       else
-        (* pre_stop runs here unless [no_hooks] (specs/deco-trust.md §6). Hooks
-           are not implemented yet, so [no_hooks] only waives trust. *)
         match
           Deco.Stop.run
             ~read_many:(fun commands ->
               Deco.Process.run_many ~forward_signals:true commands)
             ~run:(fun argv -> Deco.Process.run ~forward_signals:true argv)
+            ~hooks:(not no_hooks)
+            ~warn:(fun message -> prerr_endline ("deco: " ^ message))
             loaded
         with
         | Ok outcome ->
@@ -36,6 +36,10 @@ let execute selection dry_run no_hooks =
               | Deco.Stop.Planning e -> (e, 2)
               | Deco.Stop.Conflict e -> (e, 4)
               | Deco.Stop.Runtime e -> (e, 1)
+              | Deco.Stop.Hook failure ->
+                  ( Deco.Hook.failure_message failure
+                    ^ "; the container was not stopped",
+                    Deco.Hook.exit_status failure )
               | Deco.Stop.Podman (Deco.Podman.Unavailable e) -> (e, 3)
               | Deco.Stop.Podman
                   ( Deco.Podman.Runtime { operation; message }

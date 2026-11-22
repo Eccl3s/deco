@@ -12,10 +12,11 @@ type cause =
   | Conflict of string
   | Runtime of string
   | Image_in_use of Podman.container_summary list
+  | Hook of Hook.failure
 
 type error = { cause : cause; completed : mutation list }
 
-let run ?run ?read_many loaded ~keep_image =
+let run ?run ?read_many ?(hooks = true) ?hook ?warn loaded ~keep_image =
   let injected_run = run in
   let run = Option.value ~default:(fun argv -> Process.run argv) run in
   let completed = ref [] in
@@ -40,7 +41,7 @@ let run ?run ?read_many loaded ~keep_image =
     | Ok r -> fail (Runtime (Podman.message r))
   in
   let* plan =
-    match Remove_plan.make loaded ~keep_image with
+    match Remove_plan.make ~hooks loaded ~keep_image with
     | Ok p -> Ok p
     | Error e -> fail (Planning e)
   in
@@ -71,7 +72,8 @@ let run ?run ?read_many loaded ~keep_image =
     | Present c -> (
         let* stopped =
           match
-            Stop.run ~run ~container_id:c.id ~check_availability:false loaded
+            Stop.run ~run ~container_id:c.id ~check_availability:false ~hooks
+              ?hook ?warn loaded
           with
           | Ok outcome ->
               if outcome.Stop.stopped then
@@ -85,7 +87,8 @@ let run ?run ?read_many loaded ~keep_image =
                 | Stop.Planning s -> Planning s
                 | Stop.Podman e -> Podman e
                 | Stop.Conflict s -> Conflict s
-                | Stop.Runtime s -> Runtime s)
+                | Stop.Runtime s -> Runtime s
+                | Stop.Hook failure -> Hook failure)
         in
         let* current = container ~container_id:c.id () in
         match current with
