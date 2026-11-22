@@ -31,7 +31,7 @@ See [specs/](specs/) for the full CLI and configuration specifications.
 
 ## Getting Started
 
-Deco currently implements `init`, `validate`, `trust`, `assemble`, `refresh`, `exec`, `shell`, `start`, `stop`, `remove`, `info`, `list`, help, and version output. Other commands
+Deco currently implements `init`, `validate`, `trust`, `assemble`, `refresh`, `exec`, `shell`, `start`, `stop`, `remove`, `info`, `list`, `actions`, `run`, help, and version output. Other commands
 below describe the planned workflow.
 
 Validate an existing project with `deco validate` or select one explicitly with
@@ -46,7 +46,7 @@ exit code 2; success identifies the config path on stdout with exit code 0.
 ### Selecting a project
 
 Project commands (`validate`, `trust`, `assemble`, `refresh`, `exec`, `shell`,
-`start`, `stop`, `remove`, and `info`) find their project in one of three ways:
+`start`, `stop`, `remove`, `info`, `actions`, and `run`) find their project in one of three ways:
 
 - By default, Deco searches the current directory and its parents for
   `.deco/config.toml`.
@@ -175,7 +175,7 @@ A project's `.deco/` directory decides what Deco builds and runs on your
 machine, so a cloned repository could otherwise run arbitrary commands the
 first time you use it. Deco therefore requires you to approve a project's
 configuration before `assemble`, `refresh`, `start`, `stop`, `remove`, `exec`,
-or `shell` use it. Run `deco trust` to review and approve it:
+`shell`, or `run` use it. Run `deco trust` to review and approve it:
 
 ```text
 $ deco trust
@@ -227,14 +227,13 @@ Run 'deco trust' to review and approve it.
 ```
 
 Their dry runs still work and print a note instead. `deco init` approves the
-configuration it writes. `validate`, `info`, `list`, and `trust` itself never
-require trust, and `info` reports the trust state. `stop --no-hooks` and
-`remove --no-hooks` skip the `pre_stop` hook and therefore do not require
-trust; they print a warning when the configuration is not trusted. The trust
-review lists every configured hook command in full.
+configuration it writes. `validate`, `info`, `list`, `actions`, and `trust`
+itself never require trust, and `info` reports the trust state.
+`stop --no-hooks` and `remove --no-hooks` skip the `pre_stop` hook and
+therefore do not require trust; they print a warning when the configuration is not trusted. The trust
+review lists every configured hook and action command in full.
 
-Unlike the full v1 specification, `run` and actions do not exist yet and so
-are not gated, and `remove` has no `--force`, so the rule that
+Unlike the full v1 specification, `remove` has no `--force`, so the rule that
 `remove --no-hooks --force` still requires trust does not apply yet.
 See [specs/deco-trust.md](specs/deco-trust.md) for the full design.
 
@@ -331,8 +330,8 @@ and compatibility checks, and only for trusted configuration (see
 
 | Hook | Runs in | When |
 | --- | --- | --- |
-| `post_create` | `assemble`, `refresh`, `start`, `exec`, `shell` | On a container's first start, before `post_start`: after `assemble` or `refresh` creates and starts it, or when a container that was created but never started (for example after an interrupted `assemble`) is started later |
-| `post_start` | `assemble`, `refresh`, `start`, `exec`, `shell` | After every start Deco performs, including `exec` and `shell` starting a stopped container |
+| `post_create` | `assemble`, `refresh`, `start`, `exec`, `run`, `shell` | On a container's first start, before `post_start`: after `assemble` or `refresh` creates and starts it, or when a container that was created but never started (for example after an interrupted `assemble`) is started later |
+| `post_start` | `assemble`, `refresh`, `start`, `exec`, `run`, `shell` | After every start Deco performs, including `exec`, `run`, and `shell` starting a stopped container |
 | `pre_enter` | `shell` | Immediately before entering the shell |
 | `pre_stop` | `stop`, `remove`, `refresh` | Before Deco stops a running container |
 
@@ -364,6 +363,21 @@ shell differ from the current configuration (for example after editing
 `deco refresh`). To make the shell check possible, Deco labels each container
 it creates with `dev.deco.shell`, beyond the labels the specification lists;
 containers created before this label existed are not checked for the shell.
+
+### Actions
+
+The optional `[actions]` table names shell commands for common project tasks,
+which `deco actions` lists and `deco run NAME` runs in the container:
+
+```toml
+[actions]
+test = "cargo test"
+lint = "cargo clippy --all-targets"
+```
+
+Names must match `[A-Za-z][A-Za-z0-9_-]*` and are case-sensitive; commands
+must be strings. Unlike the full v1 specification, which only requires a
+non-empty command, a command made only of whitespace is also rejected.
 
 ## Installation
 
@@ -600,6 +614,50 @@ including the hooks that would run.
 Run `dune build @test-shell-pty` for opt-in Linux PTY tests using Python 3's
 standard library and fake Podman; ordinary tests require no Python.
 
+### List actions
+
+Run `deco actions` to list the configured [actions](#actions), sorted by name.
+It reads the configuration only: no trust, container, or Podman is needed,
+except to locate a project with `-p NAME`.
+
+```text
+$ deco actions
+┌──────┬────────────────────────────┐
+│ NAME │ COMMAND                    │
+├──────┼────────────────────────────┤
+│ lint │ cargo clippy --all-targets │
+│ test │ cargo test                 │
+└──────┴────────────────────────────┘
+```
+
+Control characters in commands are escaped, so each action stays on one row.
+The table is for reading, not parsing; `--format json` prints a stable array of
+`{"name": ..., "command": ...}` objects with the exact commands. With no
+actions, the table form prints `No actions configured.` and the JSON form
+prints `[]`; both succeed. Invalid configuration returns 2.
+
+### Run an action
+
+Run `deco run NAME` to run a configured action as
+`<container.shell> -lc <command>`, as the configured user and in
+`container.workdir`. It works like `deco exec`:
+
+- Compatible stopped containers start automatically, running `post_start`
+  (and `post_create` for a container that was never started) before the
+  action; a failed hook prevents it. A missing container returns 4 and
+  requires `deco assemble`.
+- Stdin is inherited; a TTY is allocated when stdin and stdout are both
+  terminals. Exiting or interrupting the action leaves the container running.
+- The action's exit code passes through unchanged; abnormal termination
+  returns 1.
+- Untrusted configuration returns 5 (see
+  [Configuration trust](#configuration-trust)).
+
+An unknown name is a usage error (exit 2) that points to `deco actions`.
+Use `deco run --dry-run NAME` (or `-d`) to preview the start, hooks, and
+action without invoking Podman, and `deco run NAME -p my-project` to run an
+action of a listed project from anywhere.
+
 ### Start the development container
 
 Run `deco start` to start an existing stopped project container, or
@@ -790,7 +848,8 @@ Hooks
   post_start
 
 Actions
-  none
+  lint
+  test
 
 Ignored planned settings (not applied yet):
   container.cap_drop
@@ -854,7 +913,7 @@ Use `--format json` (before or after the command) for a stable object:
   "dns": [],
   "ports": [],
   "hooks": ["post_create", "post_start"],
-  "actions": []
+  "actions": ["lint", "test"]
 }
 ```
 
@@ -877,8 +936,9 @@ FIFO, it prints the report with `trust` set to `null` (`-` in human output),
 reports the problem on stderr, and exits 2, even if Podman is also
 unavailable.
 
-`hooks` names the configured hooks in execution order. Unlike the full v1
-specification, `dns`, `ports`, and `actions` are always empty and only the workspace mount is reported, because those settings
+`hooks` names the configured hooks in execution order and `actions` the
+configured action names, sorted. Unlike the full v1 specification, `dns` and
+`ports` are always empty and only the workspace mount is reported, because those settings
 are not applied yet; any that are configured appear under
 `Ignored planned settings` in the human report instead.
 
@@ -897,7 +957,7 @@ structural/type checks only: semantic constraints such as port ranges, capabilit
 names, namespace conflicts, and host path existence are deferred.
 
 Capabilities, network settings, environment injection, devices/security options,
-additional mounts, secrets, and actions remain inactive. In particular,
+additional mounts, and secrets remain inactive. In particular,
 accepting the Podman template does not enable its nested-Podman setup, and
 accepting capability-drop settings does not apply capability restrictions.
 This compatibility policy lasts until each setting is implemented; the v1
