@@ -7,8 +7,29 @@ releases may change behaviour.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-22
+
+Developer workflows: lifecycle hooks, named actions, and configuration trust
+that must approve `.deco/` before Deco acts on it.
+
 ### Added
 
+- Lifecycle hooks. The `[hooks]` table's `post_create`, `post_start`,
+  `pre_enter` and `pre_stop` commands run inside the container as
+  `<container.shell> -lc <command>`, as the configured user and in
+  `container.workdir`. `post_create` runs on a container's first start and
+  `post_start` after every start Deco performs, in `assemble`, `refresh`,
+  `start`, `exec`, `run` and `shell`; `pre_enter` runs before `shell` enters
+  the container; `pre_stop` runs before `stop`, `remove` and `refresh` stop a
+  running container. Hook output goes to stderr. A failing hook stops the
+  command, and Deco exits with the hook's status. Dry runs list the hooks that
+  would run.
+- Named actions. The `[actions]` table maps names to shell commands.
+  `deco actions` lists them, as a table or with `--format json`, without
+  needing trust or Podman.
+- `deco run NAME` runs an action in the container like `deco exec`: it starts
+  a stopped container (running its hooks), passes the action's exit code
+  through, and supports `--dry-run` and `-p NAME`.
 - Configuration trust. `assemble`, `refresh`, `start`, `stop`, `remove`,
   `exec`, and `shell` now refuse with exit code 5 until the project's `.deco/`
   directory has been approved, and refuse again when anything in it changes,
@@ -22,11 +43,16 @@ releases may change behaviour.
 - `deco info` reports the trust state, digest, last approval time, and changed
   entries.
 - `--no-hooks` for `stop` and `remove` skips the `pre_stop` hook, so they work
-  on configuration that is not trusted, with a warning. Hooks are not
-  implemented yet, so it currently only waives the trust requirement.
+  on configuration that is not trusted, with a warning.
 
 ### Changed
 
+- `deco info` reports the configured hook and action names, and
+  `deco validate` no longer lists `hooks` and `actions` as ignored planned
+  settings.
+- Deco labels the containers it creates with `dev.deco.shell`, so `pre_stop`
+  can be skipped with a warning when the container's shell no longer matches
+  the configuration.
 - Ownership conflicts now name the image or container and say why it is not
   this project's: it was not created by Deco, it belongs to another Deco
   project, or it belongs to a project with the same name at another root. Each
@@ -114,6 +140,7 @@ First release: working project-local development containers in Podman.
   ignored, and `deco validate` lists them.
 - Signed source archives and a Linux x86_64 binary for each release.
 
-[Unreleased]: https://github.com/Eccl3s/deco/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Eccl3s/deco/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Eccl3s/deco/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Eccl3s/deco/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Eccl3s/deco/releases/tag/v0.1.0
