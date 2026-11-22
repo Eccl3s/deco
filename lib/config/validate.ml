@@ -136,20 +136,12 @@ let check (config : Config_types.t) =
       | Image, None -> ())
     config.user;
   Option.iter
-    (fun (hooks : hooks) ->
+    (fun hooks ->
       List.iter
         (fun (key, value) ->
-          optional [ "hooks"; key ]
-            (fun path value ->
-              if String.contains value '\000' then
-                error path "Must not contain NUL bytes")
-            value)
-        [
-          ("post_create", hooks.post_create);
-          ("post_start", hooks.post_start);
-          ("pre_enter", hooks.pre_enter);
-          ("pre_stop", hooks.pre_stop);
-        ])
+          if String.contains value '\000' then
+            error [ "hooks"; key ] "Must not contain NUL bytes")
+        (Effective.configured_hooks hooks))
     config.hooks;
   match !errors with
   | [] -> Ok ()
