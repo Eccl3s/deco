@@ -179,6 +179,8 @@ let runners ~label ~image =
         (* The status stage begins at create or start, not straight after the
            build, so callers can print lines between the two. *)
         run ~image argv
+    | Deco.Process.To_stderr ->
+        Deco.Process.run ~output ~forward_signals:true argv
     | Deco.Process.Capture ->
         (match argv with
         | "podman" :: "--remote=false" :: ("create" | "start") :: _ ->
@@ -192,6 +194,6 @@ let runners ~label ~image =
   let hook argv =
     (* Hook output streams to the terminal, so the status line ends first. *)
     status.finish true;
-    Deco.Process.run ~output:Deco.Process.Inherit ~forward_signals:true argv
+    Deco.Process.run ~output:Deco.Process.To_stderr ~forward_signals:true argv
   in
   { execute; read_many; hook; close = status.finish }

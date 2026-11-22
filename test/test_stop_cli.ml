@@ -213,9 +213,8 @@ let () =
           let calls = if Sys.file_exists log then read log else "" in
           match (args, expected) with
           | [], 0 ->
-              assert (err = "");
-              assert (
-                contains out "hook-output\nStopped example-dev-container\n");
+              assert (err = "hook-output\n");
+              assert (out = "Stopped example-dev-container\n");
               assert (
                 String.starts_with
                   ~prefix:"hook exec -- cid sh -lc echo bye\nstop\n" calls)
@@ -223,10 +222,11 @@ let () =
               assert (err = "" && contains out "Stopped example-dev-container\n");
               assert (not (contains calls "hook"))
           | _ ->
-              assert (out = "hook-output\n");
+              assert (out = "");
               assert (
                 err
-                = "deco: pre_stop hook failed with exit status 6; the \
+                = "hook-output\n\
+                   deco: pre_stop hook failed with exit status 6; the \
                    container was not stopped\n");
               assert (calls = "hook exec -- cid sh -lc echo bye\n"))
         [ ([], 0, 0); ([ "--no-hooks" ], 0, 0); ([], 6, 6) ])

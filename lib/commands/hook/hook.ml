@@ -70,7 +70,7 @@ let exit_status = function
 let run ?run loaded ~container_id name =
   let run =
     Option.value run ~default:(fun argv ->
-        Process.run ~output:Process.Inherit ~forward_signals:true argv)
+        Process.run ~output:Process.To_stderr ~forward_signals:true argv)
   in
   match configured loaded name with
   | None -> Ok ()

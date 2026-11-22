@@ -281,8 +281,8 @@ let () =
           let out, err =
             scenario ~before:"exited" ~hook:"echo hook-output; exit 0" 0
           in
-          assert (err = "");
-          assert (out = "hook-output\nStarted example-dev-container\n");
+          assert (err = "hook-output\n");
+          assert (out = "Started example-dev-container\n");
           assert (contains (calls ()) "exec -- cid sh -lc echo ready");
           let out, err =
             scenario ~before:"running" ~hook:"echo hook-output; exit 0" 0

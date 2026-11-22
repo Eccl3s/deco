@@ -153,13 +153,15 @@ esac
         else 0
       in
       let out, err = scenario 0 [ "/bin/printf"; "command" ] 0 in
-      assert (out = "hook-output\ncommand" && err = "");
+      (* Hook output goes to stderr, leaving stdout to the command. *)
+      assert (out = "command" && err = "hook-output\n");
       assert (hook_calls () = 1);
       let out, err = scenario ~stopped:false 0 [ "/bin/printf"; "command" ] 0 in
       assert (out = "command" && err = "" && hook_calls () = 0);
       let out, err = scenario 4 [ "/bin/printf"; "command" ] 4 in
-      assert (out = "hook-output\n");
+      assert (out = "");
       assert (
         err
-        = "deco: post_start hook failed with exit status 4\n\
+        = "hook-output\n\
+           deco: post_start hook failed with exit status 4\n\
            deco: Container was started and remains available.\n"))

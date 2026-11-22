@@ -1,6 +1,11 @@
 (** Direct argument-vector execution. Captured streams use temporary files to
     avoid pipe deadlocks; files and descriptors are cleaned on return. *)
-type output = Capture | Inherit
+type output =
+  | Capture  (** Capture stdout and stderr into the result. *)
+  | Inherit  (** Inherit Deco's stdout and stderr. *)
+  | To_stderr
+      (** Inherit Deco's stderr for both streams, so the child's output never
+          mixes with what Deco writes to stdout. *)
 
 type result = { status : Unix.process_status; stdout : string; stderr : string }
 

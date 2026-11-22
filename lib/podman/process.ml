@@ -1,4 +1,4 @@
-type output = Capture | Inherit
+type output = Capture | Inherit | To_stderr
 type result = { status : Unix.process_status; stdout : string; stderr : string }
 type error = { operation : string; message : string }
 
@@ -33,13 +33,14 @@ let run ?(output = Capture) ?poll ?(forward_signals = false) argv =
       Fun.protect ~finally:cleanup (fun () ->
           try
             let capture =
-              match output with Capture -> true | Inherit -> false
+              match output with Capture -> true | Inherit | To_stderr -> false
             in
             let out_path = if capture then temporary () else "" in
             let err_path = if capture then temporary () else "" in
             let out_fd =
               if capture then
                 Unix.openfile out_path [ Unix.O_WRONLY; Unix.O_CLOEXEC ] 0o600
+              else if output = To_stderr then Unix.stderr
               else Unix.stdout
             in
             Fun.protect

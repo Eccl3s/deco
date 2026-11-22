@@ -231,12 +231,8 @@ let () =
       reset ();
       creation false;
       let out, err = run [ "assemble" ] 0 in
-      assert (err = "");
-      assert (
-        out
-        = "Created and started example-dev-container\n\
-           hook-output\n\
-           hook-output\n");
+      assert (err = "hook-output\nhook-output\n");
+      assert (out = "Created and started example-dev-container\n");
       assert (hooks () = [ "created"; "started" ]);
       (* Already running: no hook. *)
       let out, err = run [ "assemble" ] 0 in
@@ -245,9 +241,10 @@ let () =
       reset ();
       creation ~hook_status:3 false;
       let out, err = run [ "assemble" ] 3 in
-      assert (out = "Created and started example-dev-container\nhook-output\n");
+      assert (out = "Created and started example-dev-container\n");
       assert (
         err
-        = "deco: post_create hook failed with exit status 3\n\
+        = "hook-output\n\
+           deco: post_create hook failed with exit status 3\n\
            deco: Container example-dev-container was left running.\n");
       assert (hooks () = [ "created" ]))

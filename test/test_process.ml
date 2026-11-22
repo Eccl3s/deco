@@ -10,6 +10,12 @@ let () =
           output_string stderr "abcdefghij"
         done
     | "exit" -> exit 7
+    | "to-stderr" ->
+        (* Run a child that writes to stdout with To_stderr, so the parent can
+           check where its output went. *)
+        ignore
+          (Process.run ~output:To_stderr
+             [ Sys.executable_name; "echo"; "payload" ])
     | "signal" -> Unix.kill (Unix.getpid ()) Sys.sigterm
     | "hold-silent" | "hold-writing" | "early-eof" | "barrier" -> ()
     | _ -> assert false
@@ -30,7 +36,10 @@ let () =
     assert (
       match Process.run ~output:Inherit [ Sys.executable_name; "echo"; "" ] with
       | Ok r -> r.status = Unix.WEXITED 0 && r.stdout = ""
-      | _ -> false)
+      | _ -> false);
+    (* To_stderr sends the child's stdout to Deco's stderr. *)
+    let r = run [ "to-stderr" ] in
+    assert (r.stdout = "" && r.stderr = "payload")
 
 let () =
   if Array.length Sys.argv = 1 then (

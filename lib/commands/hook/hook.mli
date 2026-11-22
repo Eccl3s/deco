@@ -2,9 +2,11 @@
 
     Every hook runs the same way: [<container.shell> -lc <command>] through
     [podman exec] in the selected container, as the configured user and in
-    [container.workdir], without a TTY or stdin, with output inherited so it
-    streams to the terminal. Callers decide when a hook runs; they run it only
-    on an owned, compatible container after their existing checks. *)
+    [container.workdir], without a TTY or stdin, with both output streams sent
+    to Deco's stderr so they stream to the terminal without mixing into Deco's
+    stdout (for example the output of [deco exec]). Callers decide when a hook
+    runs; they run it only on an owned, compatible container after their
+    existing checks. *)
 
 type name = Post_create | Post_start | Pre_enter | Pre_stop
 
@@ -52,5 +54,6 @@ val run :
   name ->
   (unit, failure) result
 (** Run the hook in [container_id] and wait for it. An unconfigured hook
-    succeeds without running anything. The default runner inherits stdout and
-    stderr and forwards signals. A nonzero exit status is a failure. *)
+    succeeds without running anything. The default runner sends the hook's
+    output to stderr ({!Process.To_stderr}) and forwards signals. A nonzero exit
+    status is a failure. *)

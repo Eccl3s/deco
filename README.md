@@ -323,8 +323,9 @@ pre_stop = "echo Stopping"
 ```
 
 Every hook runs as `<container.shell> -lc <command>` through `podman exec`, as
-the configured user and in `container.workdir`, without a TTY or stdin, with
-its output streamed to the terminal. Hooks run only after the usual ownership
+the configured user and in `container.workdir`, without a TTY or stdin. Its
+output (stdout and stderr) streams to Deco's stderr, so it never mixes into
+Deco's stdout, such as the output of a redirected `deco exec`. Hooks run only after the usual ownership
 and compatibility checks, and only for trusted configuration (see
 [Configuration trust](#configuration-trust)).
 

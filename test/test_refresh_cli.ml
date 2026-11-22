@@ -312,15 +312,12 @@ let () =
         ];
       install "ok";
       let out, err = run [ "refresh" ] 0 in
-      assert (err = "");
+      assert (err = "hook-a\nhook-b\nhook-c\n");
       assert (
         out
         = "Rebuilt image example-dev-image:latest\n\
-           hook-a\n\
            Stopped and removed container example-dev-container\n\
-           Created and started example-dev-container\n\
-           hook-b\n\
-           hook-c\n");
+           Created and started example-dev-container\n");
       assert (
         mutations ()
         = [
@@ -350,9 +347,9 @@ let () =
       assert (
         out
         = "Rebuilt image example-dev-image:latest\n\
-           hook-a\n\
            Stopped and removed container example-dev-container\n\
            Created and started example-dev-container\n");
+      assert (String.starts_with ~prefix:"hook-a\n" err);
       assert (contains err "deco: post_create hook failed with exit status 8\n");
       assert (
         contains err

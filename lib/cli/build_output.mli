@@ -23,8 +23,8 @@ type runners = {
     string list list -> (Deco.Process.result, Deco.Process.error) result list;
       (** Concurrent read-only commands, forwarding signals. *)
   hook : string list -> (Deco.Process.result, Deco.Process.error) result;
-      (** Run a lifecycle hook with inherited output, forwarding signals. The
-          status line is closed as complete first. *)
+      (** Run a lifecycle hook with its output on stderr, forwarding signals.
+          The status line is closed as complete first. *)
   close : bool -> unit;
       (** Close the status line. Closing an already closed status line does
           nothing. *)
