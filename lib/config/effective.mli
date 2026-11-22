@@ -48,6 +48,9 @@ type t = {
   container : container;
   mounts : mounts;
   hooks : hooks;  (** Configured lifecycle hooks; all [None] when omitted. *)
+  actions : (string * string) list;
+      (** Configured actions as [(name, command)] pairs sorted by name; empty
+          when omitted. *)
 }
 
 val image_reference : image -> string

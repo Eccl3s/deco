@@ -132,3 +132,9 @@ let () =
   assert (
     Config.Effective.configured_hooks c.hooks
     = [ ("post_start", "go"); ("pre_stop", "stop") ])
+
+let () =
+  assert ((resolve (decode "")).actions = []);
+  assert (
+    (resolve (decode "actions={test='t',build='b',Zed='z'}")).actions
+    = [ ("Zed", "z"); ("build", "b"); ("test", "t") ])

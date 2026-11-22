@@ -143,6 +143,20 @@ let check (config : Config_types.t) =
             error [ "hooks"; key ] "Must not contain NUL bytes")
         (Effective.configured_hooks hooks))
     config.hooks;
+  List.iter
+    (fun (name, command) ->
+      let path = [ "actions"; name ] in
+      if
+        name = ""
+        || (not (ascii_letter name.[0]))
+        || not
+             (String.for_all
+                (fun c -> ascii_letter c || digit c || c = '_' || c = '-')
+                name)
+      then error path "Expected an action name matching [A-Za-z][A-Za-z0-9_-]*"
+      else if nonblank path command && String.contains command '\000' then
+        error path "Must not contain NUL bytes")
+    (Option.value config.actions ~default:[]);
   match !errors with
   | [] -> Ok ()
   | errors -> Error (List.sort Diagnostic.compare errors)

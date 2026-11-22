@@ -76,6 +76,13 @@ let render ~now (status : Trust.status) (loaded : Config_loader.t) =
       List.iter
         (fun (name, command) -> line "  %s = %s" name (safe command))
         hooks);
+  section false "Actions";
+  (match effective.actions with
+  | [] -> line "  none"
+  | actions ->
+      List.iter
+        (fun (name, command) -> line "  %s = %s" (safe name) (safe command))
+        actions);
   section false "Planned settings (accepted, not applied by this version)";
   (match Config.Decode.planned_settings loaded.contents with
   | [] -> line "  none"

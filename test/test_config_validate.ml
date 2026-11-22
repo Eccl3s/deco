@@ -163,3 +163,38 @@ let () =
   assert (List.length (errors (config "image={name='Bad',tag=''}")) = 2);
   ignore (errors (decode "project.name='Demo'"));
   valid (decode "project.name='Demo'\nimage.name='demo'")
+
+(* Action names match [A-Za-z][A-Za-z0-9_-]* and are case-sensitive;
+   commands must not be blank or contain NUL bytes. *)
+let () =
+  List.iter
+    (fun suffix -> valid (config suffix))
+    [
+      "actions={test='make test',Test='make Test',a_b-c9='x'}";
+      "actions={}";
+      "[actions]\ndev = 'npm run dev'";
+    ];
+  List.iter
+    (fun (suffix, name, message) ->
+      match errors (config suffix) with
+      | [ { path; message = actual } ] ->
+          assert (path = [ "actions"; name ]);
+          if actual <> message then failwith actual
+      | _ -> failwith ("Expected one error: " ^ suffix))
+    [
+      ( "actions={'1x'='x'}",
+        "1x",
+        "Expected an action name matching [A-Za-z][A-Za-z0-9_-]*" );
+      ( "actions={'a.b'='x'}",
+        "a.b",
+        "Expected an action name matching [A-Za-z][A-Za-z0-9_-]*" );
+      ( "actions={'-x'='x'}",
+        "-x",
+        "Expected an action name matching [A-Za-z][A-Za-z0-9_-]*" );
+      ( "actions={''='x'}",
+        "",
+        "Expected an action name matching [A-Za-z][A-Za-z0-9_-]*" );
+      ("actions={test=''}", "test", "Must not be blank");
+      ("actions={test='  '}", "test", "Must not be blank");
+      ("actions={test=\"a\\u0000b\"}", "test", "Must not contain NUL bytes");
+    ]

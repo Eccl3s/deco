@@ -91,4 +91,8 @@ let apply (config : Config_types.t) =
                     pre_enter = None;
                     pre_stop = None;
                   };
+            actions =
+              List.sort
+                (fun (a, _) (b, _) -> String.compare a b)
+                (Option.value config.actions ~default:[]);
           }

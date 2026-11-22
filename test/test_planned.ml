@@ -7,14 +7,12 @@ let () =
       (decode
          "container.cap_drop=['ALL']\n\
           network.mode='pasta'\n\
-          actions.test='DO_NOT_PRINT'\n\
           container.environment.TOKEN='SECRET_VALUE'")
   in
   assert ((Option.get config.Config.container).Config.name = None);
   assert (
     paths
     = [
-        [ "actions"; "test" ];
         [ "container"; "cap_drop" ];
         [ "container"; "environment"; "TOKEN" ];
         [ "network"; "mode" ];
@@ -26,11 +24,10 @@ let () =
        container.privileged=true\n\
        network.ports=[{host=8080,container=80}]\n\
        hooks.post_create='supported-not-listed'\n\
-       actions={}\n\
+       actions={supported='not listed'}\n\
        container.environment.TOKEN='SECRET_VALUE'\n\
        container.name='supported-not-listed'"
     = [
-        ([ "actions" ], Some "{}");
         ([ "container"; "cap_drop" ], Some "[\"ALL\"]");
         ([ "container"; "environment"; "TOKEN" ], None);
         ([ "container"; "privileged" ], Some "true");
@@ -52,7 +49,6 @@ let () =
       "container.secrets=[{name='x',typo=true}]";
       "container.namespaces.typo='host'";
       "container.name=42";
-      "actions={test=42}";
       "unknown={}";
       "network.mode='pasta'\nnetwork.mode='host'";
     ];

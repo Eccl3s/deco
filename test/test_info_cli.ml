@@ -80,7 +80,13 @@ let () =
       mkdir "/child";
       mkdir "/other";
       let config = temp ^ "/.deco/config.toml" in
-      write config "[project]\nname='example'\n[actions]\ntest='true'\n";
+      write config
+        "[project]\n\
+         name='example'\n\
+         [network]\n\
+         mode='pasta'\n\
+         [actions]\n\
+         test='true'\n";
       write (temp ^ "/.deco/build/Containerfile") "FROM scratch\n";
       let log = temp ^ "/calls" in
       let fake = temp ^ "/fake/podman" in
@@ -209,7 +215,7 @@ let () =
                 at [ "container"; "created" ] j = `String "2020-01-02T10:30:00Z");
               assert (at [ "container"; "compatible" ] j = `Bool true);
               assert (at [ "runtime"; "workdir" ] j = `String "/");
-              assert (at [ "actions" ] j = `List []) );
+              assert (at [ "actions" ] j = `List [ `String "test" ]) );
           ( "stopped",
             script ~image:(image ~root:temp)
               ~container:(container ~root:temp "exited")
@@ -263,7 +269,8 @@ let () =
               " days ago)\n";
               "  State:       stopped (exited)\n";
               "  Compatible:  no\n    - Container init is disabled\n";
-              "Ignored planned settings (not applied yet):\n  actions.test\n";
+              "Actions\n  test\n";
+              "Ignored planned settings (not applied yet):\n  network.mode\n";
             ];
           let expected = run ?term [ "info"; "--format"; "json" ] 0 in
           List.iter

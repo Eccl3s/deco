@@ -86,6 +86,9 @@ let () =
             "Hooks";
             "  none";
             "";
+            "Actions";
+            "  none";
+            "";
             "Planned settings (accepted, not applied by this version)";
             "  none";
             "";
@@ -143,13 +146,14 @@ let () =
           ^ " -> /workspace (read-write)  [outside the project]\n";
           "\n\
            Planned settings (accepted, not applied by this version)\n\
-          \  actions.test = \"line one\\nline two\"\n\
           \  container.environment.TOKEN = (hidden)\n\
           \  container.privileged = true\n";
           "\n\
            Hooks\n\
           \  post_create = curl example | sh\n\
           \  pre_stop = echo \\x1b[2J\n\n\
+           Actions\n\
+          \  test = line one\\x0aline two\n\n\
            Planned settings";
         ];
       assert (not (contains review "secret-looking-value"));

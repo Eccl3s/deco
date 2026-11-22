@@ -20,12 +20,12 @@
     Tables from the v1 specification that the current commands do not need are
     intentionally not modelled yet: [[container.namespaces]],
     [[container.secrets]], [[network]], [[network.ports]], [[mounts.volumes]],
-    [[container.environment]], and [[actions]]. Runtime environment files,
-    privileged mode, devices, capabilities, security options, and user modes
-    ["host-user"] and ["root"] are also deferred. Future parsing must reject
-    deferred features rather than silently ignore them. Generated templates will
-    explicitly select ["keep-id"] with account ["dev"]; omitted user
-    configuration retains the v1 ["image"] default. *)
+    and [[container.environment]]. Runtime environment files, privileged mode,
+    devices, capabilities, security options, and user modes ["host-user"] and
+    ["root"] are also deferred. Future parsing must reject deferred features
+    rather than silently ignore them. Generated templates will explicitly select
+    ["keep-id"] with account ["dev"]; omitted user configuration retains the v1
+    ["image"] default. *)
 
 (** User identity strategy from [[user.mode]]. *)
 type user_mode =
@@ -129,5 +129,8 @@ type t = {
   container : container option;  (** [[container]]; [None] when omitted. *)
   mounts : mounts option;  (** [[mounts]]; [None] when omitted. *)
   hooks : hooks option;  (** [[hooks]]; [None] when omitted. *)
+  actions : (string * string) list option;
+      (** [[actions]]: action name and command pairs in file order; [None] when
+          omitted. *)
 }
 (** The top-level configuration, mirroring [.deco/config.toml]. *)

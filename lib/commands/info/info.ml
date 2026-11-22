@@ -233,7 +233,7 @@ let build ~trust (loaded : Config_loader.t) observed =
     dns = [];
     ports = [];
     hooks = List.map fst (Config.Effective.configured_hooks e.hooks);
-    actions = [];
+    actions = List.map fst e.actions;
   }
 
 let collect ?run ?read_many
