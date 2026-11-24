@@ -38,17 +38,17 @@ let () =
     }
   in
   let resolve = Command_plan.resolve ~image_id:"unused" ~container_id:"cid" in
-  (* The action runs as <shell> -lc <command> with exec's TTY flags. *)
+  (* The action runs as <shell> -c <command> with exec's TTY flags. *)
   List.iter
     (fun tty ->
       let plan = get (Run_plan.make loaded ~tty "test") in
       assert (plan.name = "test" && plan.command = "make test");
-      assert (plan.argv = [ "sh"; "-lc"; "make test" ]);
+      assert (plan.argv = [ "sh"; "-c"; "make test" ]);
       assert (
         resolve plan.exec.exec
         = [ "podman"; "--remote=false"; "exec"; "--interactive" ]
           @ (if tty then [ "--tty" ] else [])
-          @ [ "--"; "cid"; "sh"; "-lc"; "make test" ]))
+          @ [ "--"; "cid"; "sh"; "-c"; "make test" ]))
     [ false; true ];
   (* The configured shell is used. *)
   let bash =
@@ -63,7 +63,7 @@ let () =
   in
   assert (
     (get (Run_plan.make bash ~tty:false "test")).argv
-    = [ "/bin/bash"; "-lc"; "make test" ]);
+    = [ "/bin/bash"; "-c"; "make test" ]);
   (* Names are matched exactly. *)
   List.iter
     (fun name ->

@@ -18,7 +18,7 @@ let argv (loaded : Config_loader.t) ~container command =
   Podman_command.exec ~interactive:false ~tty:false
     ~user:(User_identity.exec_user loaded.identity)
     ~workdir:loaded.effective.container.workdir ~container
-    [ loaded.effective.container.shell; "-lc"; command ]
+    [ loaded.effective.container.shell; "-c"; command ]
 
 let command loaded name =
   Option.map

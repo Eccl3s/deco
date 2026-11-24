@@ -749,8 +749,11 @@ Runs the named configured action inside the project container as the
 configured user, in `container.workdir`, using:
 
 ```text
-<container.shell> -lc <action-command>
+<container.shell> -c <action-command>
 ```
+
+As for hooks, the shell is not a login shell, so the action sees the same
+environment as `deco exec` (see `deco-config.md`).
 
 If the existing container is stopped, Deco starts it and runs `post_start`
 before the action. A missing container fails with exit code `4`. An unknown

@@ -36,8 +36,8 @@ elif a[:2]==['container','inspect']:
 elif a[:2]==['container','exists']: sys.exit(1)
 elif a[0]=='start': marker.touch()
 elif a[:2]==['exec','--']:
- # A hook: no stdin or TTY, the configured shell with -lc.
- assert a[2:5]==['cid','/bin/sh','-lc'],a
+ # A hook: no stdin or TTY, the configured shell with -c.
+ assert a[2:5]==['cid','/bin/sh','-c'],a
  print('HOOK:'+a[5],flush=True)
  sys.exit(9 if mode=='pre-enter-fail' and a[5]=='echo pre' else 0)
 elif a[0]=='exec':

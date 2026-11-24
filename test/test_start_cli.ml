@@ -53,7 +53,7 @@ let script ~root ~marker ?(project = "example") ?label_root ?(init = true)
          "  if test -f '" ^ marker ^ "'; then printf '%s' '" ^ container after
          ^ "'; else printf '%s' '" ^ container before ^ "'; fi ;;");
       "'start --') test \"$3\" = cid || exit 98; " ^ start ^ " ;;";
-      "'exec --') test \"$3 $4 $5\" = 'cid sh -lc' || exit 95; " ^ hook ^ " ;;";
+      "'exec --') test \"$3 $4 $5\" = 'cid sh -c' || exit 95; " ^ hook ^ " ;;";
       "*) exit 99 ;;";
       "esac";
       "";
@@ -283,7 +283,7 @@ let () =
           in
           assert (err = "hook-output\n");
           assert (out = "Started example-dev-container\n");
-          assert (contains (calls ()) "exec -- cid sh -lc echo ready");
+          assert (contains (calls ()) "exec -- cid sh -c echo ready");
           let out, err =
             scenario ~before:"running" ~hook:"echo hook-output; exit 0" 0
           in

@@ -16,6 +16,15 @@ releases may change behaviour.
   the label are treated as having those settings unset, so existing containers
   stay compatible. No setting contributes to the hash yet.
 
+### Changed
+
+- Hooks and actions run as `<container.shell> -c <command>` instead of `-lc`,
+  so they see the image's environment, as `deco exec` and `deco shell` do.
+  Login shells on Debian, Ubuntu and Alpine images reset `PATH` from
+  `/etc/profile`, which hid tools such as `go` and `cargo` that images add to
+  `PATH`. Commands that relied on `/etc/profile` or `~/.profile` must now
+  source them, for example `. ~/.profile && make test`.
+
 ## [0.3.0] - 2026-11-22
 
 Developer workflows: lifecycle hooks, named actions, and configuration trust

@@ -741,10 +741,10 @@ let () =
     let hook argv =
       let name =
         match List.rev argv with
-        | "echo created" :: "-lc" :: "sh" :: container :: "--" :: _ ->
+        | "echo created" :: "-c" :: "sh" :: container :: "--" :: _ ->
             assert (container = id);
             "post_create"
-        | "echo started" :: "-lc" :: "sh" :: container :: "--" :: _ ->
+        | "echo started" :: "-c" :: "sh" :: container :: "--" :: _ ->
             assert (container = id);
             "post_start"
         | _ -> failwith ("Unexpected hook: " ^ String.concat " " argv)

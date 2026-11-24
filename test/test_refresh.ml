@@ -368,9 +368,9 @@ let () =
     let hook argv =
       let name, container =
         match List.rev argv with
-        | "a" :: "-lc" :: "sh" :: c :: _ -> ("pre_stop", c)
-        | "b" :: "-lc" :: "sh" :: c :: _ -> ("post_create", c)
-        | "c" :: "-lc" :: "sh" :: c :: _ -> ("post_start", c)
+        | "a" :: "-c" :: "sh" :: c :: _ -> ("pre_stop", c)
+        | "b" :: "-c" :: "sh" :: c :: _ -> ("post_create", c)
+        | "c" :: "-c" :: "sh" :: c :: _ -> ("post_start", c)
         | _ -> failwith ("Unexpected hook: " ^ String.concat " " argv)
       in
       (* Hooks run in the container that is running at that moment. *)

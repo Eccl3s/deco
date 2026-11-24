@@ -341,8 +341,11 @@ pre_enter = "echo Entering dev shell"
 pre_stop = "echo Stopping"
 ```
 
-Every hook runs as `<container.shell> -lc <command>` through `podman exec`, as
-the configured user and in `container.workdir`, without a TTY or stdin. Its
+Every hook runs as `<container.shell> -c <command>` through `podman exec`, as
+the configured user and in `container.workdir`, without a TTY or stdin. It is
+not a login shell, so it sees the image's environment, as `deco exec` does,
+without reading `/etc/profile` or `~/.profile`; source them in the command if
+it needs them. Its
 output (stdout and stderr) streams to Deco's stderr, so it never mixes into
 Deco's stdout, such as the output of a redirected `deco exec`. Hooks run only after the usual ownership
 and compatibility checks, and only for trusted configuration (see
@@ -659,8 +662,9 @@ prints `[]`; both succeed. Invalid configuration returns 2.
 ### Run an action
 
 Run `deco run NAME` to run a configured action as
-`<container.shell> -lc <command>`, as the configured user and in
-`container.workdir`. It works like `deco exec`:
+`<container.shell> -c <command>`, as the configured user and in
+`container.workdir`, with the same environment as hooks. It works like
+`deco exec`:
 
 - Compatible stopped containers start automatically, running `post_start`
   (and `post_create` for a container that was never started) before the

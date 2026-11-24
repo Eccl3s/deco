@@ -126,7 +126,7 @@ type hooks = {
       (** Runs before Deco stops or removes a running container. *)
 }
 (** The [[hooks]] table: lifecycle commands run inside the container through
-    [<container.shell> -lc <command>]. Every key is optional. *)
+    [<container.shell> -c <command>]. Every key is optional. *)
 
 type t = {
   project : project;  (** Required: the [[project]] table must be present. *)
