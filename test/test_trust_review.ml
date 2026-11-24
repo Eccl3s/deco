@@ -80,6 +80,13 @@ let () =
             "  Workdir:        -";
             "  User mode:      image";
             "";
+            "Security";
+            "  Privileged:     no";
+            "  Devices:        none";
+            "  Cap add:        none";
+            "  Cap drop:       none";
+            "  Options:        none";
+            "";
             "Mounts";
             "  Workspace:      none";
             "";
@@ -111,6 +118,10 @@ let () =
             user.mode='keep-id'\n\
             user.name='dev'\n\
             container.privileged=true\n\
+            container.devices=['/dev/fuse','/dev/a:/dev/b:rw']\n\
+            container.cap_add=['SYS_ADMIN','MKNOD']\n\
+            container.cap_drop=['ALL']\n\
+            container.security_options=[\"label=disable\\u001b[2J\"]\n\
             network.mode='host'\n\
             hooks.post_create='curl example | sh'\n\
             hooks.pre_stop=\"echo \\u001b[2J\"\n\
@@ -143,6 +154,14 @@ let () =
           "  Pull:           yes\n";
           "  Build args:     NODE_VERSION\n";
           "  User mode:      keep-id\n";
+          "\n\
+           Security\n\
+          \  Privileged:     yes  [weakens isolation]\n\
+          \  Devices:        /dev/fuse, /dev/a:/dev/b:rw  [host devices]\n\
+          \  Cap add:        SYS_ADMIN, MKNOD  [adds capabilities]\n\
+          \  Cap drop:       ALL\n\
+          \  Options:        label=disable\\x1b[2J  [changes confinement]\n\n\
+           Mounts\n";
           "  Workspace:      " ^ outside
           ^ " -> /workspace (read-write)  [outside the project]\n";
           "\n\
