@@ -24,7 +24,9 @@ workdir = "/workspace"
 shell = "bash"
 devices = ["/dev/fuse"]
 security_options = ["label=disable"]
-cap_add = ["SYS_ADMIN", "MKNOD"]
+# No cap_add: the base image's io.containers.capabilities label already grants
+# what nested rootless Podman needs, and Podman cannot add capabilities outside
+# that label, so Deco refuses cap_add entries it excludes.
 
 # OPTIONAL: Add environment variables only when they are safe to store here.
 # [container.environment]
