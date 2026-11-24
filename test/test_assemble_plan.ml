@@ -349,4 +349,14 @@ let () =
   assert (List.mem "dev.deco.shell=/bin/zsh" (pairs plan.create));
   (* The image is not labelled with the shell. *)
   assert (
-    not (List.exists (String.starts_with ~prefix:"dev.deco.shell") plan.build))
+    not (List.exists (String.starts_with ~prefix:"dev.deco.shell") plan.build));
+  (* The container records its create-settings digest; the image does not. *)
+  assert (
+    List.mem
+      ("dev.deco.create-digest=" ^ Create_settings.of_loaded loaded)
+      (pairs plan.create));
+  assert (
+    not
+      (List.exists
+         (String.starts_with ~prefix:"dev.deco.create-digest")
+         plan.build))
