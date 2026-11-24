@@ -997,3 +997,16 @@ python3 test/template_podman.py _build/default/bin/deco.exe
 This builds the unchanged Debian template (including image pulls and package
 installation), exercises validate/assemble/exec/stop/remove in a temporary project,
 and cleans up only its owned resources without pruning parent images.
+
+Check every template, or only those named, with:
+
+```sh
+python3 test/templates_podman.py _build/default/bin/deco.exe [TEMPLATE ...]
+```
+
+Each template is generated, assembled and removed in its own temporary project.
+The check verifies the applied security options (the capability bounding set,
+devices, and nested Podman for the `podman` template), runs the template's
+toolchain through `container.shell -c` as hooks and actions do, and requires
+`deco info` to report the container compatible. It pulls every template's base
+image, so the first run is slow.
