@@ -7,6 +7,15 @@ releases may change behaviour.
 
 ## [Unreleased]
 
+### Added
+
+- Deco labels the containers it creates with `dev.deco.create-digest`, a hash
+  of the create-time settings that inspection cannot compare reliably. A
+  container whose recorded hash differs from the configuration's is
+  incompatible, and `deco refresh` recreates it. Containers created without
+  the label are treated as having those settings unset, so existing containers
+  stay compatible. No setting contributes to the hash yet.
+
 ## [0.3.0] - 2026-11-22
 
 Developer workflows: lifecycle hooks, named actions, and configuration trust
