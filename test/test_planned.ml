@@ -5,7 +5,7 @@ let () =
   let config, paths =
     Result.get_ok
       (decode
-         "container.cap_drop=['ALL']\n\
+         "container.env_files=['.env']\n\
           network.mode='pasta'\n\
           container.environment.TOKEN='SECRET_VALUE'")
   in
@@ -13,24 +13,24 @@ let () =
   assert (
     paths
     = [
-        [ "container"; "cap_drop" ];
+        [ "container"; "env_files" ];
         [ "container"; "environment"; "TOKEN" ];
         [ "network"; "mode" ];
       ]);
   assert (
     Config.Decode.planned_settings
       "project.name='example'\n\
-       container.cap_drop=['ALL']\n\
-       container.privileged=true\n\
+       container.env_files=['.env']\n\
+       container.namespaces.pid='host'\n\
        network.ports=[{host=8080,container=80}]\n\
        hooks.post_create='supported-not-listed'\n\
        actions={supported='not listed'}\n\
        container.environment.TOKEN='SECRET_VALUE'\n\
        container.name='supported-not-listed'"
     = [
-        ([ "container"; "cap_drop" ], Some "[\"ALL\"]");
+        ([ "container"; "env_files" ], Some "[\".env\"]");
         ([ "container"; "environment"; "TOKEN" ], None);
-        ([ "container"; "privileged" ], Some "true");
+        ([ "container"; "namespaces"; "pid" ], Some "\"host\"");
         ([ "network"; "ports[0]"; "container" ], Some "80");
         ([ "network"; "ports[0]"; "host" ], Some "8080");
       ]);
@@ -39,10 +39,10 @@ let () =
     (fun extra -> assert (Result.is_error (decode extra)))
     [
       "network.mdoe='pasta'";
-      "container.cap_dorp=['ALL']";
+      "container.env_filse=['.env']";
       "hooks.post_strat='x'";
-      "container.cap_drop=42";
-      "container.cap_drop=[1]";
+      "container.env_files=42";
+      "container.env_files=[1]";
       "container.environment.TOKEN=42";
       "network.ports=[{host=12,typo=true}]";
       "mounts.volumes=[{target='/x',typo=true}]";
@@ -57,7 +57,7 @@ let () =
       (decode
          "network.ports=[{host=999999,container=1}]\n\
           mounts.volumes=[{source='/missing/path',target='/volume'}]\n\
-          container.devices=['/missing/device']\n\
+          container.env_files=['/missing/file']\n\
           container.secrets=[{name='unavailable'}]\n\
           hooks.pre_stop='supported'")
   in
@@ -66,4 +66,16 @@ let () =
   assert (
     Result.is_ok
       (decode
-         "container.cap_drop=['FUTURE_CAPABILITY']\nnetwork.mode='future-mode'"))
+         "container.namespaces.pid='future-mode'\nnetwork.mode='future-mode'"))
+
+(* Security options are supported settings, so they are no longer listed. *)
+let () =
+  assert (
+    Config.Decode.planned_settings
+      "project.name='example'\n\
+       container.privileged=true\n\
+       container.devices=['/dev/fuse']\n\
+       container.cap_add=['NET_ADMIN']\n\
+       container.cap_drop=['ALL']\n\
+       container.security_options=['label=disable']"
+    = [])

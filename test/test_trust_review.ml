@@ -111,6 +111,7 @@ let () =
             user.mode='keep-id'\n\
             user.name='dev'\n\
             container.privileged=true\n\
+            network.mode='host'\n\
             hooks.post_create='curl example | sh'\n\
             hooks.pre_stop=\"echo \\u001b[2J\"\n\
             actions.test='''line one\n\
@@ -147,7 +148,7 @@ let () =
           "\n\
            Planned settings (accepted, not applied by this version)\n\
           \  container.environment.TOKEN = (hidden)\n\
-          \  container.privileged = true\n";
+          \  network.mode = \"host\"\n";
           "\n\
            Hooks\n\
           \  post_create = curl example | sh\n\

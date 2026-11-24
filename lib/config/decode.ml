@@ -56,6 +56,21 @@ let from_string_with_ignored input =
         error path "Expected a boolean";
         None
   in
+  let strings path = function
+    | Otoml.TomlArray values ->
+        let decoded =
+          List.filter_map
+            (function Otoml.TomlString s -> Some s | _ -> None)
+            values
+        in
+        if List.length decoded = List.length values then Some decoded
+        else (
+          error path "Expected an array of strings";
+          None)
+    | _ ->
+        error path "Expected an array of strings";
+        None
+  in
   let enum choices path value =
     match string path value with
     | None -> None
@@ -148,11 +163,26 @@ let from_string_with_ignored input =
         })
   in
   let container =
-    record [ "name"; "workdir"; "shell" ] (fun p f ->
+    record
+      [
+        "name";
+        "workdir";
+        "shell";
+        "privileged";
+        "devices";
+        "cap_add";
+        "cap_drop";
+        "security_options";
+      ] (fun p f ->
         {
           name = field p f "name" string;
           workdir = field p f "workdir" string;
           shell = field p f "shell" string;
+          privileged = field p f "privileged" boolean;
+          devices = field p f "devices" strings;
+          cap_add = field p f "cap_add" strings;
+          cap_drop = field p f "cap_drop" strings;
+          security_options = field p f "security_options" strings;
         })
   in
   let workspace =

@@ -62,6 +62,16 @@ let apply (config : Config_types.t) =
               (fun container -> container.name)
               (config.project.name ^ "-dev-container");
           shell = get config.container (fun container -> container.shell) "sh";
+          privileged =
+            get config.container (fun container -> container.privileged) false;
+          devices = get config.container (fun container -> container.devices) [];
+          cap_add = get config.container (fun container -> container.cap_add) [];
+          cap_drop =
+            get config.container (fun container -> container.cap_drop) [];
+          security_options =
+            get config.container
+              (fun container -> container.security_options)
+              [];
           workdir =
             (match
                Option.bind config.container (fun container -> container.workdir)

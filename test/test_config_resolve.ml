@@ -138,3 +138,24 @@ let () =
   assert (
     (resolve (decode "actions={test='t',build='b',Zed='z'}")).actions
     = [ ("Zed", "z"); ("build", "b"); ("test", "t") ])
+
+(* Security options default to off and empty, and keep configured order. *)
+let () =
+  let c = (resolve (decode "")).container in
+  assert (
+    (not c.privileged) && c.devices = [] && c.cap_add = [] && c.cap_drop = []
+    && c.security_options = []);
+  let c =
+    (resolve
+       (decode
+          "container.privileged=true\n\
+           container.devices=['/dev/b','/dev/a']\n\
+           container.cap_add=['MKNOD','SYS_ADMIN']\n\
+           container.cap_drop=['ALL']\n\
+           container.security_options=['label=disable']"))
+      .container
+  in
+  assert c.privileged;
+  assert (c.devices = [ "/dev/b"; "/dev/a" ]);
+  assert (c.cap_add = [ "MKNOD"; "SYS_ADMIN" ]);
+  assert (c.cap_drop = [ "ALL" ] && c.security_options = [ "label=disable" ])

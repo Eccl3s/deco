@@ -198,3 +198,36 @@ let () =
       ("actions={test='  '}", "test", "Must not be blank");
       ("actions={test=\"a\\u0000b\"}", "test", "Must not contain NUL bytes");
     ]
+
+(* Container security options follow the spec's syntax rules. *)
+let () =
+  List.iter
+    (fun suffix -> valid (config suffix))
+    [
+      "container.privileged=true";
+      "container.devices=['/dev/fuse','/dev/a:/dev/b','/dev/a:/b:rwm','/x:/y:m']";
+      "container.cap_add=['SYS_ADMIN','net-admin','CAP_9']";
+      "container.cap_drop=['ALL']";
+      "container.security_options=['label=disable','no-new-privileges']";
+      "container={devices=[],cap_add=[],cap_drop=[],security_options=[]}";
+    ];
+  List.iter
+    (fun (suffix, path) ->
+      match Config.Validate.check (config suffix) with
+      | Error [ e ] -> assert (e.path = [ "container"; path ])
+      | _ -> failwith suffix)
+    [
+      ("container.devices=['']", "devices[0]");
+      ("container.devices=['dev/fuse']", "devices[0]");
+      ("container.devices=['/dev/a','dev/b']", "devices[1]");
+      ("container.devices=['/dev/a:b']", "devices[0]");
+      ("container.devices=['/dev/a:']", "devices[0]");
+      ("container.devices=['/dev/a:/b:']", "devices[0]");
+      ("container.devices=['/dev/a:/b:rx']", "devices[0]");
+      ("container.devices=['/dev/a:/b:rr']", "devices[0]");
+      ("container.devices=['/dev/a:/b:rw:m']", "devices[0]");
+      ("container.cap_add=['']", "cap_add[0]");
+      ("container.cap_add=['NET ADMIN']", "cap_add[0]");
+      ("container.cap_drop=['ALL','SYS.ADMIN']", "cap_drop[1]");
+      ("container.security_options=['']", "security_options[0]");
+    ]
