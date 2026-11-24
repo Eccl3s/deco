@@ -805,3 +805,118 @@ let () =
       "running" ) ->
       ()
   | _ -> assert false
+
+(* An image whose io.containers.capabilities label excludes a cap_add entry:
+   Podman would not apply it, so assemble refuses before podman create. *)
+let () =
+  let loaded text : Config_loader.t =
+    let source =
+      Result.get_ok
+        (Config.Decode.from_string ("project.name='example'\n" ^ text))
+    in
+    {
+      ignored_paths = [];
+      contents = "";
+      source;
+      effective = Result.get_ok (Config.Resolve.apply source);
+      project =
+        { root = "/project"; config_path = "/project/.deco/config.toml" };
+      host_paths =
+        {
+          build_context = "/project/.deco/build";
+          containerfile = "/project/.deco/build/Containerfile";
+          workspace_source = None;
+        };
+      identity = Image;
+    }
+  in
+  let image label : Podman.image =
+    {
+      id = "iid";
+      labels =
+        [
+          ("dev.deco.managed", "true");
+          ("dev.deco.project", "example");
+          ("dev.deco.project-root", "/project");
+        ]
+        @ Option.to_list
+            (Option.map
+               (fun v -> (Container_runtime.capabilities_label, v))
+               label);
+      user = "";
+      workdir = "/";
+      created = None;
+    }
+  in
+  let unapplied text label =
+    Container_runtime.unapplied_capabilities (loaded text) (image label)
+  in
+  let add = "container.cap_add=['SYS_ADMIN','cap_mknod']" in
+  (* Nothing to check without cap_add or without the label. *)
+  assert (unapplied "" (Some "CHOWN") = None);
+  assert (unapplied add None = None);
+  (* Names compare as Podman does: any case, optional CAP_ prefix. *)
+  assert (unapplied add (Some "chown,CAP_SYS_ADMIN,mknod") = None);
+  (match unapplied add (Some "CHOWN,SETUID") with
+  | Some message ->
+      assert (
+        message
+        = "Image example-dev-image:latest sets io.containers.capabilities, \
+           which limits containers to these capabilities: CHOWN, SETUID\n\
+          \  Podman does not apply container.cap_add entries outside it: \
+           SYS_ADMIN, cap_mknod\n\
+          \  Remove them from container.cap_add, or build from an image \
+           without that label.")
+  | None -> assert false);
+  (* An empty label allows nothing; ALL is never in the list; values are
+     escaped. *)
+  (match unapplied add (Some "") with
+  | Some message ->
+      assert (
+        String.length message > 0
+        && List.exists
+             (String.equal
+                "  Podman does not apply container.cap_add entries outside it: \
+                 SYS_ADMIN, cap_mknod")
+             (String.split_on_char '\n' message))
+  | None -> assert false);
+  assert (unapplied "container.cap_add=['ALL']" (Some "SYS_ADMIN") <> None);
+  (match unapplied add (Some "CHOWN\027[2J") with
+  | Some message -> assert (not (String.contains message '\027'))
+  | None -> assert false);
+  (* Assemble refuses before creating anything, and creates when the label
+     allows every entry. *)
+  let run text label =
+    let created = ref false in
+    let execute _ argv =
+      let ok stdout =
+        Ok { Process.status = Unix.WEXITED 0; stdout; stderr = "" }
+      in
+      match argv with
+      | [ "podman"; "--remote=false"; "version" ] -> ok ""
+      | [ "podman"; "--remote=false"; "image"; "inspect"; "--"; _ ] ->
+          ok
+            (Printf.sprintf
+               {|[{"Id":"iid","Labels":{"dev.deco.managed":"true","dev.deco.project":"example","dev.deco.project-root":"/project","io.containers.capabilities":"%s"},"Config":{"User":"","WorkingDir":"/"}}]|}
+               label)
+      | [ "podman"; "--remote=false"; "container"; "inspect"; "--"; _ ] ->
+          Ok { Process.status = Unix.WEXITED 125; stdout = ""; stderr = "" }
+      | [ "podman"; "--remote=false"; "container"; "exists"; "--"; _ ] ->
+          Ok { Process.status = Unix.WEXITED 1; stdout = ""; stderr = "" }
+      | "podman" :: "--remote=false" :: "create" :: _ ->
+          created := true;
+          (* Stop here: this test is only about reaching create. *)
+          Error { Process.operation = "create"; message = "reached" }
+      | _ -> failwith ("Unexpected command: " ^ String.concat " " argv)
+    in
+    let result = Assemble.run ~execute (loaded text) in
+    (result, !created)
+  in
+  (match run add "CHOWN" with
+  | Error { cause = Conflict message; completed = [] }, false ->
+      assert (
+        String.starts_with ~prefix:"Image example-dev-image:latest" message)
+  | _ -> assert false);
+  match run add "CHOWN,SYS_ADMIN,MKNOD" with
+  | Error { cause = Runtime _; _ }, true -> ()
+  | _ -> assert false

@@ -442,6 +442,22 @@ let () =
       ("dev.deco.create-digest=" ^ Create_settings.of_loaded secured)
       create);
   assert (Create_settings.of_loaded secured <> Create_settings.digest []);
+  (* With cap_add, the create step names the capabilities label check. *)
+  let contains s sub =
+    let n = String.length sub in
+    let rec go i =
+      i + n <= String.length s && (String.sub s i n = sub || go (i + 1))
+    in
+    go 0
+  in
+  assert (
+    contains
+      (Assemble_plan.render plan)
+      "Create container example-dev-container if missing, after checking that \
+       the image's io.containers.capabilities label, if it has one, allows \
+       every --cap-add entry.\n");
+  assert (
+    not (contains (Assemble_plan.render plain) "io.containers.capabilities"));
   (* The dry-run preview shows the flags. *)
   let preview = Assemble_plan.render plan in
   List.iter

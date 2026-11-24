@@ -481,3 +481,75 @@ let () =
   | Error { cause = Container_appeared; _ } -> ()
   | _ -> assert false);
   assert (mutations w = [ "build"; "pre_stop"; "stop"; "rm"; "start" ])
+
+(* Refresh checks the image's capabilities label after building and before
+   removing the old container, so a refused cap_add leaves it running. *)
+let () =
+  let source =
+    Result.get_ok
+      (Config.Decode.from_string
+         "[project]\nname='example'\n[container]\ncap_add=['SYS_ADMIN']\n")
+  in
+  let loaded : Config_loader.t =
+    {
+      ignored_paths = [];
+      contents = "";
+      source;
+      effective = Result.get_ok (Config.Resolve.apply source);
+      project =
+        { root = "/project"; config_path = "/project/.deco/config.toml" };
+      host_paths =
+        {
+          build_context = "/project/.deco/build";
+          containerfile = "/project/.deco/build/Containerfile";
+          workspace_source = None;
+        };
+      identity = User_identity.Image;
+    }
+  in
+  (* The fake's images carry the label in addition to their ownership labels. *)
+  let labelled w output argv =
+    match (execute w output argv, argv) with
+    | Ok r, [ "podman"; "--remote=false"; "image"; "inspect"; "--"; _ ]
+      when r.Process.status = Unix.WEXITED 0 ->
+        let marker = {|"Labels":{|} in
+        let i =
+          let rec find i =
+            if String.sub r.stdout i (String.length marker) = marker then i
+            else find (i + 1)
+          in
+          find 0 + String.length marker
+        in
+        Ok
+          {
+            r with
+            stdout =
+              String.sub r.stdout 0 i
+              ^ {|"io.containers.capabilities":"CHOWN",|}
+              ^ String.sub r.stdout i (String.length r.stdout - i);
+          }
+    | result, _ -> result
+  in
+  List.iter
+    (fun keep_image ->
+      let w =
+        world
+          ~image:{ id = "old"; owned = Owned }
+          ~container:
+            { cid = "oldc"; state = "running"; image_id = "old"; owner = Owned }
+          ()
+      in
+      (match
+         Refresh.run ~execute:(labelled w)
+           ~probe:(fun () -> Some false)
+           loaded ~keep_image
+       with
+      | Error { cause = Conflict message; _ } ->
+          assert (
+            String.starts_with ~prefix:"Image example-dev-image:latest" message)
+      | _ -> failwith "expected the capabilities conflict");
+      (* Nothing but the build ran; the old container is still running. *)
+      assert (List.rev w.mutations = if keep_image then [] else [ "build" ]);
+      assert ((Option.get w.container).cid = "oldc");
+      assert ((Option.get w.container).state = "running"))
+    [ false; true ]

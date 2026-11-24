@@ -192,3 +192,42 @@ let () =
       let positions = List.map index order in
       assert (positions = List.sort compare positions))
     [ false; true ]
+
+(* With cap_add, the preview says the capabilities label is checked before the
+   container is changed; without it, the label is not mentioned. *)
+let () =
+  let plan text keep_image =
+    let source =
+      Result.get_ok
+        (Config.Decode.from_string ("[project]\nname = 'example'\n" ^ text))
+    in
+    let loaded : Config_loader.t =
+      {
+        ignored_paths = [];
+        contents = "";
+        project =
+          { root = "/project"; config_path = "/project/.deco/config.toml" };
+        source;
+        effective = Result.get_ok (Config.Resolve.apply source);
+        host_paths =
+          {
+            build_context = "/project/.deco/build";
+            containerfile = "/project/.deco/build/Containerfile";
+            workspace_source = None;
+          };
+        identity = User_identity.Image;
+      }
+    in
+    Refresh_plan.render (get (Refresh_plan.make loaded ~keep_image))
+  in
+  let note =
+    "If the image's io.containers.capabilities label excludes a --cap-add \
+     entry, stop before changing the container."
+  in
+  List.iter
+    (fun keep_image ->
+      let text = plan "[container]\ncap_add = ['SYS_ADMIN']\n" keep_image in
+      assert (contains text note);
+      assert (index text note < index text "If the container is running");
+      assert (not (contains (plan "" keep_image) "io.containers.capabilities")))
+    [ false; true ]
