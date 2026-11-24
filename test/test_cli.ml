@@ -138,16 +138,33 @@ let () =
           let preview =
             run temp [ "assemble"; "-d"; "--project-dir"; path ] 0
           in
+          (* Security options are applied; settings still planned are not. *)
+          let configured =
+            let text =
+              In_channel.with_open_bin
+                (Filename.concat path ".deco/config.toml")
+                In_channel.input_all
+            in
+            (Result.get_ok
+               (Config.Resolve.apply
+                  (Result.get_ok (Config.Decode.from_string text))))
+              .container
+          in
+          List.iter
+            (fun (flag, values) ->
+              List.iter
+                (fun value -> assert (contains preview (flag ^ "=" ^ value)))
+                values)
+            [
+              ("--device", configured.devices);
+              ("--cap-add", configured.cap_add);
+              ("--cap-drop", configured.cap_drop);
+              ("--security-opt", configured.security_options);
+            ];
+          assert (contains preview "--privileged" = configured.privileged);
           List.iter
             (fun flag -> assert (not (contains preview flag)))
-            [
-              "--cap-drop";
-              "--cap-add";
-              "--device";
-              "--security-opt";
-              "--network";
-              "--env";
-            ];
+            [ "--network"; "--env" ];
 
           let file = Filename.concat path ".deco/config.toml" in
           let original = In_channel.with_open_bin file In_channel.input_all in

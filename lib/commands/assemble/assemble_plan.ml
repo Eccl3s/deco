@@ -165,6 +165,15 @@ let make (loaded : Config_loader.t) =
                   (Create_settings.label, Create_settings.of_loaded loaded);
                 ])
           @ user_create
+          @ (if c.container.privileged then [ "--privileged" ] else [])
+          @ List.concat_map
+              (fun (flag, values) -> List.map (fun v -> flag ^ "=" ^ v) values)
+              [
+                ("--device", c.container.devices);
+                ("--cap-add", c.container.cap_add);
+                ("--cap-drop", c.container.cap_drop);
+                ("--security-opt", c.container.security_options);
+              ]
           @ (match c.container.workdir with
             | None -> []
             | Some w -> [ "--workdir"; w ])

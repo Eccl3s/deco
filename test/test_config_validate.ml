@@ -230,4 +230,6 @@ let () =
       ("container.cap_add=['NET ADMIN']", "cap_add[0]");
       ("container.cap_drop=['ALL','SYS.ADMIN']", "cap_drop[1]");
       ("container.security_options=['']", "security_options[0]");
+      ("container.security_options=[\"a\\u0000b\"]", "security_options[0]");
+      ("container.devices=[\"/dev/a\\u0000b\"]", "devices[0]");
     ]

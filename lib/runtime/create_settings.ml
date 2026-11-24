@@ -1,5 +1,27 @@
 let label = "dev.deco.create-digest"
-let fields (_ : Config_loader.t) = []
+
+let length_prefixed values =
+  let buffer = Buffer.create 64 in
+  List.iter
+    (fun value ->
+      Buffer.add_int64_be buffer (Int64.of_int (String.length value));
+      Buffer.add_string buffer value)
+    values;
+  Buffer.contents buffer
+
+let fields (loaded : Config_loader.t) =
+  let c = loaded.effective.container in
+  (if c.privileged then [ ("container.privileged", "true") ] else [])
+  @ List.filter_map
+      (fun (key, values) ->
+        if values = [] then None
+        else Some ("container." ^ key, length_prefixed values))
+      [
+        ("devices", c.devices);
+        ("cap_add", c.cap_add);
+        ("cap_drop", c.cap_drop);
+        ("security_options", c.security_options);
+      ]
 
 (* Each pair is its key then its value, each prefixed with its length as a
    64-bit big-endian integer, so no encoding is a prefix of a different one. *)
