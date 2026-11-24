@@ -12,7 +12,10 @@ val incompatibilities :
 (** Every way the container differs from the loaded configuration and the image,
     in a fixed order; empty when compatible. Ownership is not checked.
     [selinux_enabled] (default [true]) decides whether a missing relabel option
-    can be verified. *)
+    can be verified. Settings that inspect data cannot report reliably are
+    compared through the {!Create_settings.label} digest, reported last as one
+    message that names [deco refresh]; a container without the label is treated
+    as created with all of them unset, and a duplicated label is reported. *)
 
 val shell_label : string
 (** ["dev.deco.shell"]: the [container.shell] a container was created with,

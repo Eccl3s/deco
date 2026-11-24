@@ -62,6 +62,37 @@ let () =
   assert (
     Assemble.compatibility loaded image broken
     = Error (String.concat "; " expected));
+  (* The create-settings digest: no label means every setting was unset, which
+     matches while no setting contributes; a recorded digest must match. *)
+  let digest value =
+    { c with labels = c.labels @ [ (Create_settings.label, value) ] }
+  in
+  let current = digest (Create_settings.of_loaded loaded) in
+  let settings =
+    "Container settings differ from the configuration; run deco refresh"
+  in
+  assert (Container_runtime.incompatibilities loaded image current = []);
+  assert (
+    Container_runtime.incompatibilities loaded image
+      (digest (Create_settings.digest [ ("container.cap_drop", "ALL") ]))
+    = [ settings ]);
+  assert (
+    Container_runtime.incompatibilities loaded image (digest "garbage")
+    = [ settings ]);
+  assert (
+    Container_runtime.incompatibilities loaded image
+      {
+        current with
+        labels =
+          current.labels
+          @ [ (Create_settings.label, Create_settings.of_loaded loaded) ];
+      }
+    = [ "Create-settings label is duplicated" ]);
+  (* Reported after the field-by-field checks. *)
+  assert (
+    Container_runtime.incompatibilities loaded image
+      { (digest "garbage") with init = false }
+    = [ "Container init is disabled"; settings ]);
   let mounted =
     {
       loaded with

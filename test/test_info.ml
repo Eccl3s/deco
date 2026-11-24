@@ -29,17 +29,18 @@ let () =
       : Config_loader.t)
   in
   let loaded = load "[project]\nname = 'example'\ndescription = 'Demo'\n" in
-  let labels project =
+  let labels ?(extra = []) project =
     `Assoc
-      [
-        ("dev.deco.managed", `String "true");
-        ("dev.deco.project", `String project);
-        ("dev.deco.project-root", `String "/project");
-      ]
+      ([
+         ("dev.deco.managed", `String "true");
+         ("dev.deco.project", `String project);
+         ("dev.deco.project-root", `String "/project");
+       ]
+      @ List.map (fun (k, v) -> (k, `String v)) extra)
   in
   let container ?(project = "example") ?(init = true) ?(image = "iid")
       ?(workdir = "/") ?(created = `String "2026-11-12T09:30:45+01:00")
-      ?(mounts = []) state =
+      ?(mounts = []) ?(extra_labels = []) state =
     Yojson.Basic.to_string
       (`List
          [
@@ -52,7 +53,8 @@ let () =
                ( "Config",
                  `Assoc
                    [
-                     ("Labels", labels project); ("WorkingDir", `String workdir);
+                     ("Labels", labels ~extra:extra_labels project);
+                     ("WorkingDir", `String workdir);
                    ] );
                ( "HostConfig",
                  `Assoc [ ("UsernsMode", `String ""); ("Init", `Bool init) ] );
@@ -308,6 +310,19 @@ let () =
         "Container init is disabled";
         "Working directory differs";
       ]);
+  (* A create-settings digest that differs is reported. *)
+  let run, _ =
+    fake
+      (ok
+         (container
+            ~extra_labels:[ (Create_settings.label, "blake2b-256:other") ]
+            "running"))
+  in
+  let r = collect run in
+  assert (r.container.compatible = Some false);
+  assert (
+    r.container.incompatibilities
+    = [ "Container settings differ from the configuration; run deco refresh" ]);
   (* State mapping. *)
   List.iter
     (fun (podman, simple) ->
