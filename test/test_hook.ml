@@ -219,4 +219,13 @@ let () =
         labels =
           (shell "/bin/bash").labels @ [ (Container_runtime.shell_label, "x") ];
       }
-    = [ "Shell label is duplicated" ])
+    = [ "Shell label is duplicated" ]);
+  (* Hooks do not depend on the create-settings digest. *)
+  assert (
+    check
+      {
+        (container ()) with
+        labels =
+          (container ()).labels @ [ (Create_settings.label, "blake2b-256:x") ];
+      }
+    = [])

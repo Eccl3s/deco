@@ -1,3 +1,6 @@
+let settings_message =
+  "Container settings differ from the configuration; run deco refresh"
+
 let incompatibilities ?(selinux_enabled = true) (loaded : Config_loader.t)
     (image : Podman.image) (c : Podman.container) =
   let expected = loaded.effective in
@@ -62,6 +65,20 @@ let incompatibilities ?(selinux_enabled = true) (loaded : Config_loader.t)
             "Mount relabel policy differs or cannot be verified"
       | _ -> check false "Workspace mount missing or duplicated")
   | _ -> check false "Workspace paths disagree");
+  (* A container created before the label existed was created with every
+     setting that contributes to the digest unset. *)
+  (match
+     List.filter_map
+       (fun (k, v) -> if k = Create_settings.label then Some v else None)
+       c.labels
+   with
+  | [] ->
+      check
+        (Create_settings.of_loaded loaded = Create_settings.digest [])
+        settings_message
+  | [ recorded ] ->
+      check (recorded = Create_settings.of_loaded loaded) settings_message
+  | _ -> check false "Create-settings label is duplicated");
   List.rev !failures
 
 let shell_label = "dev.deco.shell"

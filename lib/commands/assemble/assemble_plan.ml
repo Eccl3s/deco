@@ -160,7 +160,10 @@ let make (loaded : Config_loader.t) =
            ]
           @ label_args
               (labels @ identity
-              @ [ (Container_runtime.shell_label, c.container.shell) ])
+              @ [
+                  (Container_runtime.shell_label, c.container.shell);
+                  (Create_settings.label, Create_settings.of_loaded loaded);
+                ])
           @ user_create
           @ (match c.container.workdir with
             | None -> []

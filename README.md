@@ -169,6 +169,26 @@ Run that command only if the old copy is gone. The image reports the same
 conflict and has its own `podman rmi` command. Once both are removed,
 `deco assemble` creates fresh resources for the new location.
 
+### Create-time settings
+
+Beyond the labels the specification lists, Deco labels each container it
+creates with `dev.deco.create-digest`, a BLAKE2b-256 hash of the create-time
+settings that container inspection cannot report reliably. Only the hash is
+recorded, never the settings themselves, which may include secrets. When the
+current configuration hashes differently, the container is incompatible:
+lifecycle commands return 4, `deco info` lists the incompatibility, and
+`deco refresh` recreates the container:
+
+```text
+Container settings differ from the configuration; run deco refresh
+```
+
+Deco does not say which setting changed. Only settings that add something to
+`podman create` contribute to the hash, so a container created before this
+label existed is treated as created with all of them unset, and it stays
+compatible as long as the configuration leaves them unset. No setting
+contributes yet; the advanced settings planned for v0.4.0 will.
+
 ### Configuration trust
 
 A project's `.deco/` directory decides what Deco builds and runs on your
@@ -669,7 +689,8 @@ and directs you to `deco assemble`.
 Start runs the same checks as `exec` and `shell` before starting anything: the
 configured image must exist, both resources must carry this project's ownership
 labels, and the container must match the configuration (image, init, user
-strategy, working directory, and workspace mount, including SELinux relabelling).
+strategy, working directory, workspace mount, including SELinux relabelling,
+and the [create-time settings](#create-time-settings)).
 Incompatible containers and unsupported states such as `paused` return 4; use
 `deco refresh` to recreate an incompatible container. After a start, Deco
 reinspects the same container and requires it to be running with unchanged
