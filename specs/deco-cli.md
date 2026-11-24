@@ -454,8 +454,8 @@ Reports the current project's resolved configuration and Podman resource
 state without changing it. The report includes project identity, Podman
 availability and version, image identity, existence, age, and ownership,
 container identity, state, age, ownership, and compatibility, user mode,
-workdir, mounts, published ports, configured hooks, action names, and
-configuration trust state. `info` does not require trust.
+workdir, container security options, mounts, published ports, configured
+hooks, action names, and configuration trust state. `info` does not require trust.
 
 `info` performs only read-only Podman queries. Reporting ownership or
 compatibility never changes the ownership rules: a resource reported as owned
@@ -505,6 +505,13 @@ JSON output has this shape:
     "workdir": "/workspace",
     "shell": "bash"
   },
+  "security": {
+    "privileged": false,
+    "devices": ["/dev/fuse"],
+    "cap_add": [],
+    "cap_drop": ["ALL"],
+    "security_options": []
+  },
   "mounts": [],
   "dns": [],
   "ports": [],
@@ -550,6 +557,13 @@ Trust fields are defined by [`deco-trust.md`](./deco-trust.md).
 
 Configuration fields:
 
+- `security` reports the configured `container.privileged`,
+  `container.devices`, `container.cap_add`, `container.cap_drop`, and
+  `container.security_options`, the values Deco passes when it creates the
+  container: `privileged` is a boolean and the others are arrays of strings in
+  configured order, empty when omitted. They come from the configuration, not
+  from inspecting the container; an existing container created with different
+  values is reported through `container.compatible`.
 - Each `mounts` entry includes `source`, `target`, `type`, `readonly`, and
   `relabel`; source may be `"-"` for source-less mounts such as `tmpfs` and
   `devpts`.
@@ -557,8 +571,8 @@ Configuration fields:
 - Each `ports` entry includes `host`, `container`, `protocol`, and `bind`.
 
 Human output presents the same information as labelled sections in this
-order: project, trust, Podman, image, container, runtime, mounts, DNS, ports,
-hooks, and actions. Timestamps are shown in UTC together with a relative age, such as
+order: project, trust, Podman, image, container, runtime, security, mounts,
+DNS, ports, hooks, and actions. Timestamps are shown in UTC together with a relative age, such as
 `2026-11-11 09:14 UTC (9 days ago)`. Missing values are shown as `-`, and an
 incompatible container lists each mismatch. Control characters in reported
 values are escaped as in `deco list`.

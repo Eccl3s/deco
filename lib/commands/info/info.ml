@@ -30,6 +30,14 @@ type container = {
 
 type runtime = { user_mode : string; workdir : string option; shell : string }
 
+type security = {
+  privileged : bool;
+  devices : string list;
+  cap_add : string list;
+  cap_drop : string list;
+  security_options : string list;
+}
+
 type mount = {
   source : string;
   target : string;
@@ -54,6 +62,7 @@ type report = {
   image : image;
   container : container;
   runtime : runtime;
+  security : security;
   mounts : mount list;
   dns : string list;
   ports : port list;
@@ -229,6 +238,14 @@ let build ~trust (loaded : Config_loader.t) observed =
           | None -> image_workdir);
         shell = e.container.shell;
       };
+    security =
+      {
+        privileged = e.container.privileged;
+        devices = e.container.devices;
+        cap_add = e.container.cap_add;
+        cap_drop = e.container.cap_drop;
+        security_options = e.container.security_options;
+      };
     mounts;
     dns = [];
     ports = [];
@@ -333,6 +350,15 @@ let render_json r =
               ("workdir", opt str r.runtime.workdir);
               ("shell", str r.runtime.shell);
             ] );
+        ( "security",
+          `Assoc
+            [
+              ("privileged", bool r.security.privileged);
+              ("devices", strings r.security.devices);
+              ("cap_add", strings r.security.cap_add);
+              ("cap_drop", strings r.security.cap_drop);
+              ("security_options", strings r.security.security_options);
+            ] );
         ( "mounts",
           `List
             (List.map
@@ -436,6 +462,16 @@ let render_human ~now ~ignored r =
   field "User mode" (safe r.runtime.user_mode);
   field "Workdir" (text r.runtime.workdir);
   field "Shell" (safe r.runtime.shell);
+  section false "Security";
+  let list = function
+    | [] -> "none"
+    | xs -> String.concat ", " (List.map safe xs)
+  in
+  field "Privileged" (yes_no r.security.privileged);
+  field "Devices" (list r.security.devices);
+  field "Cap add" (list r.security.cap_add);
+  field "Cap drop" (list r.security.cap_drop);
+  field "Options" (list r.security.security_options);
   items "Mounts"
     (fun m ->
       Printf.sprintf "%s -> %s (%s, %s, relabel %s)" (safe m.source)
