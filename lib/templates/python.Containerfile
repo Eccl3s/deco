@@ -1,5 +1,5 @@
 ARG PYTHON_VERSION=3.15
-FROM ghcr.io/astral-sh/uv:python${PYTHON_VERSION}-alpine
+FROM ghcr.io/astral-sh/uv:python${PYTHON_VERSION}-trixie
 
 # REQUIRED: Set up base system
 ARG DEBIAN_FRONTEND=noninteractive
