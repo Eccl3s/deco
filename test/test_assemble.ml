@@ -924,3 +924,63 @@ let () =
   match run add "CHOWN,SYS_ADMIN,MKNOD" with
   | Error { cause = Runtime _; _ }, true -> ()
   | _ -> assert false
+
+(* Podman create receives env files and actual variable values. *)
+let () =
+  let source =
+    Result.get_ok
+      (Config.Decode.from_string
+         "project.name='example'\n\
+          container.env_files=['.env']\n\
+          container.environment.TOKEN='SECRET_VALUE'\n")
+  in
+  let loaded : Config_loader.t =
+    {
+      ignored_paths = [];
+      contents = "";
+      source;
+      effective = Result.get_ok (Config.Resolve.apply source);
+      project =
+        { root = "/project"; config_path = "/project/.deco/config.toml" };
+      host_paths =
+        {
+          build_context = "/project/.deco/build";
+          containerfile = "/project/.deco/build/Containerfile";
+          workspace_source = None;
+          env_files = [ "/project/.env" ];
+        };
+      identity = Image;
+    }
+  in
+  let created = ref [] in
+  let execute _ argv =
+    let ok stdout =
+      Ok { Process.status = Unix.WEXITED 0; stdout; stderr = "" }
+    in
+    match argv with
+    | [ "podman"; "--remote=false"; "version" ] -> ok ""
+    | [ "podman"; "--remote=false"; "image"; "inspect"; "--"; _ ] ->
+        ok
+          {|[{"Id":"iid","Labels":{"dev.deco.managed":"true","dev.deco.project":"example","dev.deco.project-root":"/project"},"Config":{"User":"","WorkingDir":"/"}}]|}
+    | [ "podman"; "--remote=false"; "container"; "inspect"; "--"; _ ] ->
+        Ok { Process.status = Unix.WEXITED 125; stdout = ""; stderr = "" }
+    | [ "podman"; "--remote=false"; "container"; "exists"; "--"; _ ] ->
+        Ok { Process.status = Unix.WEXITED 1; stdout = ""; stderr = "" }
+    | "podman" :: "--remote=false" :: "create" :: _ ->
+        created := argv;
+        Error { Process.operation = "create"; message = "reached" }
+    | _ -> failwith ("Unexpected command: " ^ String.concat " " argv)
+  in
+  (match Assemble.run ~execute loaded with
+  | Error { cause = Runtime _; _ } -> ()
+  | _ -> assert false);
+  let rec sublist needle = function
+    | [] -> false
+    | _ :: rest as list ->
+        List.filteri (fun i _ -> i < List.length needle) list = needle
+        || sublist needle rest
+  in
+  assert (
+    sublist
+      [ "--env-file"; "/project/.env"; "--env"; "TOKEN=SECRET_VALUE" ]
+      !created)

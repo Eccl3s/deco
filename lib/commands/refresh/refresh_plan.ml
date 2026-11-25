@@ -72,7 +72,7 @@ let render plan =
         (function
           | Command_plan.Literal arg ->
               String.starts_with ~prefix:"--cap-add=" arg
-          | Image_id | Container_id -> false)
+          | Redacted _ | Image_id | Container_id -> false)
         plan.create
     then
       image ^ "\n   If the image's " ^ Container_runtime.capabilities_label

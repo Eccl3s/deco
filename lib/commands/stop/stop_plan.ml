@@ -27,13 +27,7 @@ let make ?(hooks = true) (loaded : Config_loader.t) =
       argv
   in
   let container_name = loaded.effective.container.name in
-  if
-    String.contains container_name '\000'
-    || List.exists
-         (function
-           | Command_plan.Literal value -> String.contains value '\000'
-           | Command_plan.Image_id | Command_plan.Container_id -> false)
-         stop
+  if String.contains container_name '\000' || Command_plan.contains_nul stop
   then Error "Command arguments cannot contain NUL bytes"
   else Ok { container_name; stop; pre_stop = pre_stop_step loaded ~hooks }
 

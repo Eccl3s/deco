@@ -475,3 +475,108 @@ let () =
       in
       assert (contains preview flag))
     (flagged create)
+
+(* Env files and variables become create flags after the security options and
+   before the workdir, in configured order. Values reach Podman but never the
+   preview. *)
+let () =
+  let loaded text env_files : Config_loader.t =
+    let source =
+      Result.get_ok
+        (Config.Decode.from_string ("project.name='example'\n" ^ text))
+    in
+    {
+      ignored_paths = [];
+      contents = "";
+      project =
+        { root = "/project"; config_path = "/project/.deco/config.toml" };
+      source;
+      effective = Result.get_ok (Config.Resolve.apply source);
+      host_paths =
+        {
+          build_context = "/project/.deco/build";
+          containerfile = "/project/.deco/build/Containerfile";
+          workspace_source = None;
+          env_files;
+        };
+      identity = User_identity.Image;
+    }
+  in
+  let resolve plan =
+    Assemble_plan.resolve ~image_id:"iid" ~container_id:"cid"
+      plan.Assemble_plan.create
+  in
+  let plain = get (Assemble_plan.make (loaded "" [])) in
+  assert (
+    not
+      (List.exists
+         (fun arg -> arg = "--env" || arg = "--env-file")
+         (resolve plain)));
+  let configured =
+    loaded
+      "container.workdir='/work'\n\
+       container.cap_drop=['ALL']\n\
+       container.env_files=['b.env','a.env']\n\
+       [container.environment]\n\
+       ZED='a secret; $(rm -rf /)'\n\
+       ALPHA=''\n"
+      [ "/project/b.env"; "/host/a.env" ]
+  in
+  let plan = get (Assemble_plan.make configured) in
+  let rec after flag = function
+    | x :: rest when x = flag -> rest
+    | _ :: rest -> after flag rest
+    | [] -> failwith flag
+  in
+  let rec take n = function
+    | x :: rest when n > 0 -> x :: take (n - 1) rest
+    | _ -> []
+  in
+  assert (
+    take 9 (after "--cap-drop=ALL" (resolve plan))
+    = [
+        "--env-file";
+        "/project/b.env";
+        "--env-file";
+        "/host/a.env";
+        "--env";
+        "ZED=a secret; $(rm -rf /)";
+        "--env";
+        "ALPHA=";
+        "--workdir";
+      ]);
+  let preview = Assemble_plan.render plan in
+  let contains text =
+    let rec loop i =
+      i + String.length text <= String.length preview
+      && (String.sub preview i (String.length text) = text || loop (i + 1))
+    in
+    loop 0
+  in
+  assert (contains "--env-file /project/b.env \\\n");
+  assert (contains "--env 'ZED=<hidden>' \\\n");
+  assert (contains "--env 'ALPHA=<hidden>' \\\n");
+  assert (not (contains "secret"));
+  assert (not (contains "ALPHA= "));
+  (* Escaping for previews keeps the actual value intact. *)
+  assert (
+    Command_plan.resolve ~image_id:"iid" ~container_id:"cid"
+      (Command_plan.escape_literals plan.create)
+    = resolve plan);
+  (* A NUL in a hidden value is still rejected, even past validation. *)
+  let base = loaded "" [] in
+  assert (
+    Result.is_error
+      (Assemble_plan.make
+         {
+           base with
+           effective =
+             {
+               base.effective with
+               container =
+                 {
+                   base.effective.container with
+                   environment = [ ("A", "x\000y") ];
+                 };
+             };
+         }))

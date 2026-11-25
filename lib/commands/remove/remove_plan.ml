@@ -32,11 +32,7 @@ let make ?(hooks = true) (loaded : Config_loader.t) ~keep_image =
   let commands = stop :: remove_container :: Option.to_list remove_image in
   if
     List.exists (fun s -> String.contains s '\000') names
-    || List.exists
-         (List.exists (function
-           | Command_plan.Literal s -> String.contains s '\000'
-           | Command_plan.Image_id | Command_plan.Container_id -> false))
-         commands
+    || List.exists Command_plan.contains_nul commands
   then Error "Command arguments cannot contain NUL bytes"
   else
     Ok
