@@ -52,13 +52,17 @@ with tempfile.TemporaryDirectory(prefix='deco-debian-workflow-') as directory:
     originals={p:p.read_bytes() for p in (root/'.deco/config.toml',root/'.deco/build/Containerfile')}
     try:
         result=deco('--project-dir',str(root),'validate')
-        assert 'container.cap_drop' in result.stdout and 'network.mode' in result.stdout
+        # Security options are applied, so only network.mode is still ignored.
+        assert 'container.cap_drop' not in result.stdout and 'network.mode' in result.stdout
         assert 'pasta' not in result.stdout and 'ALL' not in result.stdout
         deco('--project-dir',str(root),'assemble','--dry-run')
         deco('--project-dir',str(root),'assemble')
         result=deco('--project-dir',str(root),'exec','--','/bin/sh','-c','id -un; pwd; printf verified > .deco-workflow-proof')
         assert result.stdout.splitlines()==['dev','/workspace'],result.stdout
         assert (root/'.deco-workflow-proof').read_text()=='verified'
+        # cap_drop = ["ALL"] empties the capability bounding set.
+        result=deco('--project-dir',str(root),'exec','--','/bin/sh','-c','grep ^CapBnd: /proc/self/status')
+        assert result.stdout.split()==['CapBnd:','0000000000000000'],result.stdout
         def running():
             return podman('container','inspect','--format','{{.State.Status}}','--',container).stdout.strip()=='running'
         def ids():
@@ -82,6 +86,8 @@ with tempfile.TemporaryDirectory(prefix='deco-debian-workflow-') as directory:
             'owned':True,'compatible':True,'incompatibilities':[]},report
         created(report,'image'); created(report,'container')
         assert report['runtime']=={'user_mode':'keep-id','workdir':'/workspace','shell':'bash'},report
+        assert report['security']=={'privileged':False,'devices':[],'cap_add':[],
+                                    'cap_drop':['ALL'],'security_options':[]},report
         assert report['mounts']==[{'source':str(root),'target':'/workspace','type':'bind',
                                    'readonly':False,'relabel':'private'}],report
         human=deco('info',cwd=root).stdout

@@ -186,8 +186,9 @@ Container settings differ from the configuration; run deco refresh
 Deco does not say which setting changed. Only settings that add something to
 `podman create` contribute to the hash, so a container created before this
 label existed is treated as created with all of them unset, and it stays
-compatible as long as the configuration leaves them unset. No setting
-contributes yet; the advanced settings planned for v0.4.0 will.
+compatible as long as the configuration leaves them unset. The
+[container security options](#container-security-options) contribute; the
+other advanced settings planned for v0.4.0 will once they are applied.
 
 ### Configuration trust
 
@@ -215,7 +216,9 @@ The review lists the project and its trust state, what changed since the last
 approval, and the security-relevant settings Deco applies: the build context
 (flagged when it is outside `.deco/`), Containerfile, target, pull and cache
 settings, build argument names, the image, the container name, shell, workdir
-and user mode, and the workspace mount (flagged when its source is outside the
+and user mode, the container security options (privileged mode, devices,
+added capabilities and security options are flagged; dropped capabilities are
+listed), and the workspace mount (flagged when its source is outside the
 project). Planned settings that are accepted but not applied yet are listed
 with their values, except environment-variable values, which are hidden.
 
@@ -328,6 +331,45 @@ deco refresh
 
 Changes to the Containerfile do not automatically trigger a rebuild when running `deco assemble`.
 
+### Container security options
+
+`[container]` accepts the security options of the v1 specification, which Deco
+passes to `podman create`:
+
+```toml
+[container]
+privileged = false                 # --privileged when true
+devices = ["/dev/fuse"]            # --device=...
+cap_add = ["NET_ADMIN"]            # --cap-add=...
+cap_drop = ["ALL"]                 # --cap-drop=...
+security_options = ["no-new-privileges"]  # --security-opt=...
+```
+
+Lists keep their order; omitted keys add no flags. Validation follows the
+specification: each `devices` entry is `HOST_PATH`,
+`HOST_PATH:CONTAINER_PATH` or `HOST_PATH:CONTAINER_PATH:PERMISSIONS`, with
+absolute paths and permissions made of `r`, `w` and `m`, each at most once;
+capability names use ASCII letters, digits, `_` and `-`; security options must
+not be empty. Device paths and security options must not contain NUL bytes.
+
+The settings appear in `--dry-run` previews, in the `Security` section of
+`deco info` (and its JSON `security` object), and in the `deco trust` review,
+which flags everything except dropped capabilities. They are create-time
+settings, so changing one makes an existing container incompatible until
+`deco refresh` recreates it (see [Create-time settings](#create-time-settings)).
+Most templates set `cap_drop = ["ALL"]`. Their users are not root and already
+run without effective capabilities; dropping them all also empties the
+capability bounding set, so setuid programs and file capabilities, such as
+`sudo`, cannot grant any.
+
+Podman cannot add capabilities to a container whose image carries an
+`io.containers.capabilities` label outside the label's list: a root process
+silently lacks them and a non-root process fails to start. `assemble` and
+`refresh` therefore refuse, with exit code 4 and before creating or removing a
+container, any `cap_add` entry the image's label excludes. The `podman`
+template's base image has such a label, which already grants what nested
+rootless Podman needs, so the template adds no capabilities.
+
 ### Lifecycle hooks
 
 The optional `[hooks]` table holds shell commands that Deco runs inside the
@@ -341,8 +383,11 @@ pre_enter = "echo Entering dev shell"
 pre_stop = "echo Stopping"
 ```
 
-Every hook runs as `<container.shell> -lc <command>` through `podman exec`, as
-the configured user and in `container.workdir`, without a TTY or stdin. Its
+Every hook runs as `<container.shell> -c <command>` through `podman exec`, as
+the configured user and in `container.workdir`, without a TTY or stdin. It is
+not a login shell, so it sees the image's environment, as `deco exec` does,
+without reading `/etc/profile` or `~/.profile`; source them in the command if
+it needs them. Its
 output (stdout and stderr) streams to Deco's stderr, so it never mixes into
 Deco's stdout, such as the output of a redirected `deco exec`. Hooks run only after the usual ownership
 and compatibility checks, and only for trusted configuration (see
@@ -580,7 +625,8 @@ conflicts, and 5 when the configuration is not trusted (see
 [Configuration trust](#configuration-trust)); the other lifecycle commands
 use the same codes. Failed operations retain partial resources; inspect them with Podman
 before retrying. Assemble never automatically rebuilds or replaces resources.
-Advanced configuration remains unsupported. Configured hooks run after the
+[Container security options](#container-security-options) are applied; other
+advanced configuration remains unsupported. Configured hooks run after the
 start: `post_create` then `post_start` for a new container, only `post_start`
 for a started one, and none for a container that was already running (see
 [Lifecycle hooks](#lifecycle-hooks)). Automated CLI tests use fake
@@ -659,8 +705,9 @@ prints `[]`; both succeed. Invalid configuration returns 2.
 ### Run an action
 
 Run `deco run NAME` to run a configured action as
-`<container.shell> -lc <command>`, as the configured user and in
-`container.workdir`. It works like `deco exec`:
+`<container.shell> -c <command>`, as the configured user and in
+`container.workdir`, with the same environment as hooks. It works like
+`deco exec`:
 
 - Compatible stopped containers start automatically, running `post_start`
   (and `post_create` for a container that was never started) before the
@@ -855,6 +902,13 @@ Runtime
   Workdir:     /workspace
   Shell:       bash
 
+Security
+  Privileged:  no
+  Devices:     none
+  Cap add:     none
+  Cap drop:    ALL
+  Options:     none
+
 Mounts
   /home/user/my-project -> /workspace (bind, read-write, relabel private)
 
@@ -873,7 +927,6 @@ Actions
   test
 
 Ignored planned settings (not applied yet):
-  container.cap_drop
   network.mode
 ```
 
@@ -922,6 +975,13 @@ Use `--format json` (before or after the command) for a stable object:
     "incompatibilities": ["Container init is disabled"]
   },
   "runtime": { "user_mode": "keep-id", "workdir": "/workspace", "shell": "bash" },
+  "security": {
+    "privileged": false,
+    "devices": [],
+    "cap_add": [],
+    "cap_drop": ["ALL"],
+    "security_options": []
+  },
   "mounts": [
     {
       "source": "/home/user/my-project",
@@ -958,7 +1018,9 @@ reports the problem on stderr, and exits 2, even if Podman is also
 unavailable.
 
 `hooks` names the configured hooks in execution order and `actions` the
-configured action names, sorted. Unlike the full v1 specification, `dns` and
+configured action names, sorted. `security` holds the configured container
+security options, the values Deco passes to `podman create`; an existing
+container created with different values is reported as incompatible. Unlike the full v1 specification, `dns` and
 `ports` are always empty and only the workspace mount is reported, because those settings
 are not applied yet; any that are configured appear under
 `Ignored planned settings` in the human report instead.
@@ -974,13 +1036,12 @@ review, which shows them so that you can see what you are approving.
 
 Only documented v1 keys are tolerated. Unknown keys, nested typos, wrong types,
 invalid TOML, and errors in implemented fields still fail. Planned fields receive
-structural/type checks only: semantic constraints such as port ranges, capability
-names, namespace conflicts, and host path existence are deferred.
+structural/type checks only: semantic constraints such as port ranges,
+namespace conflicts, and host path existence are deferred.
 
-Capabilities, network settings, environment injection, devices/security options,
-additional mounts, and secrets remain inactive. In particular,
-accepting the Podman template does not enable its nested-Podman setup, and
-accepting capability-drop settings does not apply capability restrictions.
+Network settings, environment injection, namespaces, additional mounts, and
+secrets remain inactive. The [container security options](#container-security-options)
+are applied.
 This compatibility policy lasts until each setting is implemented; the v1
 specification continues to describe the behavior expected from future releases.
 
@@ -993,3 +1054,16 @@ python3 test/template_podman.py _build/default/bin/deco.exe
 This builds the unchanged Debian template (including image pulls and package
 installation), exercises validate/assemble/exec/stop/remove in a temporary project,
 and cleans up only its owned resources without pruning parent images.
+
+Check every template, or only those named, with:
+
+```sh
+python3 test/templates_podman.py _build/default/bin/deco.exe [TEMPLATE ...]
+```
+
+Each template is generated, assembled and removed in its own temporary project.
+The check verifies the applied security options (the capability bounding set,
+devices, and nested Podman for the `podman` template), runs the template's
+toolchain through `container.shell -c` as hooks and actions do, and requires
+`deco info` to report the container compatible. It pulls every template's base
+image, so the first run is slow.

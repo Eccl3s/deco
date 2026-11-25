@@ -57,8 +57,8 @@ let () =
     match Create_settings.digest [ ("k", "a"); ("k", "b") ] with
     | _ -> false
     | exception Invalid_argument _ -> true);
-  (* No setting contributes yet, so every configuration matches a container
-     created before the label existed. *)
+  (* Settings that do not change podman create do not contribute, so this
+     configuration matches a container created before the label existed. *)
   let loaded =
     load
       "project.name='example'\n\
@@ -68,3 +68,79 @@ let () =
   in
   assert (Create_settings.fields loaded = []);
   assert (Create_settings.of_loaded loaded = empty)
+
+(* Security options contribute only when they change podman create. *)
+let () =
+  let prefixed values =
+    String.concat ""
+      (List.map
+         (fun v ->
+           let b = Bytes.create 8 in
+           Bytes.set_int64_be b 0 (Int64.of_int (String.length v));
+           Bytes.to_string b ^ v)
+         values)
+  in
+  let fields text =
+    Create_settings.fields (load ("project.name='x'\n" ^ text))
+  in
+  let empty = Create_settings.digest [] in
+  List.iter
+    (fun text ->
+      assert (fields text = []);
+      assert (
+        Create_settings.of_loaded (load ("project.name='x'\n" ^ text)) = empty))
+    [
+      "";
+      "container.privileged=false";
+      "container={devices=[],cap_add=[],cap_drop=[],security_options=[]}";
+    ];
+  assert (
+    fields
+      "container.privileged=true\n\
+       container.devices=['/dev/fuse','/dev/a:/dev/b']\n\
+       container.cap_add=['SYS_ADMIN']\n\
+       container.cap_drop=['ALL']\n\
+       container.security_options=['label=disable']"
+    = [
+        ("container.privileged", "true");
+        ("container.devices", prefixed [ "/dev/fuse"; "/dev/a:/dev/b" ]);
+        ("container.cap_add", prefixed [ "SYS_ADMIN" ]);
+        ("container.cap_drop", prefixed [ "ALL" ]);
+        ("container.security_options", prefixed [ "label=disable" ]);
+      ]);
+  (* Every setting changes the digest, and so does reordering a list. *)
+  let digest text =
+    Create_settings.of_loaded (load ("project.name='x'\n" ^ text))
+  in
+  let all =
+    List.map digest
+      [
+        "";
+        "container.privileged=true";
+        "container.devices=['/dev/fuse']";
+        "container.cap_add=['ALL']";
+        "container.cap_drop=['ALL']";
+        "container.security_options=['ALL']";
+        "container.cap_drop=['ALL','MKNOD']";
+        "container.cap_drop=['MKNOD','ALL']";
+      ]
+  in
+  assert (List.length (List.sort_uniq compare all) = List.length all)
+
+(* List values are length-prefixed, so the digest does not rely on validation
+   rejecting NUL: one entry containing NUL cannot collide with two entries. *)
+let () =
+  let base = load "project.name='x'\n" in
+  let with_options security_options =
+    Create_settings.of_loaded
+      {
+        base with
+        effective =
+          {
+            base.effective with
+            container = { base.effective.container with security_options };
+          };
+      }
+  in
+  assert (with_options [ "a"; "b" ] <> with_options [ "a\000b" ]);
+  assert (with_options [ "ab" ] <> with_options [ "a"; "b" ])

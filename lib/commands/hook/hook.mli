@@ -1,6 +1,6 @@
 (** Lifecycle hooks ([specs/deco-config.md] §8, [specs/deco-cli.md] §6).
 
-    Every hook runs the same way: [<container.shell> -lc <command>] through
+    Every hook runs the same way: [<container.shell> -c <command>] through
     [podman exec] in the selected container, as the configured user and in
     [container.workdir], without a TTY or stdin, with both output streams sent
     to Deco's stderr so they stream to the terminal without mixing into Deco's

@@ -217,7 +217,7 @@ let () =
               assert (out = "Stopped example-dev-container\n");
               assert (
                 String.starts_with
-                  ~prefix:"hook exec -- cid sh -lc echo bye\nstop\n" calls)
+                  ~prefix:"hook exec -- cid sh -c echo bye\nstop\n" calls)
           | [ "--no-hooks" ], 0 ->
               assert (err = "" && contains out "Stopped example-dev-container\n");
               assert (not (contains calls "hook"))
@@ -228,5 +228,5 @@ let () =
                 = "hook-output\n\
                    deco: pre_stop hook failed with exit status 6; the \
                    container was not stopped\n");
-              assert (calls = "hook exec -- cid sh -lc echo bye\n"))
+              assert (calls = "hook exec -- cid sh -c echo bye\n"))
         [ ([], 0, 0); ([ "--no-hooks" ], 0, 0); ([], 6, 6) ])

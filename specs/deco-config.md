@@ -234,8 +234,13 @@ resolved using the container's `PATH`; a value containing `/` must be an
 absolute container path. Configured hooks and actions are invoked as:
 
 ```text
-<container.shell> -lc <command>
+<container.shell> -c <command>
 ```
+
+The shell is not a login shell, so the command sees the same environment as
+`deco exec`: the image's environment, including its `PATH`. Profile files such
+as `/etc/profile` and `~/.profile` are not read; a command that needs them can
+source them itself, for example `. ~/.profile && make test`.
 
 Deco containers persist until removed with the Deco removal workflow. There
 is no automatic removal option in v1.

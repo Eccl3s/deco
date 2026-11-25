@@ -11,7 +11,7 @@ let make (loaded : Config_loader.t) ~tty name =
   match List.assoc_opt name loaded.effective.actions with
   | None -> Error (Unknown_action name)
   | Some command -> (
-      let argv = [ loaded.effective.container.shell; "-lc"; command ] in
+      let argv = [ loaded.effective.container.shell; "-c"; command ] in
       match Exec_plan.make loaded ~tty argv with
       | Error message -> Error (Planning message)
       | Ok exec -> Ok { name; command; argv; exec })

@@ -229,10 +229,10 @@ let () =
       let hook argv =
         let status =
           match List.rev argv with
-          | "echo entering" :: "-lc" :: _ :: "cid" :: "--" :: _ ->
+          | "echo entering" :: "-c" :: _ :: "cid" :: "--" :: _ ->
               events := "pre_enter" :: !events;
               pre_enter_status
-          | "echo started" :: "-lc" :: _ :: "cid" :: "--" :: _ ->
+          | "echo started" :: "-c" :: _ :: "cid" :: "--" :: _ ->
               events := "post_start" :: !events;
               Unix.WEXITED 0
           | _ -> failwith ("Unexpected hook: " ^ String.concat " " argv)

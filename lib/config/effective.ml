@@ -17,7 +17,16 @@ type user = {
   gid : Config_types.id_source option;
 }
 
-type container = { name : string; workdir : string option; shell : string }
+type container = {
+  name : string;
+  workdir : string option;
+  shell : string;
+  privileged : bool;
+  devices : string list;
+  cap_add : string list;
+  cap_drop : string list;
+  security_options : string list;
+}
 
 type workspace = {
   source : string;

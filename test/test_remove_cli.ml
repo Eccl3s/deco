@@ -279,7 +279,7 @@ esac
                   ~prefix:"Removed container example-dev-container\n" out);
               assert (
                 String.starts_with
-                  ~prefix:"hook exec -- cid sh -lc echo bye\nstop\n" calls)
+                  ~prefix:"hook exec -- cid sh -c echo bye\nstop\n" calls)
           | [ "--no-hooks" ], 0 ->
               assert (
                 err = ""
@@ -292,5 +292,5 @@ esac
                 = "hook-output\n\
                    deco: pre_stop hook failed with exit status 6; nothing was \
                    stopped or removed\n");
-              assert (calls = "hook exec -- cid sh -lc echo bye\n"))
+              assert (calls = "hook exec -- cid sh -c echo bye\n"))
         [ ([], 0, 0); ([ "--no-hooks" ], 0, 0); ([], 6, 6) ])

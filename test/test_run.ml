@@ -87,7 +87,7 @@ let () =
            "--";
            "cid";
            "sh";
-           "-lc";
+           "-c";
            "make test";
           ] ->
               assert (output = Process.Inherit);

@@ -51,7 +51,19 @@ let render t =
       "Build image " ^ t.image_name ^ " if missing.\n\n"
       ^ render_multiline (command Build)
       ^ "\n";
-      "Create container " ^ t.container_name ^ " if missing.\n\n"
+      "Create container " ^ t.container_name ^ " if missing"
+      ^ (if
+           List.exists
+             (function
+               | Literal arg -> String.starts_with ~prefix:"--cap-add=" arg
+               | Image_id | Container_id -> false)
+             (command Create)
+         then
+           ", after checking that the image's "
+           ^ Container_runtime.capabilities_label
+           ^ " label, if it has one, allows every --cap-add entry"
+         else "")
+      ^ ".\n\n"
       ^ render_multiline (command Create)
       ^ "\n";
       "Start " ^ t.container_name ^ " if needed.\n";
@@ -165,6 +177,15 @@ let make (loaded : Config_loader.t) =
                   (Create_settings.label, Create_settings.of_loaded loaded);
                 ])
           @ user_create
+          @ (if c.container.privileged then [ "--privileged" ] else [])
+          @ List.concat_map
+              (fun (flag, values) -> List.map (fun v -> flag ^ "=" ^ v) values)
+              [
+                ("--device", c.container.devices);
+                ("--cap-add", c.container.cap_add);
+                ("--cap-drop", c.container.cap_drop);
+                ("--security-opt", c.container.security_options);
+              ]
           @ (match c.container.workdir with
             | None -> []
             | Some w -> [ "--workdir"; w ])

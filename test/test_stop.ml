@@ -291,7 +291,7 @@ let () =
     in
     let hook argv =
       (match List.rev argv with
-      | "echo bye" :: "-lc" :: "sh" :: "cid" :: "--" :: _ -> ()
+      | "echo bye" :: "-c" :: "sh" :: "cid" :: "--" :: _ -> ()
       | _ -> assert false);
       events := "pre_stop" :: !events;
       Ok { Process.status = hook_status; stdout = ""; stderr = "" }

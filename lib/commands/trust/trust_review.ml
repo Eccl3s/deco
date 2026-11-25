@@ -60,6 +60,24 @@ let render ~now (status : Trust.status) (loaded : Config_loader.t) =
     (match effective.user.mode with
     | Config.Keep_id -> "keep-id"
     | Config.Image -> "image");
+  (* Everything here except dropped capabilities can weaken isolation, so it is
+     flagged whenever it is set. *)
+  let container = effective.container in
+  let list note = function
+    | [] -> "none"
+    | values -> flag true note (String.concat ", " (List.map safe values))
+  in
+  section false "Security";
+  field "Privileged"
+    (flag container.privileged "weakens isolation"
+       (yes_no container.privileged));
+  field "Devices" (list "host devices" container.devices);
+  field "Cap add" (list "adds capabilities" container.cap_add);
+  field "Cap drop"
+    (match container.cap_drop with
+    | [] -> "none"
+    | values -> String.concat ", " (List.map safe values));
+  field "Options" (list "changes confinement" container.security_options);
   section false "Mounts";
   (match (effective.mounts.workspace, host.workspace_source) with
   | Some workspace, Some source ->

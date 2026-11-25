@@ -360,3 +360,114 @@ let () =
       (List.exists
          (String.starts_with ~prefix:"dev.deco.create-digest")
          plan.build))
+
+(* Container security options become create flags in configured order, after
+   the user flags and before the workdir; defaults add nothing. *)
+let () =
+  let loaded text : Config_loader.t =
+    let source =
+      Result.get_ok
+        (Config.Decode.from_string ("project.name='example'\n" ^ text))
+    in
+    {
+      ignored_paths = [];
+      contents = "";
+      project =
+        { root = "/project"; config_path = "/project/.deco/config.toml" };
+      source;
+      effective = Result.get_ok (Config.Resolve.apply source);
+      host_paths =
+        {
+          build_context = "/project/.deco/build";
+          containerfile = "/project/.deco/build/Containerfile";
+          workspace_source = None;
+        };
+      identity = User_identity.Image;
+    }
+  in
+  let literals command =
+    List.filter_map
+      (function Command_plan.Literal s -> Some s | _ -> None)
+      command
+  in
+  let security =
+    [ "--privileged"; "--device"; "--cap-add"; "--cap-drop"; "--security-opt" ]
+  in
+  let flagged argv =
+    List.filter
+      (fun arg ->
+        List.exists
+          (fun flag ->
+            arg = flag || String.starts_with ~prefix:(flag ^ "=") arg)
+          security)
+      argv
+  in
+  let plain = get (Assemble_plan.make (loaded "")) in
+  assert (flagged (literals plain.create) = []);
+  let secured =
+    loaded
+      "container.workdir='/work'\n\
+       container.privileged=true\n\
+       container.devices=['/dev/fuse','/dev/a:/dev/b:rw']\n\
+       container.cap_add=['SYS_ADMIN','MKNOD']\n\
+       container.cap_drop=['-weird','ALL']\n\
+       container.security_options=['label=disable']"
+  in
+  let plan = get (Assemble_plan.make secured) in
+  let create = literals plan.create in
+  assert (
+    flagged create
+    = [
+        "--privileged";
+        "--device=/dev/fuse";
+        "--device=/dev/a:/dev/b:rw";
+        "--cap-add=SYS_ADMIN";
+        "--cap-add=MKNOD";
+        "--cap-drop=-weird";
+        "--cap-drop=ALL";
+        "--security-opt=label=disable";
+      ]);
+  let index x =
+    let rec go i = function
+      | [] -> raise Not_found
+      | y :: rest -> if y = x then i else go (i + 1) rest
+    in
+    go 0 create
+  in
+  assert (index "--security-opt=label=disable" < index "--workdir");
+  assert (flagged plan.build = []);
+  (* The digest label records the settings. *)
+  assert (
+    List.mem
+      ("dev.deco.create-digest=" ^ Create_settings.of_loaded secured)
+      create);
+  assert (Create_settings.of_loaded secured <> Create_settings.digest []);
+  (* With cap_add, the create step names the capabilities label check. *)
+  let contains s sub =
+    let n = String.length sub in
+    let rec go i =
+      i + n <= String.length s && (String.sub s i n = sub || go (i + 1))
+    in
+    go 0
+  in
+  assert (
+    contains
+      (Assemble_plan.render plan)
+      "Create container example-dev-container if missing, after checking that \
+       the image's io.containers.capabilities label, if it has one, allows \
+       every --cap-add entry.\n");
+  assert (
+    not (contains (Assemble_plan.render plain) "io.containers.capabilities"));
+  (* The dry-run preview shows the flags. *)
+  let preview = Assemble_plan.render plan in
+  List.iter
+    (fun flag ->
+      let contains s sub =
+        let n = String.length sub in
+        let rec go i =
+          i + n <= String.length s && (String.sub s i n = sub || go (i + 1))
+        in
+        go 0
+      in
+      assert (contains preview flag))
+    (flagged create)

@@ -90,7 +90,7 @@ let () =
       ^ "    podman --remote=false exec \\\n\
         \      -- '<container-id>' \\\n\
         \      sh \\\n\
-        \      -lc \\\n\
+        \      -c \\\n\
         \      'echo ready'\n"
       ^ "\n<container-id> is resolved by inspection during execution.\n");
   let rename name =

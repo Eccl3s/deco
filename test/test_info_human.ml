@@ -51,6 +51,14 @@ let () =
         };
       runtime =
         { user_mode = "keep-id"; workdir = Some "/workspace"; shell = "bash" };
+      security =
+        {
+          privileged = true;
+          devices = [ "/dev/fuse"; "/dev/a:/dev/b:rw" ];
+          cap_add = [ "SYS_ADMIN" ];
+          cap_drop = [ "ALL" ];
+          security_options = [ "label=disable\x1b[2J" ];
+        };
       mounts =
         [
           {
@@ -117,6 +125,13 @@ Runtime
   Workdir:     /workspace
   Shell:       bash
 
+Security
+  Privileged:  yes
+  Devices:     /dev/fuse, /dev/a:/dev/b:rw
+  Cap add:     SYS_ADMIN
+  Cap drop:    ALL
+  Options:     label=disable\x1b[2J
+
 Mounts
   /project -> /workspace (bind, read-write, relabel private)
 
@@ -160,6 +175,14 @@ Actions
           incompatibilities = [];
         };
       runtime = { user_mode = "image"; workdir = None; shell = "sh" };
+      security =
+        {
+          privileged = false;
+          devices = [];
+          cap_add = [];
+          cap_drop = [];
+          security_options = [];
+        };
       mounts = [];
       dns = [];
       ports = [];
@@ -207,6 +230,13 @@ Runtime
   User mode:   image
   Workdir:     -
   Shell:       sh
+
+Security
+  Privileged:  no
+  Devices:     none
+  Cap add:     none
+  Cap drop:    none
+  Options:     none
 
 Mounts
   none

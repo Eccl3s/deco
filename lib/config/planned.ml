@@ -25,19 +25,15 @@ let registry = function
             ] );
       ]
   | [ "container" ] ->
-      List.map
-        (fun key -> (key, Strings))
-        [ "env_files"; "devices"; "cap_add"; "cap_drop"; "security_options" ]
-      @ [
-          ("privileged", Boolean);
-          ("environment", Map);
-          ( "namespaces",
-            Table (strings [ "pid"; "ipc"; "uts"; "cgroup"; "user" ]) );
-          ( "secrets",
-            Rows
-              (strings [ "name"; "type"; "target"; "mode" ]
-              @ integers [ "uid"; "gid" ]) );
-        ]
+      [
+        ("env_files", Strings);
+        ("environment", Map);
+        ("namespaces", Table (strings [ "pid"; "ipc"; "uts"; "cgroup"; "user" ]));
+        ( "secrets",
+          Rows
+            (strings [ "name"; "type"; "target"; "mode" ]
+            @ integers [ "uid"; "gid" ]) );
+      ]
   | [ "mounts" ] ->
       [
         ( "volumes",

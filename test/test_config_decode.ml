@@ -187,3 +187,39 @@ let () =
       ("actions.test=['a']", [ "actions"; "test" ]);
       ("actions='x'", [ "actions" ]);
     ]
+
+(* Container security options decode as typed values, in configured order. *)
+let () =
+  let decoded text =
+    match Config.Decode.from_string ("project.name='x'\n" ^ text) with
+    | Ok config -> Option.get config.container
+    | Error _ -> failwith "Invalid fixture"
+  in
+  let c =
+    decoded
+      "container.privileged=true\n\
+       container.devices=['/dev/fuse','/dev/a:/dev/b:rw']\n\
+       container.cap_add=['SYS_ADMIN','MKNOD']\n\
+       container.cap_drop=['ALL']\n\
+       container.security_options=['label=disable']"
+  in
+  assert (c.privileged = Some true);
+  assert (c.devices = Some [ "/dev/fuse"; "/dev/a:/dev/b:rw" ]);
+  assert (c.cap_add = Some [ "SYS_ADMIN"; "MKNOD" ]);
+  assert (c.cap_drop = Some [ "ALL" ]);
+  assert (c.security_options = Some [ "label=disable" ]);
+  let c = decoded "container.cap_drop=[]" in
+  assert (c.cap_drop = Some [] && c.privileged = None && c.devices = None);
+  List.iter
+    (fun (text, path) ->
+      match Config.Decode.from_string ("project.name='x'\n" ^ text) with
+      | Error [ Config.Decode.Schema_error e ] ->
+          assert (e.path = [ "container"; path ])
+      | _ -> assert false)
+    [
+      ("container.privileged='yes'", "privileged");
+      ("container.devices='/dev/fuse'", "devices");
+      ("container.cap_add=[1]", "cap_add");
+      ("container.cap_drop=['ALL',false]", "cap_drop");
+      ("container.security_options={}", "security_options");
+    ]

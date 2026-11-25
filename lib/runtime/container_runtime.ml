@@ -82,6 +82,49 @@ let incompatibilities ?(selinux_enabled = true) (loaded : Config_loader.t)
   List.rev !failures
 
 let shell_label = "dev.deco.shell"
+let capabilities_label = "io.containers.capabilities"
+
+(* Podman accepts names in any case, with or without the CAP_ prefix, but does
+   not trim spaces. *)
+let capability_name name =
+  let name = String.uppercase_ascii name in
+  if String.starts_with ~prefix:"CAP_" name then
+    String.sub name 4 (String.length name - 4)
+  else name
+
+let unapplied_capabilities (loaded : Config_loader.t) (image : Podman.image) =
+  match
+    ( loaded.effective.container.cap_add,
+      List.assoc_opt capabilities_label image.labels )
+  with
+  | [], _ | _, None -> None
+  | cap_add, Some value -> (
+      let allowed =
+        List.filter_map
+          (fun name -> if name = "" then None else Some (capability_name name))
+          (String.split_on_char ',' value)
+      in
+      match
+        List.filter
+          (fun name -> not (List.mem (capability_name name) allowed))
+          cap_add
+      with
+      | [] -> None
+      | missing ->
+          let text = Terminal_text.escape in
+          let list names =
+            if names = [] then "none"
+            else String.concat ", " (List.map text names)
+          in
+          Some
+            (Printf.sprintf
+               "Image %s sets %s, which limits containers to these \
+                capabilities: %s\n\
+               \  Podman does not apply container.cap_add entries outside it: %s\n\
+               \  Remove them from container.cap_add, or build from an image \
+                without that label."
+               (text (Config.Effective.image_reference loaded.effective.image))
+               capabilities_label (list allowed) (list missing)))
 
 let hook_incompatibilities (loaded : Config_loader.t) (c : Podman.container) =
   let failures = ref [] in

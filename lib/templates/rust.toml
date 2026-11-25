@@ -13,7 +13,7 @@ no_cache = false
 
 [build.args]
 RUST_VERSION = "1"
-BASE_VARIANT = "alpine"
+BASE_VARIANT = "trixie"
 ADDITIONAL_PACKAGES = ""
 
 [user]

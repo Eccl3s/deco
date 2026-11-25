@@ -1,7 +1,7 @@
 (** Pure planning for [deco run] ([specs/deco-cli.md] §[deco run]): the named
-    action runs as [<container.shell> -lc <command>] through the same
-    preparation and [podman exec] as [deco exec]. No terminal detection,
-    filesystem access or Podman calls. *)
+    action runs as [<container.shell> -c <command>] through the same preparation
+    and [podman exec] as [deco exec]. No terminal detection, filesystem access
+    or Podman calls. *)
 
 type error =
   | Unknown_action of string  (** No action with this name is configured. *)
@@ -11,7 +11,7 @@ type t = private {
   name : string;
   command : string;  (** The configured action command. *)
   argv : string list;
-      (** The command handed to {!Exec.run}: [[shell; "-lc"; command]]. *)
+      (** The command handed to {!Exec.run}: [[shell; "-c"; command]]. *)
   exec : Exec_plan.t;
 }
 

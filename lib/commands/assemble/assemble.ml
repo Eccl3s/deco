@@ -213,6 +213,13 @@ let run ?execute ?read_many
   let ensure_container (image : Podman.image) = function
     | Some container -> Ok (container, false)
     | None ->
+        (* Podman would create the container without capabilities the image's
+           label excludes; refuse before creating anything. *)
+        let* () =
+          match Container_runtime.unapplied_capabilities loaded image with
+          | None -> Ok ()
+          | Some message -> fail (Conflict message)
+        in
         let* r = mutation Process.Capture (command ~image_id:image.id Create) in
         let* id = created_id r in
         let* container =

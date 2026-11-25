@@ -175,6 +175,37 @@ let () =
   in
   let run, _ = fake (ok (container "running")) in
   assert ((collect ~loaded:with_actions run).actions = [ "build"; "test" ]);
+  (* Security options are reported as configured, in order. *)
+  assert (
+    r.security
+    = {
+        privileged = false;
+        devices = [];
+        cap_add = [];
+        cap_drop = [];
+        security_options = [];
+      });
+  let secured =
+    load
+      "[project]\n\
+       name = 'example'\n\
+       [container]\n\
+       privileged = true\n\
+       devices = ['/dev/fuse', '/dev/a:/dev/b:rw']\n\
+       cap_add = ['SYS_ADMIN', 'MKNOD']\n\
+       cap_drop = ['ALL']\n\
+       security_options = ['label=disable']\n"
+  in
+  let run, _ = fake (ok (container "running")) in
+  assert (
+    (collect ~loaded:secured run).security
+    = {
+        privileged = true;
+        devices = [ "/dev/fuse"; "/dev/a:/dev/b:rw" ];
+        cap_add = [ "SYS_ADMIN"; "MKNOD" ];
+        cap_drop = [ "ALL" ];
+        security_options = [ "label=disable" ];
+      });
   assert (
     r.trust
     = Some
@@ -223,6 +254,13 @@ let () =
     "incompatibilities": []
   },
   "runtime": { "user_mode": "image", "workdir": "/", "shell": "sh" },
+  "security": {
+    "privileged": false,
+    "devices": [],
+    "cap_add": [],
+    "cap_drop": [],
+    "security_options": []
+  },
   "mounts": [],
   "dns": [],
   "ports": [],

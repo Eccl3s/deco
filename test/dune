@@ -76,7 +76,7 @@
 (test
  (name test_cli)
  (modules test_cli)
- (libraries unix)
+ (libraries config unix)
  (deps ../bin/deco.exe)
  (action
   (run %{test} %{exe:../bin/deco.exe} %{read:../lib/cli/build_version.txt})))

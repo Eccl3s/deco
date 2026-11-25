@@ -20,12 +20,11 @@
     Tables from the v1 specification that the current commands do not need are
     intentionally not modelled yet: [[container.namespaces]],
     [[container.secrets]], [[network]], [[network.ports]], [[mounts.volumes]],
-    and [[container.environment]]. Runtime environment files, privileged mode,
-    devices, capabilities, security options, and user modes ["host-user"] and
-    ["root"] are also deferred. Future parsing must reject deferred features
-    rather than silently ignore them. Generated templates will explicitly select
-    ["keep-id"] with account ["dev"]; omitted user configuration retains the v1
-    ["image"] default. *)
+    and [[container.environment]]. Runtime environment files and user modes
+    ["host-user"] and ["root"] are also deferred. Future parsing must reject
+    deferred features rather than silently ignore them. Generated templates will
+    explicitly select ["keep-id"] with account ["dev"]; omitted user
+    configuration retains the v1 ["image"] default. *)
 
 (** User identity strategy from [[user.mode]]. *)
 type user_mode =
@@ -91,7 +90,15 @@ type container = {
       (** Container name; default [<project.name>-dev-container]. *)
   workdir : string option;
       (** Absolute container working directory for exec and shell. *)
-  shell : string option;  (** Executable used to run commands; default ["sh"]. *)
+  shell : string option;
+      (** Executable used to run commands; default ["sh"]. *)
+  privileged : bool option;  (** Privileged mode; default [false]. *)
+  devices : string list option;
+      (** Host devices, as [HOST_PATH[:CONTAINER_PATH[:PERMISSIONS]]]. *)
+  cap_add : string list option;  (** Linux capabilities to add. *)
+  cap_drop : string list option;  (** Linux capabilities to drop. *)
+  security_options : string list option;
+      (** Values passed to [podman create --security-opt]. *)
 }
 (** The [[container]] table. *)
 
@@ -119,7 +126,7 @@ type hooks = {
       (** Runs before Deco stops or removes a running container. *)
 }
 (** The [[hooks]] table: lifecycle commands run inside the container through
-    [<container.shell> -lc <command>]. Every key is optional. *)
+    [<container.shell> -c <command>]. Every key is optional. *)
 
 type t = {
   project : project;  (** Required: the [[project]] table must be present. *)

@@ -88,10 +88,10 @@ let run ?execute ?read_many ?probe ?hook ?warn
     | Absent | Present _ -> Ok ()
   in
   (* Build first: the old container keeps running, and a failed build leaves
-     it unchanged. *)
-  let* () =
+     it unchanged. [image] becomes the image the replacement will use. *)
+  let* image =
     match plan.build with
-    | None -> Ok ()
+    | None -> Ok image
     | Some build -> (
         let* () =
           match execute Process.Inherit build with
@@ -105,8 +105,17 @@ let run ?execute ?read_many ?probe ?hook ?warn
           owned (Container_runtime.inspect_owned_image ~run:capture loaded)
         in
         match rebuilt with
-        | Podman.Present _ -> Ok ()
+        | Podman.Present _ -> Ok rebuilt
         | Absent -> fail (Runtime "Image is missing after build"))
+  in
+  (* Assemble refuses this too, but only after the old container is gone. *)
+  let* () =
+    match image with
+    | Podman.Absent -> Ok ()
+    | Present image -> (
+        match Container_runtime.unapplied_capabilities loaded image with
+        | None -> Ok ()
+        | Some message -> fail (Conflict message))
   in
   progress (if Option.is_some plan.build then Image_rebuilt else Image_kept);
   let* stopped, container_removed =

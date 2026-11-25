@@ -51,6 +51,18 @@ type runtime = {
   shell : string;
 }
 
+type security = {
+  privileged : bool;
+  devices : string list;
+  cap_add : string list;
+  cap_drop : string list;
+  security_options : string list;
+}
+(** The configured container security options: the values passed to
+    [podman create], in configured order and empty when omitted. They are not
+    read from the existing container, which may differ until it is refreshed;
+    {!container.compatible} reports that. *)
+
 type mount = {
   source : string;  (** Host path, or ["-"] for source-less mounts. *)
   target : string;
@@ -81,6 +93,7 @@ type report = {
   image : image;
   container : container;
   runtime : runtime;
+  security : security;
   mounts : mount list;
   dns : string list;
   ports : port list;

@@ -49,7 +49,7 @@ let () =
           Literal "--";
           Container_id;
           Literal "sh";
-          Literal "-lc";
+          Literal "-c";
           Literal "echo ready";
         ]);
   assert (
@@ -99,7 +99,7 @@ let () =
           "--";
           "cid";
           "/bin/bash";
-          "-lc";
+          "-c";
           "make clean";
         ];
       ]);

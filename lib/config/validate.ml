@@ -85,7 +85,61 @@ let check (config : Config_types.t) =
         (fun path value ->
           if nonblank path value && String.contains value '/' then
             container_path path value)
-        container.shell)
+        container.shell;
+      let each key values check =
+        List.iteri
+          (fun index value ->
+            check [ "container"; Printf.sprintf "%s[%d]" key index ] value)
+          (Option.value ~default:[] values)
+      in
+      let absolute s = s <> "" && s.[0] = '/' in
+      let no_nul path value =
+        if String.contains value '\000' then (
+          error path "Must not contain NUL bytes";
+          false)
+        else true
+      in
+      each "devices" container.devices (fun path value ->
+          if no_nul path value then
+            let permissions s =
+              s <> ""
+              && String.for_all (fun c -> List.mem c [ 'r'; 'w'; 'm' ]) s
+              && List.length
+                   (List.sort_uniq Char.compare (List.of_seq (String.to_seq s)))
+                 = String.length s
+            in
+            match String.split_on_char ':' value with
+            | host :: _ when not (absolute host) ->
+                error path "Expected an absolute host device path"
+            | [ _ ] -> ()
+            | _ :: target :: _ when not (absolute target) ->
+                error path "Expected an absolute container device path"
+            | [ _; _ ] -> ()
+            | [ _; _; perms ] ->
+                if not (permissions perms) then
+                  error path
+                    "Device permissions may contain only r, w and m, each at \
+                     most once"
+            | _ ->
+                error path
+                  "Expected HOST_PATH, HOST_PATH:CONTAINER_PATH or \
+                   HOST_PATH:CONTAINER_PATH:PERMISSIONS");
+      let capability path value =
+        if
+          value = ""
+          || not
+               (String.for_all
+                  (fun c -> ascii_letter c || digit c || c = '_' || c = '-')
+                  value)
+        then
+          error path
+            "Expected a capability name of ASCII letters, digits, _ or -"
+      in
+      each "cap_add" container.cap_add capability;
+      each "cap_drop" container.cap_drop capability;
+      each "security_options" container.security_options (fun path value ->
+          if value = "" then error path "Must not be empty"
+          else ignore (no_nul path value)))
     config.container;
   Option.iter
     (fun (mounts : mounts) ->

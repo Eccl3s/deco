@@ -1,5 +1,5 @@
 ARG GO_VERSION=1
-ARG BASE_VARIANT=alpine
+ARG BASE_VARIANT=trixie
 FROM golang:${GO_VERSION}-${BASE_VARIANT}
 
 # REQUIRED: Set up base system

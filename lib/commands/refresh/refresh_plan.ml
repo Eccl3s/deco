@@ -66,6 +66,19 @@ let render plan =
         "Keep the existing image " ^ quote plan.image_reference
         ^ "; it is not rebuilt."
   in
+  let image =
+    if
+      List.exists
+        (function
+          | Command_plan.Literal arg ->
+              String.starts_with ~prefix:"--cap-add=" arg
+          | Image_id | Container_id -> false)
+        plan.create
+    then
+      image ^ "\n   If the image's " ^ Container_runtime.capabilities_label
+      ^ " label excludes a --cap-add entry, stop before changing the container."
+    else image
+  in
   let before_removal =
     [ inspect; image ]
     @ Option.to_list plan.pre_stop

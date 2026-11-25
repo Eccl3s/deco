@@ -14,7 +14,48 @@ releases may change behaviour.
   container whose recorded hash differs from the configuration's is
   incompatible, and `deco refresh` recreates it. Containers created without
   the label are treated as having those settings unset, so existing containers
-  stay compatible. No setting contributes to the hash yet.
+  stay compatible.
+- Container security options: `container.privileged`, `devices`, `cap_add`,
+  `cap_drop` and `security_options` are validated and passed to
+  `podman create`, and they contribute to `dev.deco.create-digest`. Earlier
+  releases accepted them but did not apply them; in particular, the
+  templates' `cap_drop = ["ALL"]` now takes effect.
+- `deco info` reports the security options in a `Security` section and a JSON
+  `security` object, and the `deco trust` review lists them, flagging
+  privileged mode, devices, added capabilities and security options.
+- `assemble` and `refresh` refuse `cap_add` entries outside an image's
+  `io.containers.capabilities` label, which Podman cannot apply, with exit
+  code 4 before creating or removing a container.
+- `test/templates_podman.py`, an opt-in live check of every template.
+
+### Changed
+
+- Hooks and actions run as `<container.shell> -c <command>` instead of `-lc`,
+  so they see the image's environment, as `deco exec` and `deco shell` do.
+  Login shells on Debian, Ubuntu and Alpine images reset `PATH` from
+  `/etc/profile`, which hid tools such as `go` and `cargo` that images add to
+  `PATH`. Commands that relied on `/etc/profile` or `~/.profile` must now
+  source them, for example `. ~/.profile && make test`.
+
+### Fixed
+
+- The go, rust and python templates build: they defaulted to Alpine base
+  images while installing packages with `apt-get`, and now use Debian trixie.
+- The podman template no longer sets `cap_add`, which its base image's
+  `io.containers.capabilities` label made Podman unable to apply.
+
+### Upgrade notes
+
+- Containers created from the templates, or from any configuration that sets
+  a security option, are now incompatible until `deco refresh` recreates them
+  with the options applied.
+- Projects generated from earlier templates keep their old files:
+  - podman: remove `cap_add` from `.deco/config.toml`, or `assemble` refuses it.
+  - go and rust: set `BASE_VARIANT = "trixie"` in `[build.args]`.
+  - python: change `-alpine` to `-trixie` in the Containerfile's `FROM` line.
+
+  After editing by hand, approve `.deco/` again with `deco trust`.
+  `deco init --replace` instead regenerates both files and approves them.
 
 ## [0.3.0] - 2026-11-22
 

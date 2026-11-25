@@ -24,6 +24,11 @@ type container = {
   name : string option;
   workdir : string option;
   shell : string option;
+  privileged : bool option;
+  devices : string list option;
+  cap_add : string list option;
+  cap_drop : string list option;
+  security_options : string list option;
 }
 
 type workspace = {

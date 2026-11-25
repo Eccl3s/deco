@@ -240,7 +240,7 @@ let () =
   in
   let post_start =
     [
-      "podman"; "--remote=false"; "exec"; "--"; "cid"; "sh"; "-lc"; "echo ready";
+      "podman"; "--remote=false"; "exec"; "--"; "cid"; "sh"; "-c"; "echo ready";
     ]
   in
   let run, calls =

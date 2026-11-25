@@ -14,8 +14,13 @@ val fields : Config_loader.t -> (string * string) list
     a setting that leaves the command as Deco 0.3.0 would have built it
     contributes nothing. A container created without {!label} is therefore
     equivalent to one whose settings are all at those values, and adding a
-    setting does not change the digest of configurations that leave it unset. No
-    setting contributes yet, so this is always empty. *)
+    setting does not change the digest of configurations that leave it unset.
+
+    Contributing settings: [container.privileged] (["true"], only when enabled)
+    and the non-empty [container.devices], [container.cap_add],
+    [container.cap_drop] and [container.security_options] lists, each as its
+    values in configured order, each value prefixed with its length as a 64-bit
+    big-endian integer so distinct lists cannot share a value. *)
 
 val digest : (string * string) list -> string
 (** [blake2b-256:] followed by lowercase hexadecimal, over the pairs sorted by

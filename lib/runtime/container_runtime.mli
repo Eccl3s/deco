@@ -21,6 +21,21 @@ val shell_label : string
 (** ["dev.deco.shell"]: the [container.shell] a container was created with,
     recorded so hooks are not run with a shell the container may not have. *)
 
+val capabilities_label : string
+(** ["io.containers.capabilities"]: an image label with which Podman replaces
+    its default capability set. Podman then leaves [--cap-add] entries outside
+    the label's list out of the bounding set, so a root process silently lacks
+    them and a non-root process fails to start. *)
+
+val unapplied_capabilities : Config_loader.t -> Podman.image -> string option
+(** [Some message] when the image carries {!capabilities_label} and
+    [container.cap_add] has entries outside its comma-separated list, so Podman
+    would not apply them; [None] otherwise. Names are compared as Podman does:
+    case-insensitively and ignoring a [CAP_] prefix. An empty label allows no
+    capabilities. The message names the image, the label's list and the
+    unapplied entries, escaped with {!Terminal_text.escape}, and suggests how to
+    fix it; its lines are separated by ["\n"] with no trailing newline. *)
+
 val hook_incompatibilities : Config_loader.t -> Podman.container -> string list
 (** The ways the container differs from the loaded configuration that matter for
     running a hook in it with the configured user, workdir and shell: the
