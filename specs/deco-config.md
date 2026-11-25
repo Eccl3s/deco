@@ -50,6 +50,7 @@ The complete top-level schema is:
 [user]
 [container]
 [container.namespaces]
+[container.resources]
 [[container.secrets]]
 [network]
 [[network.ports]]
@@ -356,6 +357,55 @@ NODE_ENV = "development"
 pid = "host"
 ```
 
+### `[container.resources]`
+
+Limits the resources available to the container. The table is optional and
+all keys default to unset. An unset key passes no flag, so the engine default
+applies; Deco imposes no limits of its own.
+
+| Key | Type | Required | Default | Engine flag |
+| --- | --- | --- | --- | --- |
+| `cpus` | integer or float | no | none | `--cpus` |
+| `memory` | string | no | none | `--memory` |
+| `memory_swap` | string | no | none | `--memory-swap` |
+| `pids` | integer | no | none | `--pids-limit` |
+
+`cpus` is the number of CPUs the container may use, and may be fractional. It
+must be greater than `0`. When Deco can determine the host's online CPU count,
+`cpus` must not exceed it.
+
+`memory` and `memory_swap` are sizes written as a positive decimal integer
+with no leading zeros, optionally followed by one unit suffix: `b` (bytes),
+`k` (KiB), `m` (MiB), or `g` (GiB), in either case. A size without a suffix
+is in bytes. `memory_swap` is the combined limit of memory and swap, as in
+the engine flag, and may also be `"-1"` for unlimited swap. `memory_swap`
+must not be set without `memory`, and unless it is `"-1"` it must not be
+smaller than `memory` once both are converted to bytes. Values are passed to
+the engine as written.
+
+`pids` is the maximum number of processes in the container and must be a
+positive integer.
+
+Resource limits rely on cgroup controllers that the engine must be able to
+use: `cpus` requires the `cpu` controller, `memory` and `memory_swap` require
+the `memory` controller, and `pids` requires the `pids` controller. Rootless
+Podman can apply limits only on cgroups v2 with the controllers delegated to
+the user. Before building, creating, or changing any engine resource, Deco
+must check the controllers the engine reports. A configured limit whose
+controller is unavailable, or any configured limit under rootless Podman on
+cgroups v1, is a validation error that names the limit and the missing
+controller. Deco must not drop a limit and continue.
+
+Example:
+
+```toml
+[container.resources]
+cpus = 2.5
+memory = "4g"
+memory_swap = "6g"
+pids = 1024
+```
+
 ## 6. Networking
 
 ### `[network]`
@@ -616,6 +666,11 @@ NODE_ENV = "development"
 
 [container.namespaces]
 pid = "host"
+
+[container.resources]
+cpus = 2.5
+memory = "4g"
+pids = 1024
 
 [network]
 mode = "bridge"
