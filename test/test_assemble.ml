@@ -89,6 +89,37 @@ let () =
           @ [ (Create_settings.label, Create_settings.of_loaded loaded) ];
       }
     = [ "Create-settings label is duplicated" ]);
+  (* A container created before a variable was configured, or with another
+     value, needs recreating; editing env file contents does not. *)
+  let with_environment environment =
+    {
+      loaded with
+      effective =
+        {
+          loaded.effective with
+          container = { loaded.effective.container with environment };
+        };
+    }
+  in
+  assert (
+    Container_runtime.incompatibilities
+      (with_environment [ ("TOKEN", "new") ])
+      image current
+    = [ settings ]);
+  assert (
+    Container_runtime.incompatibilities
+      (with_environment [ ("TOKEN", "new") ])
+      image
+      (digest
+         (Create_settings.of_loaded (with_environment [ ("TOKEN", "old") ])))
+    = [ settings ]);
+  assert (
+    Container_runtime.incompatibilities
+      (with_environment [ ("TOKEN", "new") ])
+      image
+      (digest
+         (Create_settings.of_loaded (with_environment [ ("TOKEN", "new") ])))
+    = []);
   (* Reported after the field-by-field checks. *)
   assert (
     Container_runtime.incompatibilities loaded image
