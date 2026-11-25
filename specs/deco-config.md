@@ -469,9 +469,43 @@ Mounts the project workspace into the container. The table is optional.
 | `target` | string | yes | none | Absolute container directory receiving the mount. |
 | `relabel` | string enum | no | `"none"` | SELinux relabel policy: `shared`, `private`, or `none`. |
 
-The workspace is a read-write bind mount. `source` is resolved as a host path
-and must exist as a directory. `target` must not conflict with another mount
-target.
+The workspace is a read-write bind mount, except for the protected paths
+described below, which are read-only inside the container. `source` is
+resolved as a host path and must exist as a directory. `target` must not
+conflict with another mount target.
+
+#### Protected workspace paths
+
+Code running in the container can write to the workspace, and the workspace
+usually contains files that the host acts on later. Deco therefore mounts
+certain paths inside the workspace read-only.
+
+For each protected path that lies inside the canonical workspace `source`,
+Deco adds a read-only bind mount whose source is the canonical host path and
+whose target is the corresponding path under `mounts.workspace.target`. These
+mounts are added after the workspace mount, so they cover the read-write
+workspace content at those paths. They never request SELinux relabeling:
+their content is part of the workspace source, so it already carries the
+labels that `mounts.workspace.relabel` applies.
+
+Protection applies only to paths inside the workspace. When no workspace is
+configured, or a protected path lies outside the workspace source, the path is
+not visible in the container through the workspace and Deco adds no mount for
+it.
+
+The project's `.deco/` directory is always protected; there is no
+configuration key to disable this. It is the configuration that trust
+approves (see [`deco-trust.md`](./deco-trust.md)). A container that could
+rewrite it could plant hooks, mounts, or build steps that would take effect as
+soon as the change was approved, so changes to `.deco/` must come from the
+host. `.deco/` is protected
+when the project root is the workspace `source` or lies inside it. For
+example, with `source = "."` and `target = "/workspace"`, Deco mounts
+`<project root>/.deco` read-only at `/workspace/.deco`.
+
+Protected paths count as mount targets. A `[[mounts.volumes]]` entry whose
+`target` equals a protected path's container path, or lies inside it, is a
+validation error.
 
 ### `[[mounts.volumes]]`
 
