@@ -294,6 +294,8 @@ Otherwise, Deco prints a review to stdout containing:
    - `container.privileged`, `container.devices`, `container.cap_add`,
      `container.cap_drop`, and `container.security_options`;
    - every configured `[container.namespaces]` mode;
+   - every configured `[container.resources]` limit, listed without a flag
+     because limits restrict the container rather than weaken its isolation;
    - `network.mode`, flagging `host`;
    - every bind mount whose canonical source is outside the project root, with
      read-write mounts flagged;
