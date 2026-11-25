@@ -135,4 +135,30 @@ let () =
       assert (
         List.map (fun (e : Config.Diagnostic.t) -> e.path) es
         = [ [ "build"; "context" ]; [ "mounts"; "workspace"; "source" ] ]);
+      (* Env files resolve from the project root, keep configured order, may be
+         outside the project, and must be regular files. *)
+      let set_env_files values =
+        { config with container = { config.container with env_files = values } }
+      in
+      assert ((ok config).env_files = []);
+      let env = join root ".env" in
+      write env;
+      let elsewhere = join external_dir "app.env" in
+      write elsewhere;
+      let env_link = join root "env-link" in
+      Unix.symlink ".env" env_link;
+      assert (
+        (ok (set_env_files [ "external_dir/app.env"; ".env"; "~/env-link" ]))
+          .env_files = [ elsewhere; env; env ]);
+      assert ((ok (set_env_files [ elsewhere ])).env_files = [ elsewhere ]);
+      let es =
+        bad (set_env_files [ ".env"; "missing.env"; "external_dir"; "~other" ])
+      in
+      assert (
+        List.map (fun (e : Config.Diagnostic.t) -> e.path) es
+        = [
+            [ "container"; "env_files[1]" ];
+            [ "container"; "env_files[2]" ];
+            [ "container"; "env_files[3]" ];
+          ]);
       assert (Sys.getcwd () = cwd))
