@@ -299,6 +299,9 @@ Otherwise, Deco prints a review to stdout containing:
    - `network.mode`, flagging `host`;
    - every bind mount whose canonical source is outside the project root, with
      read-write mounts flagged;
+   - the workspace protection states reported by `deco info` as `protection`,
+     flagging `protect_git = false` and a Git directory left unprotected
+     because `.git` is a file;
    - `container.env_files` paths and `[[container.secrets]]` names, without
      their contents;
    - `user.mode`;

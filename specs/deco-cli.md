@@ -141,6 +141,26 @@ Deco uses this label to detect changes to user identity configuration. When the 
 
 Changes to user identity mapping alone do not require rebuilding the image.
 
+### Workspace protection
+
+The TOML specification defines the protected workspace paths: `.deco/` always,
+and the project's `.git` directory unless `mounts.workspace.protect_git` is
+`false`. Deco determines them from the host filesystem each time it creates a
+container or checks an existing one, and adds one read-only bind mount per
+protected path to `podman create`.
+
+The set of protection mounts is a create-time setting. An existing container
+is incompatible, and must be recreated with `deco refresh`, when its
+protection mounts differ from the set Deco determines now. This includes a
+container created without protection, such as one created by an earlier Deco
+release, and one created before a protected path existed, for example before
+`git init` created `.git`.
+
+When `protect_git` is `true` and `<project root>/.git` is a file, `assemble`
+and `refresh` write a warning to stderr each time they create the container,
+stating that the Git directory is not protected and how to protect it with a
+read-only bind mount. The warning does not change the exit status.
+
 ### Common output rules
 
 - Normal human-readable output is written to stdout.
@@ -457,7 +477,7 @@ Reports the current project's resolved configuration and Podman resource
 state without changing it. The report includes project identity, Podman
 availability and version, image identity, existence, age, and ownership,
 container identity, state, age, ownership, and compatibility, user mode,
-workdir, container security options, resource limits, mounts, published ports, configured
+workdir, container security options, resource limits, workspace protection, mounts, published ports, configured
 hooks, action names, and configuration trust state. `info` does not require trust.
 
 `info` performs only read-only Podman queries. Reporting ownership or
@@ -521,7 +541,36 @@ JSON output has this shape:
     "memory_swap": null,
     "pids": 1024
   },
-  "mounts": [],
+  "protection": {
+    "deco": "protected",
+    "git": "protected"
+  },
+  "mounts": [
+    {
+      "source": "/home/user/my-project",
+      "target": "/workspace",
+      "type": "bind",
+      "readonly": false,
+      "relabel": "shared",
+      "protected": false
+    },
+    {
+      "source": "/home/user/my-project/.deco",
+      "target": "/workspace/.deco",
+      "type": "bind",
+      "readonly": true,
+      "relabel": "none",
+      "protected": true
+    },
+    {
+      "source": "/home/user/my-project/.git",
+      "target": "/workspace/.git",
+      "type": "bind",
+      "readonly": true,
+      "relabel": "none",
+      "protected": true
+    }
+  ],
   "dns": [],
   "ports": [],
   "hooks": ["post_create", "post_start"],
@@ -579,15 +628,26 @@ Configuration fields:
   from the configuration; resource limits are create-time settings, so an
   existing container created with different limits is incompatible, reported
   through `container.compatible`, and `deco refresh` recreates it.
-- Each `mounts` entry includes `source`, `target`, `type`, `readonly`, and
-  `relabel`; source may be `"-"` for source-less mounts such as `tmpfs` and
-  `devpts`.
+- `protection` reports the workspace protection Deco applies when it creates
+  the container. `deco` is `"protected"`, or `"not-applicable"` when no
+  workspace is configured or `.deco/` lies outside the workspace source. `git`
+  is `"protected"` when `.git` is a directory that is mounted read-only,
+  `"unprotected"` when `.git` is a file, `"disabled"` when
+  `mounts.workspace.protect_git` is `false`, and `"not-applicable"` when there
+  is no workspace, no `.git`, or `.git` lies outside the workspace source.
+- Each `mounts` entry includes `source`, `target`, `type`, `readonly`,
+  `relabel`, and `protected`; source may be `"-"` for source-less mounts such
+  as `tmpfs` and `devpts`. `protected` is `true` for the read-only mounts that
+  workspace protection adds and `false` for every other mount; it is the only
+  way protection mounts differ from other read-only bind mounts in the
+  report.
 - `dns` includes configured network DNS server addresses.
 - Each `ports` entry includes `host`, `container`, `protocol`, and `bind`.
 
 Human output presents the same information as labelled sections in this
 order: project, trust, Podman, image, container, runtime, security, resources, mounts,
-DNS, ports, hooks, and actions. Timestamps are shown in UTC together with a relative age, such as
+DNS, ports, hooks, and actions. The mounts section begins with the
+`protection` states and marks each protection mount as protected. Timestamps are shown in UTC together with a relative age, such as
 `2026-11-11 09:14 UTC (9 days ago)`. Missing values are shown as `-`, and an
 incompatible container lists each mismatch. Control characters in reported
 values are escaped as in `deco list`.
@@ -850,6 +910,9 @@ A dry run must:
   operation, with secret and environment-variable values redacted as required
   by the common output rules.
 - Mark conditional or destructive operations clearly.
+- Include the workspace protection mounts in every `podman create` it prints,
+  and print the unprotected Git directory warning to stderr when the real
+  operation would.
 - Avoid file writes, image builds, resource mutations, and hook execution.
 - Not require configuration trust. When the configuration is not trusted, a
   dry run of a command that requires trust writes a note to stderr as defined
