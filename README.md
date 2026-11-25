@@ -1042,6 +1042,11 @@ namespace conflicts, and host path existence are deferred.
 Network settings, environment injection, namespaces, additional mounts, and
 secrets remain inactive. The [container security options](#container-security-options)
 are applied.
+
+`[container.resources]` (CPU, memory, swap and process limits) is specified
+in v1 but is not one of the planned fields that are accepted yet. Until it is
+implemented, any key in it is rejected as an unknown key, and neither
+`deco info` nor the `deco trust` review reports a `resources` section.
 This compatibility policy lasts until each setting is implemented; the v1
 specification continues to describe the behavior expected from future releases.
 
