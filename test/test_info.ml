@@ -207,6 +207,41 @@ let () =
         cap_drop = [ "ALL" ];
         security_options = [ "label=disable" ];
       });
+  (* The environment lists sorted names and resolved env files, never values. *)
+  assert (r.environment = { variables = []; env_files = [] });
+  let with_environment =
+    let loaded =
+      load
+        "[project]\n\
+         name = 'example'\n\
+         [container]\n\
+         env_files = ['b.env', 'a.env']\n\
+         [container.environment]\n\
+         ZED = 'SECRET_VALUE'\n\
+         ALPHA = 'OTHER_SECRET'\n"
+    in
+    {
+      loaded with
+      host_paths =
+        {
+          loaded.host_paths with
+          env_files = [ "/project/b.env"; "/project/a.env" ];
+        };
+    }
+  in
+  let run, _ = fake (ok (container "running")) in
+  let reported = collect ~loaded:with_environment run in
+  assert (
+    reported.environment
+    = {
+        variables = [ "ALPHA"; "ZED" ];
+        env_files = [ "/project/b.env"; "/project/a.env" ];
+      });
+  List.iter
+    (fun rendered -> assert (not (contains rendered "SECRET")))
+    [
+      Info.render_json reported; Info.render_human ~now:0. ~ignored:[] reported;
+    ];
   assert (
     r.trust
     = Some
@@ -262,6 +297,7 @@ let () =
     "cap_drop": [],
     "security_options": []
   },
+  "environment": { "variables": [], "env_files": [] },
   "mounts": [],
   "dns": [],
   "ports": [],

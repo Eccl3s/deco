@@ -38,6 +38,8 @@ type security = {
   security_options : string list;
 }
 
+type environment = { variables : string list; env_files : string list }
+
 type mount = {
   source : string;
   target : string;
@@ -63,6 +65,7 @@ type report = {
   container : container;
   runtime : runtime;
   security : security;
+  environment : environment;
   mounts : mount list;
   dns : string list;
   ports : port list;
@@ -246,6 +249,12 @@ let build ~trust (loaded : Config_loader.t) observed =
         cap_drop = e.container.cap_drop;
         security_options = e.container.security_options;
       };
+    environment =
+      {
+        variables =
+          List.sort_uniq String.compare (List.map fst e.container.environment);
+        env_files = loaded.host_paths.env_files;
+      };
     mounts;
     dns = [];
     ports = [];
@@ -358,6 +367,12 @@ let render_json r =
               ("cap_add", strings r.security.cap_add);
               ("cap_drop", strings r.security.cap_drop);
               ("security_options", strings r.security.security_options);
+            ] );
+        ( "environment",
+          `Assoc
+            [
+              ("variables", strings r.environment.variables);
+              ("env_files", strings r.environment.env_files);
             ] );
         ( "mounts",
           `List
@@ -472,6 +487,9 @@ let render_human ~now ~ignored r =
   field "Cap add" (list r.security.cap_add);
   field "Cap drop" (list r.security.cap_drop);
   field "Options" (list r.security.security_options);
+  section false "Environment";
+  field "Variables" (list r.environment.variables);
+  field "Env files" (list r.environment.env_files);
   items "Mounts"
     (fun m ->
       Printf.sprintf "%s -> %s (%s, %s, relabel %s)" (safe m.source)

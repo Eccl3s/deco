@@ -63,6 +63,17 @@ type security = {
     read from the existing container, which may differ until it is refreshed;
     {!container.compatible} reports that. *)
 
+type environment = {
+  variables : string list;
+      (** Configured [[container.environment]] names, sorted; values are never
+          reported. *)
+  env_files : string list;
+      (** Canonical [container.env_files] paths, in configured order; their
+          contents are never read. *)
+}
+(** The configured container environment, like {!security} taken from the
+    configuration rather than the existing container. *)
+
 type mount = {
   source : string;  (** Host path, or ["-"] for source-less mounts. *)
   target : string;
@@ -94,6 +105,7 @@ type report = {
   container : container;
   runtime : runtime;
   security : security;
+  environment : environment;
   mounts : mount list;
   dns : string list;
   ports : port list;
