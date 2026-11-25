@@ -468,10 +468,94 @@ Mounts the project workspace into the container. The table is optional.
 | `source` | string | no | `"."` | Existing host directory to mount. |
 | `target` | string | yes | none | Absolute container directory receiving the mount. |
 | `relabel` | string enum | no | `"none"` | SELinux relabel policy: `shared`, `private`, or `none`. |
+| `protect_git` | boolean | no | `true` | Mount the project's Git directory read-only; see Protected workspace paths. |
 
-The workspace is a read-write bind mount. `source` is resolved as a host path
-and must exist as a directory. `target` must not conflict with another mount
-target.
+The workspace is a read-write bind mount, except for the protected paths
+described below, which are read-only inside the container. `source` is
+resolved as a host path and must exist as a directory. `target` must not
+conflict with another mount target.
+
+#### Protected workspace paths
+
+Code running in the container can write to the workspace, and the workspace
+usually contains files that the host acts on later. Deco therefore mounts
+certain paths inside the workspace read-only.
+
+For each protected path that lies inside the canonical workspace `source`,
+Deco adds a read-only bind mount whose source is the canonical host path and
+whose target is the corresponding path under `mounts.workspace.target`. These
+mounts are added after the workspace mount, so they cover the read-write
+workspace content at those paths. They never request SELinux relabeling:
+their content is part of the workspace source, so it already carries the
+labels that `mounts.workspace.relabel` applies.
+
+Protection applies only to paths inside the workspace. When no workspace is
+configured, or a protected path lies outside the workspace source, the path is
+not visible in the container through the workspace and Deco adds no mount for
+it.
+
+The project's `.deco/` directory is always protected; there is no
+configuration key to disable this. It is the configuration that trust
+approves (see [`deco-trust.md`](./deco-trust.md)). A container that could
+rewrite it could plant hooks, mounts, or build steps that would take effect as
+soon as the change was approved, so changes to `.deco/` must come from the
+host. `.deco/` is protected
+when the project root is the workspace `source` or lies inside it. For
+example, with `source = "."` and `target = "/workspace"`, Deco mounts
+`<project root>/.deco` read-only at `/workspace/.deco`.
+
+When `mounts.workspace.protect_git` is `true`, Deco also protects the
+project's Git directory. Git runs hooks on the host, and settings in its
+`config` files, such as `core.hooksPath` and `core.fsmonitor`, name programs
+that Git runs on the host. A container that could write the Git directory could
+therefore run code on the host the next time the user runs Git there, through
+the repository's own hooks and configuration or those of its submodules in
+`modules/` and its linked worktrees in `worktrees/`. Deco protects the whole
+directory rather than individual files, so every such path is covered,
+including ones added by later Git versions. Setting `protect_git = false`
+mounts it read-write like the rest of the workspace.
+
+Deco checks `<project root>/.git` when it creates the container, and only
+that path; it does not read Git files or follow Git's indirections:
+
+- When `.git` is a directory inside the workspace source, Deco mounts it
+  read-only. This is the usual case, and it covers the repository's
+  submodules, whose Git directories are under `.git/modules/`.
+- When `.git` is a file, as in a linked worktree or a submodule, Deco adds no
+  mount for it and reports the Git directory as unprotected. The file names
+  the real Git directory, which is often outside the workspace and then not
+  visible in the container at all. When it is inside the workspace, the user
+  can protect it with a read-only `bind` entry in `[[mounts.volumes]]` whose
+  `source` is that directory and whose `target` is its path in the container.
+  Deco warns on stderr each time it creates such a container, and `deco info`
+  and the `deco trust` review report the Git directory as unprotected.
+- When `.git` does not exist, there is nothing to protect.
+
+When `protect_git` is `false`, Deco checks nothing, adds no Git mount, and
+writes no warning. A repository created after the container, for example by
+`git init` inside it, is not protected until the container is recreated; see
+the compatibility rules in [`deco-cli.md`](./deco-cli.md).
+
+Because the Git directory is read-only, Git commands that only read the
+repository, such as `git status`, `git log`, `git diff`, `git show`, and
+`git blame`, work in the container. Commands that write objects, refs, the
+index, or configuration, such as `git add`, `git commit`, `git fetch`,
+`git pull`, `git checkout`, `git switch`, `git stash`, and `git config`, fail
+there and must be run on the host, or with `protect_git = false`.
+
+Protection covers only the project's own Git directory. Deco does not parse
+Git configuration, so if `core.hooksPath` already names a directory inside the
+workspace, such as `.husky`, that directory remains writable. Other Git
+repositories inside the workspace that are not submodules of the project, such
+as a dependency cloned into a subdirectory, are not protected either.
+
+Workspace protection is not a sandbox: the rest of the workspace stays
+writable from the container. See the threat model in
+[`deco-trust.md`](./deco-trust.md) for what it does and does not protect.
+
+Protected paths count as mount targets. A `[[mounts.volumes]]` entry whose
+`target` equals a protected path's container path, or lies inside it, is a
+validation error.
 
 ### `[[mounts.volumes]]`
 
@@ -685,6 +769,7 @@ bind = "127.0.0.1"
 source = "."
 target = "/workspace"
 relabel = "shared"
+protect_git = true
 
 [[mounts.volumes]]
 source = "~/.ssh"

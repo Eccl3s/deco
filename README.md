@@ -309,6 +309,13 @@ The build context is separate from the project workspace. Files outside the buil
 
 The project workspace can instead be mounted into the running container using `[mounts.workspace]`.
 
+The whole workspace is currently mounted read-write, including `.deco/` and
+`.git`. The v1 specification mounts both of them read-only inside the
+container (see Protected workspace paths in `specs/deco-config.md`), but this
+is not implemented yet, so code running in the container can still change the
+configuration you approve with `deco trust` or plant Git hooks that run on the
+host.
+
 When using keep-id mode, Deco configures Podman's user namespace to map the host user's UID and GID to the configured container UID and GID. This allows the development environment to use an existing container user without requiring its UID or GID to match those of the host user.
 
 ### Building and Refreshing
@@ -1047,6 +1054,11 @@ are applied.
 in v1 but is not one of the planned fields that are accepted yet. Until it is
 implemented, any key in it is rejected as an unknown key, and neither
 `deco info` nor the `deco trust` review reports a `resources` section.
+
+`mounts.workspace.protect_git` is specified in v1 but is not one of the
+planned fields that are accepted yet. Until workspace protection is
+implemented, setting it is rejected as an unknown key, and neither `deco info`
+nor the `deco trust` review reports a `protection` section.
 This compatibility policy lasts until each setting is implemented; the v1
 specification continues to describe the behavior expected from future releases.
 
