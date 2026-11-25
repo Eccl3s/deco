@@ -233,3 +233,28 @@ let () =
       ("container.security_options=[\"a\\u0000b\"]", "security_options[0]");
       ("container.devices=[\"/dev/a\\u0000b\"]", "devices[0]");
     ]
+
+(* Environment variable names follow [A-Za-z_][A-Za-z0-9_]*; values are literal
+   but must not contain NUL; env file paths must not be blank. *)
+let () =
+  List.iter
+    (fun suffix -> valid (config suffix))
+    [
+      "container.environment={NODE_ENV='development',_A1='$HOME',empty=''}";
+      "container.env_files=['.env','~/x.env','/abs/x.env']";
+      "container={environment={},env_files=[]}";
+    ];
+  List.iter
+    (fun (suffix, path) ->
+      match Config.Validate.check (config suffix) with
+      | Error [ e ] -> assert (e.path = "container" :: path)
+      | _ -> failwith suffix)
+    [
+      ("container.environment.'1A'='x'", [ "environment"; "1A" ]);
+      ("container.environment.'A-B'='x'", [ "environment"; "A-B" ]);
+      ("container.environment.''='x'", [ "environment"; "" ]);
+      ("container.environment.A=\"a\\u0000b\"", [ "environment"; "A" ]);
+      ("container.env_files=['']", [ "env_files[0]" ]);
+      ("container.env_files=['.env','  ']", [ "env_files[1]" ]);
+      ("container.env_files=[\"a\\u0000b\"]", [ "env_files[0]" ]);
+    ]

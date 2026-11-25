@@ -99,6 +99,11 @@ type container = {
   cap_drop : string list option;  (** Linux capabilities to drop. *)
   security_options : string list option;
       (** Values passed to [podman create --security-opt]. *)
+  env_files : string list option;
+      (** Host env file paths, as written, passed to [--env-file]. *)
+  environment : (string * string) list option;
+      (** [[container.environment]] variables in configured order. Values are
+          literal and may be secrets. *)
 }
 (** The [[container]] table. *)
 

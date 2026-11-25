@@ -14,7 +14,6 @@ val render : now:float -> Trust.status -> Config_loader.t -> string
     Build arguments are listed by name only. Every configured hook command is
     shown in full, in execution order, and so is every action command, sorted by
     name. Planned settings are listed with their values from the parsed
-    configuration bytes, except environment-variable values, which are shown as
-    [(hidden)]. Every value is escaped with {!Terminal_text.escape}; the output
-    has no styling and ends with a newline. Times use {!Timestamp.to_human}
-    relative to [now]. *)
+    configuration bytes. Every value is escaped with {!Terminal_text.escape};
+    the output has no styling and ends with a newline. Times use
+    {!Timestamp.to_human} relative to [now]. *)

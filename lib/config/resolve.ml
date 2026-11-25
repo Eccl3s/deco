@@ -72,6 +72,10 @@ let apply (config : Config_types.t) =
             get config.container
               (fun container -> container.security_options)
               [];
+          env_files =
+            get config.container (fun container -> container.env_files) [];
+          environment =
+            get config.container (fun container -> container.environment) [];
           workdir =
             (match
                Option.bind config.container (fun container -> container.workdir)

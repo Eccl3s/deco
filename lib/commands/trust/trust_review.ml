@@ -107,8 +107,6 @@ let render ~now (status : Trust.status) (loaded : Config_loader.t) =
   | settings ->
       List.iter
         (fun (path, value) ->
-          line "  %s = %s"
-            (safe (String.concat "." path))
-            (match value with Some value -> safe value | None -> "(hidden)"))
+          line "  %s = %s" (safe (String.concat "." path)) (safe value))
         settings);
   Buffer.contents buffer

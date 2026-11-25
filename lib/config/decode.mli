@@ -15,12 +15,10 @@ val error_to_string : error -> string
 val from_string_with_ignored :
   string -> (Config_types.t * string list list, error list) result
 
-val planned_settings : string -> (string list * string option) list
+val planned_settings : string -> (string list * string) list
 (** The planned settings {!from_string_with_ignored} reports, sorted by path,
     each with its value rendered on one line in TOML style, such as
-    [["hooks"; "post_create"], Some "\"npm install\""]. Values under
-    [container.environment] are [None] so they are never shown. Invalid TOML
-    yields [[]]. *)
+    [["network"; "mode"], "\"pasta\""]. Invalid TOML yields [[]]. *)
 
 val project_name : string -> string option
 (** The [project.name] string, if the input is syntactically valid TOML and has

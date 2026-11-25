@@ -29,6 +29,8 @@ type container = {
   cap_add : string list option;
   cap_drop : string list option;
   security_options : string list option;
+  env_files : string list option;
+  environment : (string * string) list option;
 }
 
 type workspace = {

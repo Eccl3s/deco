@@ -166,7 +166,6 @@ let () =
           ^ " -> /workspace (read-write)  [outside the project]\n";
           "\n\
            Planned settings (accepted, not applied by this version)\n\
-          \  container.environment.TOKEN = (hidden)\n\
           \  network.mode = \"host\"\n";
           "\n\
            Hooks\n\

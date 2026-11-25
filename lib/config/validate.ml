@@ -8,6 +8,13 @@ let name_char c = ascii_letter c || digit c || List.mem c [ '.'; '_'; '-' ]
 let error_to_string = Diagnostic.to_string
 let valid_id n = n >= 0 && Int64.of_int n <= 4294967294L
 
+(* [A-Za-z_][A-Za-z0-9_]*, the form of build argument and environment variable
+   names. *)
+let variable_name key =
+  key <> ""
+  && (ascii_letter key.[0] || key.[0] = '_')
+  && String.for_all (fun c -> ascii_letter c || digit c || c = '_') key
+
 let check (config : Config_types.t) =
   let errors = ref [] in
   let error path message = errors := { path; message } :: !errors in
@@ -139,7 +146,18 @@ let check (config : Config_types.t) =
       each "cap_drop" container.cap_drop capability;
       each "security_options" container.security_options (fun path value ->
           if value = "" then error path "Must not be empty"
-          else ignore (no_nul path value)))
+          else ignore (no_nul path value));
+      each "env_files" container.env_files (fun path value ->
+          if nonblank path value then ignore (no_nul path value));
+      List.iter
+        (fun (key, value) ->
+          let path = [ "container"; "environment"; key ] in
+          if not (variable_name key) then
+            error path
+              "Expected an environment variable name matching \
+               [A-Za-z_][A-Za-z0-9_]*"
+          else ignore (no_nul path value))
+        (Option.value ~default:[] container.environment))
     config.container;
   Option.iter
     (fun (mounts : mounts) ->
@@ -153,14 +171,7 @@ let check (config : Config_types.t) =
       List.iter
         (fun (key, _) ->
           let path = [ "build"; "args"; key ] in
-          if
-            key = ""
-            || (not (ascii_letter key.[0] || key.[0] = '_'))
-            || not
-                 (String.for_all
-                    (fun c -> ascii_letter c || digit c || c = '_')
-                    key)
-          then
+          if not (variable_name key) then
             error path
               "Expected a build argument name matching [A-Za-z_][A-Za-z0-9_]*"
           else if List.mem key [ "USER_NAME"; "USER_UID"; "USER_GID" ] then

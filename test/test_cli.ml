@@ -251,10 +251,8 @@ let () =
              name = 'hostile'\n\
              [container.environment]\n\
              \"x\\u001b[31my\" = 'true'\n");
-      assert (
-        contains
-          (run temp [ "validate"; "--project-dir"; hostile ] 0)
-          "  container.environment.x\\x1b[31my\n");
+      ignore (run temp [ "validate"; "--project-dir"; hostile ] 2);
+      assert (contains !last_errors "container.environment.\"x\\027[31my\"");
       let spaced = Filename.concat temp "Another Project" in
       ignore (run temp [ "init"; spaced ] 0);
       ignore (run temp [ "validate"; "--project-dir"; spaced ] 0);
