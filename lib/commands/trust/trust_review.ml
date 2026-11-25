@@ -78,6 +78,27 @@ let render ~now (status : Trust.status) (loaded : Config_loader.t) =
     | [] -> "none"
     | values -> String.concat ", " (List.map safe values));
   field "Options" (list "changes confinement" container.security_options);
+  (* Names and paths only: values may be secrets, and env file contents are
+     not part of the trust digest. *)
+  section false "Environment";
+  field "Variables"
+    (match container.environment with
+    | [] -> "none"
+    | variables ->
+        String.concat ", "
+          (List.map safe
+             (List.sort_uniq String.compare (List.map fst variables))));
+  (match host.env_files with
+  | [] -> field "Env files" "none"
+  | files ->
+      List.iteri
+        (fun index file ->
+          let value =
+            flag (not (within ~dir:root file)) "outside the project" (safe file)
+          in
+          if index = 0 then field "Env files" value
+          else line "  %-15s %s" "" value)
+        files);
   section false "Mounts";
   (match (effective.mounts.workspace, host.workspace_source) with
   | Some workspace, Some source ->

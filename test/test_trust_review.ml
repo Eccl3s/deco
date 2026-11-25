@@ -87,6 +87,10 @@ let () =
             "  Cap drop:       none";
             "  Options:        none";
             "";
+            "Environment";
+            "  Variables:      none";
+            "  Env files:      none";
+            "";
             "Mounts";
             "  Workspace:      none";
             "";
@@ -161,6 +165,9 @@ let () =
           \  Cap add:        SYS_ADMIN, MKNOD  [adds capabilities]\n\
           \  Cap drop:       ALL\n\
           \  Options:        label=disable\\x1b[2J  [changes confinement]\n\n\
+           Environment\n\
+          \  Variables:      TOKEN\n\
+          \  Env files:      none\n\n\
            Mounts\n";
           "  Workspace:      " ^ outside
           ^ " -> /workspace (read-write)  [outside the project]\n";
@@ -188,6 +195,31 @@ let () =
       let review = Deco.Trust_review.render ~now:0. status loaded in
       if not (contains review ("  Context:        " ^ target ^ "/build\n")) then
         failwith review;
+      (* Env files are listed by path, one per line, with those outside the
+         project flagged; variable names are sorted and values never shown. *)
+      let root = Filename.concat temp "with-env" in
+      Unix.mkdir root 0o700;
+      Unix.mkdir (Filename.concat root ".deco") 0o700;
+      Unix.mkdir (Filename.concat root ".deco/build") 0o700;
+      write (Filename.concat root ".deco/build/Containerfile") "FROM scratch\n";
+      write (Filename.concat root ".env") "INSIDE_SECRET=1\n";
+      let shared = Filename.concat outside "shared\027[2J.env" in
+      write shared "OUTSIDE_SECRET=1\n";
+      write
+        (Filename.concat root ".deco/config.toml")
+        ("project.name='with-env'\ncontainer.env_files=['.env',\""
+        ^ String.concat "\\u001b" (String.split_on_char '\027' shared)
+        ^ "\"]\ncontainer.environment={ZED='SECRET_VALUE',ALPHA='x'}\n");
+      let loaded, status = project_loaded root in
+      let review = Deco.Trust_review.render ~now:0. status loaded in
+      if
+        not
+          (contains review
+             ("Environment\n  Variables:      ALPHA, ZED\n  Env files:      "
+            ^ root ^ "/.env\n                  " ^ outside
+            ^ "/shared\\x1b[2J.env  [outside the project]\n"))
+      then failwith review;
+      assert (not (contains review "SECRET"));
       (* A workspace inside the project is not flagged. *)
       let root = Filename.concat temp "inside" in
       let loaded, status =
