@@ -549,6 +549,10 @@ workspace, such as `.husky`, that directory remains writable. Other Git
 repositories inside the workspace that are not submodules of the project, such
 as a dependency cloned into a subdirectory, are not protected either.
 
+Workspace protection is not a sandbox: the rest of the workspace stays
+writable from the container. See the threat model in
+[`deco-trust.md`](./deco-trust.md) for what it does and does not protect.
+
 Protected paths count as mount targets. A `[[mounts.volumes]]` entry whose
 `target` equals a protected path's container path, or lies inside it, is a
 validation error.

@@ -57,6 +57,33 @@ as protecting against:
 - Changes made between Deco's trust check and Podman reading a file, such as
   the Containerfile during a build.
 
+Workspace protection, defined under Protected workspace paths in
+[`deco-config.md`](./deco-config.md), complements trust. Trust stops Deco
+from acting on `.deco/` contents the user has not approved; workspace
+protection stops code running in the container from changing those contents
+in the first place, because `.deco/` is mounted read-only. Unless
+`mounts.workspace.protect_git` is `false`, it also mounts the project's `.git`
+directory read-only, so the container cannot plant Git hooks or Git
+configuration that Git would then run on the host.
+
+Workspace protection is not a sandbox either. It closes these specific
+routes from the container to the host and must not be described as isolating
+the host from the container. It does not protect:
+
+- The rest of the workspace, which stays writable. Files there that the host
+  later runs or reads as configuration can still be changed from the
+  container, for example a `Makefile`, `package.json` scripts, build and test
+  scripts, a direnv `.envrc`, editor or IDE project settings, or a
+  `core.hooksPath` directory inside the workspace such as `.husky`.
+- A Git directory that Deco does not mount read-only: one named by a `.git`
+  file, the Git directories of other repositories inside the workspace, and
+  any Git directory when `protect_git` is `false`.
+- Anything outside the workspace that other configuration exposes, such as
+  read-write bind mounts of host paths.
+
+Changes made in the container should be reviewed on the host before they are
+built, run, or committed there.
+
 ## 3. Trust digest
 
 ### Inputs
