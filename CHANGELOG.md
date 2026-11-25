@@ -27,6 +27,18 @@ releases may change behaviour.
   `io.containers.capabilities` label, which Podman cannot apply, with exit
   code 4 before creating or removing a container.
 - `test/templates_podman.py`, an opt-in live check of every template.
+- Container environment: `[container.environment]` and `container.env_files`
+  are validated and passed to `podman create` as `--env` and `--env-file`,
+  with values passed literally. Env files must be existing regular files,
+  resolved from the project root. Earlier releases accepted these settings but
+  did not apply them; in particular, the `python` template's `UV_LINK_MODE`
+  now takes effect. Variables and env file paths contribute to
+  `dev.deco.create-digest`; env file contents do not, so run `deco refresh`
+  after editing an env file.
+- `deco info` reports the environment in an `Environment` section and a JSON
+  `environment` object, and the `deco trust` review lists it, flagging env
+  files outside the project. Only variable names and env file paths are shown:
+  values never appear in previews, reports or the review.
 
 ### Changed
 
@@ -48,7 +60,9 @@ releases may change behaviour.
 
 - Containers created from the templates, or from any configuration that sets
   a security option, are now incompatible until `deco refresh` recreates them
-  with the options applied.
+  with the options applied. The same holds for configurations that set
+  `[container.environment]` or `container.env_files`, including those
+  generated from the `python` template.
 - Projects generated from earlier templates keep their old files:
   - podman: remove `cap_add` from `.deco/config.toml`, or `assemble` refuses it.
   - go and rust: set `BASE_VARIANT = "trixie"` in `[build.args]`.

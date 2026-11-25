@@ -187,8 +187,10 @@ Deco does not say which setting changed. Only settings that add something to
 `podman create` contribute to the hash, so a container created before this
 label existed is treated as created with all of them unset, and it stays
 compatible as long as the configuration leaves them unset. The
-[container security options](#container-security-options) contribute; the
-other advanced settings planned for v0.4.0 will once they are applied.
+[container security options](#container-security-options) and the
+[container environment](#container-environment) contribute; the other advanced
+settings planned for v0.4.0 will once they are applied. Env file contents do
+not contribute, so editing an env file never makes a container incompatible.
 
 ### Configuration trust
 
@@ -218,9 +220,10 @@ approval, and the security-relevant settings Deco applies: the build context
 settings, build argument names, the image, the container name, shell, workdir
 and user mode, the container security options (privileged mode, devices,
 added capabilities and security options are flagged; dropped capabilities are
-listed), and the workspace mount (flagged when its source is outside the
-project). Planned settings that are accepted but not applied yet are listed
-with their values, except environment-variable values, which are hidden.
+listed), the environment variable names and env file paths (flagged when a
+file is outside the project; values and file contents are never shown), and
+the workspace mount (flagged when its source is outside the project). Planned
+settings that are accepted but not applied yet are listed with their values.
 
 - `-y`/`--yes` approves without asking. Outside a terminal, `deco trust`
   refuses without `--yes` (exit 2), so scripts and CI must approve
@@ -376,6 +379,42 @@ silently lacks them and a non-root process fails to start. `assemble` and
 container, any `cap_add` entry the image's label excludes. The `podman`
 template's base image has such a label, which already grants what nested
 rootless Podman needs, so the template adds no capabilities.
+
+### Container environment
+
+`[container.environment]` sets environment variables in the container, and
+`container.env_files` passes host env files, as the v1 specification
+describes:
+
+```toml
+[container]
+env_files = [".env"]               # --env-file=...
+
+[container.environment]
+NODE_ENV = "development"           # --env NODE_ENV=development
+```
+
+Values are passed literally: Deco performs no shell or environment expansion,
+so `"$HOME"` is the five characters `$HOME`. Variable names must match
+`[A-Za-z_][A-Za-z0-9_]*`, and values must not contain NUL bytes. Env file
+paths resolve from the project root (with `~` and `~/` expanded), may be
+anywhere on the host, and must be existing regular files; Podman reads their
+contents when it creates the container. A variable set in both places takes
+the `[container.environment]` value.
+
+Values may be secrets, so Deco never prints them: `--dry-run` previews show
+`--env 'NAME=<hidden>'`, and `deco info` and the `deco trust` review list only
+variable names and env file paths. The values are still part of the approved
+configuration, because `.deco/config.toml` is covered by trust; env file
+contents are not, so an env file outside `.deco/` can change without
+re-approval.
+
+The environment is a create-time setting: adding, removing or changing a
+variable, or changing the list of env files, makes an existing container
+incompatible until `deco refresh` recreates it (see
+[Create-time settings](#create-time-settings)). Editing an env file's contents
+does not, and the running container keeps the values it was created with;
+run `deco refresh` to pick up the change.
 
 ### Lifecycle hooks
 
@@ -916,6 +955,10 @@ Security
   Cap drop:    ALL
   Options:     none
 
+Environment
+  Variables:   NODE_ENV
+  Env files:   /home/user/my-project/.env
+
 Mounts
   /home/user/my-project -> /workspace (bind, read-write, relabel private)
 
@@ -989,6 +1032,10 @@ Use `--format json` (before or after the command) for a stable object:
     "cap_drop": ["ALL"],
     "security_options": []
   },
+  "environment": {
+    "variables": ["NODE_ENV"],
+    "env_files": ["/home/user/my-project/.env"]
+  },
   "mounts": [
     {
       "source": "/home/user/my-project",
@@ -1027,7 +1074,10 @@ unavailable.
 `hooks` names the configured hooks in execution order and `actions` the
 configured action names, sorted. `security` holds the configured container
 security options, the values Deco passes to `podman create`; an existing
-container created with different values is reported as incompatible. Unlike the full v1 specification, `dns` and
+container created with different values is reported as incompatible.
+`environment` lists the configured variable names, sorted, and the canonical
+env file paths in configured order; values are never reported. Unlike the full
+v1 specification, `dns` and
 `ports` are always empty and only the workspace mount is reported, because those settings
 are not applied yet; any that are configured appear under
 `Ignored planned settings` in the human report instead.
@@ -1046,9 +1096,9 @@ invalid TOML, and errors in implemented fields still fail. Planned fields receiv
 structural/type checks only: semantic constraints such as port ranges,
 namespace conflicts, and host path existence are deferred.
 
-Network settings, environment injection, namespaces, additional mounts, and
-secrets remain inactive. The [container security options](#container-security-options)
-are applied.
+Network settings, namespaces, additional mounts, and secrets remain inactive.
+The [container security options](#container-security-options) and the
+[container environment](#container-environment) are applied.
 
 `[container.resources]` (CPU, memory, swap and process limits) is specified
 in v1 but is not one of the planned fields that are accepted yet. Until it is
