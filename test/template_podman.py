@@ -138,9 +138,47 @@ with tempfile.TemporaryDirectory(prefix='deco-debian-workflow-') as directory:
         assert result.stdout.splitlines()==['dev','/workspace','verified'],result.stdout
         [entry]=listed()
         assert entry['container_id']==refreshed_container and entry['state']=='running',entry
+        # Environment: literal values and an env file reach the container,
+        # values never appear in previews or reports, and a changed
+        # environment needs a refresh while editing the env file does not.
+        config_path=root/'.deco/config.toml'
+        env_file=root/'.deco-env'
+        env_file.write_text('FROM_FILE=file value\nSHARED=from-file\n')
+        text=originals[config_path].decode()
+        assert text.count('[container]\n')==1,text
+        config_path.write_text(text.replace('[container]\n','[container]\nenv_files = [".deco-env"]\n')
+            +'\n[container.environment]\nLITERAL = "$HOME; $(false)"\nSHARED = "from-config"\n')
+        result=deco('--project-dir',str(root),'validate')
+        assert 'environment' not in result.stdout and 'env_files' not in result.stdout,result.stdout
+        result=deco('--project-dir',str(root),'trust','--yes')
+        assert '$(false)' not in result.stdout and 'from-config' not in result.stdout,result.stdout
+        result=deco('--project-dir',str(root),'exec','--','true',check=False)
+        assert result.returncode==4 and 'run deco refresh' in result.stderr,result
+        result=deco('--project-dir',str(root),'refresh','--keep-image','--dry-run')
+        assert "--env 'LITERAL=<hidden>'" in result.stdout and '--env-file '+str(env_file) in result.stdout,result.stdout
+        assert '$(false)' not in result.stdout and 'from-config' not in result.stdout,result.stdout
+        deco('--project-dir',str(root),'refresh','--keep-image')
+        def container_env():
+            result=deco('--project-dir',str(root),'exec','--','env')
+            return dict(line.split('=',1) for line in result.stdout.splitlines() if '=' in line)
+        variables=container_env()
+        # --env overrides the env file whatever their order.
+        assert variables['LITERAL']=='$HOME; $(false)' and variables['SHARED']=='from-config',variables
+        assert variables['FROM_FILE']=='file value',variables
+        report=info('--project-dir',str(root))
+        assert report['environment']=={'variables':['LITERAL','SHARED'],'env_files':[str(env_file)]},report
+        assert report['container']['compatible'] is True,report
+        human=deco('info',cwd=root).stdout
+        assert '$(false)' not in human and 'from-config' not in human and 'file value' not in human,human
+        env_file.write_text('FROM_FILE=edited\n')
+        assert container_env()['FROM_FILE']=='file value'
+        # Restoring the original configuration restores its earlier approval;
+        # the container then needs recreating without the environment.
+        config_path.write_bytes(originals[config_path]); env_file.unlink()
+        deco('--project-dir',str(root),'refresh','--keep-image')
+        assert 'LITERAL' not in container_env()
         # Lifecycle hooks: each appends its name to a marker in the workspace,
         # which the hooks see as their working directory.
-        config_path=root/'.deco/config.toml'
         hook_names=['post_create','post_start','pre_enter','pre_stop']
         config_path.write_text(originals[config_path].decode()+'\n[hooks]\n'+''.join(
             '%s = "printf \'%s\\\\n\' >> .deco-hooks"\n'%(hook,hook) for hook in hook_names)
