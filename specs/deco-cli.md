@@ -101,6 +101,8 @@ Named project selection is the exception: Deco may query Podman to locate manage
 
 Validation follows the TOML specification and must include configuration rules, filesystem requirements, and Podman compatibility checks.
 
+Some checks depend on the host's Podman, such as the cgroup controllers that `[container.resources]` requires. `assemble` and `refresh` always perform them before building or creating anything. `validate` performs them when Podman is available; when it is not, `validate` checks everything else and reports that the Podman-dependent checks were skipped.
+
 Commands must not partially apply an invalid configuration. In particular, `assemble` and `refresh` must complete validation before creating, rebuilding, or replacing any resources.
 
 ### Configuration trust
@@ -192,7 +194,8 @@ deco validate
 
 Discovers the project, parses `.deco/config.toml`, applies defaults, and performs
 all validation that does not require building or running the image. It must
-not create, alter, start, or remove Podman resources.
+not create, alter, start, or remove Podman resources. The Podman-dependent
+checks described under Validation run only when Podman is available.
 
 Successful human output identifies the validated configuration path.
 Validation errors must include the full TOML key path when applicable.
@@ -454,7 +457,7 @@ Reports the current project's resolved configuration and Podman resource
 state without changing it. The report includes project identity, Podman
 availability and version, image identity, existence, age, and ownership,
 container identity, state, age, ownership, and compatibility, user mode,
-workdir, container security options, mounts, published ports, configured
+workdir, container security options, resource limits, mounts, published ports, configured
 hooks, action names, and configuration trust state. `info` does not require trust.
 
 `info` performs only read-only Podman queries. Reporting ownership or
@@ -512,6 +515,12 @@ JSON output has this shape:
     "cap_drop": ["ALL"],
     "security_options": []
   },
+  "resources": {
+    "cpus": 2.5,
+    "memory": "4g",
+    "memory_swap": null,
+    "pids": 1024
+  },
   "mounts": [],
   "dns": [],
   "ports": [],
@@ -564,6 +573,12 @@ Configuration fields:
   configured order, empty when omitted. They come from the configuration, not
   from inspecting the container; an existing container created with different
   values is reported through `container.compatible`.
+- `resources` reports the configured `[container.resources]` limits: `cpus`
+  and `pids` as numbers and `memory` and `memory_swap` as the strings written
+  in the configuration, each `null` when unset. Like `security`, they come
+  from the configuration; resource limits are create-time settings, so an
+  existing container created with different limits is incompatible, reported
+  through `container.compatible`, and `deco refresh` recreates it.
 - Each `mounts` entry includes `source`, `target`, `type`, `readonly`, and
   `relabel`; source may be `"-"` for source-less mounts such as `tmpfs` and
   `devpts`.
@@ -571,7 +586,7 @@ Configuration fields:
 - Each `ports` entry includes `host`, `container`, `protocol`, and `bind`.
 
 Human output presents the same information as labelled sections in this
-order: project, trust, Podman, image, container, runtime, security, mounts,
+order: project, trust, Podman, image, container, runtime, security, resources, mounts,
 DNS, ports, hooks, and actions. Timestamps are shown in UTC together with a relative age, such as
 `2026-11-11 09:14 UTC (9 days ago)`. Missing values are shown as `-`, and an
 incompatible container lists each mismatch. Control characters in reported
