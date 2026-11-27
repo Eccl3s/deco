@@ -187,9 +187,10 @@ Deco does not say which setting changed. Only settings that add something to
 `podman create` contribute to the hash, so a container created before this
 label existed is treated as created with all of them unset, and it stays
 compatible as long as the configuration leaves them unset. The
-[container security options](#container-security-options) and the
-[container environment](#container-environment) contribute; the other advanced
-settings planned for v0.4.0 will once they are applied. Env file contents do
+[container security options](#container-security-options), the
+[container environment](#container-environment) and the
+[workspace protection](#workspace-protection) mounts contribute; the other
+advanced settings planned for v0.4.0 will once they are applied. Env file contents do
 not contribute, so editing an env file never makes a container incompatible.
 
 ### Configuration trust
@@ -222,8 +223,10 @@ and user mode, the container security options (privileged mode, devices,
 added capabilities and security options are flagged; dropped capabilities are
 listed), the environment variable names and env file paths (flagged when a
 file is outside the project; values and file contents are never shown), and
-the workspace mount (flagged when its source is outside the project). Planned
-settings that are accepted but not applied yet are listed with their values.
+the workspace mount (flagged when its source is outside the project) and its
+[protection](#workspace-protection) (flagged when `.git` is left writable).
+Planned settings that are accepted but not applied yet are listed with their
+values.
 
 - `-y`/`--yes` approves without asking. Outside a terminal, `deco trust`
   refuses without `--yes` (exit 2), so scripts and CI must approve
@@ -312,12 +315,9 @@ The build context is separate from the project workspace. Files outside the buil
 
 The project workspace can instead be mounted into the running container using `[mounts.workspace]`.
 
-The whole workspace is currently mounted read-write, including `.deco/` and
-`.git`. The v1 specification mounts both of them read-only inside the
-container (see Protected workspace paths in `specs/deco-config.md`), but this
-is not implemented yet, so code running in the container can still change the
-configuration you approve with `deco trust` or plant Git hooks that run on the
-host.
+The workspace is mounted read-write, except for `.deco/` and `.git`, which
+are read-only inside the container; see
+[Workspace protection](#workspace-protection).
 
 When using keep-id mode, Deco configures Podman's user namespace to map the host user's UID and GID to the configured container UID and GID. This allows the development environment to use an existing container user without requiring its UID or GID to match those of the host user.
 
@@ -415,6 +415,63 @@ incompatible until `deco refresh` recreates it (see
 [Create-time settings](#create-time-settings)). Editing an env file's contents
 does not, and the running container keeps the values it was created with;
 run `deco refresh` to pick up the change.
+
+### Workspace protection
+
+Code running in the container can write to the workspace, and the host acts on
+some of its files later. Deco therefore mounts two paths read-only over the
+workspace mount, as `specs/deco-config.md` (Protected workspace paths)
+describes:
+
+- `.deco/` is always read-only, so the container cannot change the
+  configuration you approve with `deco trust`.
+- The project's `.git` directory is read-only unless
+  `mounts.workspace.protect_git = false`, so the container cannot plant Git
+  hooks or set configuration, such as `core.hooksPath` or `core.fsmonitor`,
+  that Git would run on the host. Submodules' Git directories, under
+  `.git/modules/`, are covered too.
+
+```toml
+[mounts.workspace]
+source = "."
+target = "/workspace"
+protect_git = true                 # the default; false makes .git writable
+```
+
+Each path is protected only when it lies inside the workspace source. The
+mounts are `--mount type=bind,...,ro=true` flags after the workspace
+`--volume`, shown in `--dry-run` previews; they are not relabelled, since the
+workspace's `relabel` already labels their content.
+
+With `.git` read-only, commands that only read the repository, such as
+`git status`, `git log` and `git diff`, work in the container; commands that
+write to it, such as `git add`, `git commit`, `git fetch`, `git checkout` and
+`git config`, fail there. Run them on the host, or set `protect_git = false`.
+
+Deco checks `<project root>/.git` only, and never reads Git files. When `.git`
+is a file, as in a linked worktree or a submodule checkout, nothing is mounted
+for it: `assemble` and `refresh` (and their dry runs) warn on stderr each time
+they create the container, and `deco info` and the `deco trust` review report
+it as `unprotected`. Setting `protect_git = false` silences the warning. Unlike
+the specification, the warning does not yet suggest protecting the Git
+directory with a read-only `[[mounts.volumes]]` bind entry, because additional
+mounts are not applied yet; for the same reason, the rule that a volume target
+must not lie inside a protected path is not checked yet.
+
+`deco info` reports the states in its `Mounts` section and the JSON
+`protection` object (`deco` is `protected` or `not-applicable`; `git` is
+`protected`, `unprotected`, `disabled` or `not-applicable`), and lists the
+read-only mounts with `protected: true`. The set of protection mounts is a
+create-time setting: a container created without them, including every
+container with a workspace created by an earlier release, and one created
+before `.git` existed, is incompatible until `deco refresh` recreates it.
+
+Workspace protection is not a sandbox. The rest of the workspace stays
+writable, and files there that the host later runs or reads as configuration,
+such as a `Makefile`, `package.json` scripts, a direnv `.envrc`, editor
+settings or a `core.hooksPath` directory like `.husky`, can still be changed
+from the container. Review changes made in the container before building,
+running or committing them on the host (see `specs/deco-trust.md`).
 
 ### Lifecycle hooks
 
@@ -960,7 +1017,11 @@ Environment
   Env files:   /home/user/my-project/.env
 
 Mounts
+  .deco:       protected
+  .git:        protected
   /home/user/my-project -> /workspace (bind, read-write, relabel private)
+  /home/user/my-project/.deco -> /workspace/.deco (bind, read-only, relabel none, protected)
+  /home/user/my-project/.git -> /workspace/.git (bind, read-only, relabel none, protected)
 
 DNS
   none
@@ -1036,13 +1097,31 @@ Use `--format json` (before or after the command) for a stable object:
     "variables": ["NODE_ENV"],
     "env_files": ["/home/user/my-project/.env"]
   },
+  "protection": { "deco": "protected", "git": "protected" },
   "mounts": [
     {
       "source": "/home/user/my-project",
       "target": "/workspace",
       "type": "bind",
       "readonly": false,
-      "relabel": "private"
+      "relabel": "private",
+      "protected": false
+    },
+    {
+      "source": "/home/user/my-project/.deco",
+      "target": "/workspace/.deco",
+      "type": "bind",
+      "readonly": true,
+      "relabel": "none",
+      "protected": true
+    },
+    {
+      "source": "/home/user/my-project/.git",
+      "target": "/workspace/.git",
+      "type": "bind",
+      "readonly": true,
+      "relabel": "none",
+      "protected": true
     }
   ],
   "dns": [],
@@ -1076,9 +1155,11 @@ configured action names, sorted. `security` holds the configured container
 security options, the values Deco passes to `podman create`; an existing
 container created with different values is reported as incompatible.
 `environment` lists the configured variable names, sorted, and the canonical
-env file paths in configured order; values are never reported. Unlike the full
-v1 specification, `dns` and
-`ports` are always empty and only the workspace mount is reported, because those settings
+env file paths in configured order; values are never reported. `protection`
+and the `protected` mounts are described under
+[Workspace protection](#workspace-protection). Unlike the full v1
+specification, `dns` and `ports` are always empty and only the workspace and
+protection mounts are reported, because those settings
 are not applied yet; any that are configured appear under
 `Ignored planned settings` in the human report instead.
 
@@ -1105,10 +1186,6 @@ in v1 but is not one of the planned fields that are accepted yet. Until it is
 implemented, any key in it is rejected as an unknown key, and neither
 `deco info` nor the `deco trust` review reports a `resources` section.
 
-`mounts.workspace.protect_git` is specified in v1 but is not one of the
-planned fields that are accepted yet. Until workspace protection is
-implemented, setting it is rejected as an unknown key, and neither `deco info`
-nor the `deco trust` review reports a `protection` section.
 This compatibility policy lasts until each setting is implemented; the v1
 specification continues to describe the behavior expected from future releases.
 

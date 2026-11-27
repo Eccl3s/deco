@@ -12,6 +12,9 @@ let[@warning "-42"] execute selection dry_run keep_image =
             2
         | Ok plan ->
             print_string (Deco.Refresh_plan.render plan);
+            Option.iter
+              (fun warning -> prerr_endline ("deco: " ^ warning))
+              (Deco.Assemble_plan.unprotected_git loaded);
             0)
       else
         let effective = loaded.Deco.Config_loader.effective in

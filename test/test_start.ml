@@ -26,6 +26,9 @@ let () =
           containerfile = "/project/.deco/build/Containerfile";
           workspace_source = None;
           env_files = [];
+          protected = [];
+          deco_protection = Not_applicable;
+          git_protection = Not_applicable;
         };
       identity = User_identity.Image;
     }

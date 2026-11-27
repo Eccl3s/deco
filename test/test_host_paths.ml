@@ -161,4 +161,70 @@ let () =
             [ "container"; "env_files[2]" ];
             [ "container"; "env_files[3]" ];
           ]);
+      (* Protected workspace paths: .deco always, .git when it is a directory,
+         each only inside the workspace source; nothing reads Git files. *)
+      let workspace = Option.get config.mounts.workspace in
+      let set_workspace w = { config with mounts = { workspace = w } } in
+      let protection c =
+        let p = ok c in
+        ( List.map
+            (fun (x : H.protected_path) -> (x.source, x.target))
+            p.protected,
+          p.deco_protection,
+          p.git_protection )
+      in
+      let with_workspace f = set_workspace (Some (f workspace)) in
+      assert (
+        protection config
+        = ([ (deco, "/w/.deco") ], H.Protected, H.Not_applicable));
+      assert (
+        protection (set_workspace None)
+        = ([], H.Not_applicable, H.Not_applicable));
+      let git = join root ".git" in
+      Unix.mkdir git 0o700;
+      assert (
+        protection config
+        = ([ (deco, "/w/.deco"); (git, "/w/.git") ], H.Protected, H.Protected));
+      assert (
+        protection (with_workspace (fun w -> { w with protect_git = false }))
+        = ([ (deco, "/w/.deco") ], H.Protected, H.Disabled));
+      (* Targets join cleanly whatever the configured target. *)
+      assert (
+        protection (with_workspace (fun w -> { w with target = "/w/" }))
+        = ([ (deco, "/w/.deco"); (git, "/w/.git") ], H.Protected, H.Protected));
+      assert (
+        protection (with_workspace (fun w -> { w with target = "/" }))
+        = ([ (deco, "/.deco"); (git, "/.git") ], H.Protected, H.Protected));
+      (* A source containing the root maps through the relative path. *)
+      let parent = Filename.dirname root and base = Filename.basename root in
+      assert (
+        protection (with_workspace (fun w -> { w with source = parent }))
+        = ( [ (deco, "/w/" ^ base ^ "/.deco"); (git, "/w/" ^ base ^ "/.git") ],
+            H.Protected,
+            H.Protected ));
+      (* A source inside the project sees neither. *)
+      assert (
+        protection
+          (with_workspace (fun w -> { w with source = "external_dir" }))
+        = ([], H.Not_applicable, H.Not_applicable));
+      assert (
+        protection
+          (with_workspace (fun w ->
+               { w with source = "external_dir"; protect_git = false }))
+        = ([], H.Not_applicable, H.Disabled));
+      (* A .git file or symbolic link is unprotected, and is never followed. *)
+      Unix.rmdir git;
+      write git;
+      assert (
+        protection config = ([ (deco, "/w/.deco") ], H.Protected, H.Unprotected));
+      Unix.unlink git;
+      Unix.mkdir (join root "real-git") 0o700;
+      Unix.symlink "real-git" git;
+      assert (
+        protection config = ([ (deco, "/w/.deco") ], H.Protected, H.Unprotected));
+      Unix.unlink git;
+      Unix.symlink "absent" git;
+      assert (
+        protection config = ([ (deco, "/w/.deco") ], H.Protected, H.Unprotected));
+      Unix.unlink git;
       assert (Sys.getcwd () = cwd))

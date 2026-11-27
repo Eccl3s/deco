@@ -22,6 +22,9 @@ let assemble selection dry_run =
             2
         | Ok plan ->
             print_string (Deco.Assemble_plan.render plan);
+            Option.iter
+              (fun warning -> prerr_endline ("deco: " ^ warning))
+              (Deco.Assemble_plan.unprotected_git loaded);
             0)
       else
         let image = Config.Effective.image_reference loaded.effective.image in
@@ -42,7 +45,9 @@ let assemble selection dry_run =
           try
             Deco.Assemble.run ~read_many:runners.Build_output.read_many
               ~execute:runners.Build_output.execute
-              ~hook:runners.Build_output.hook ~on_ready loaded
+              ~hook:runners.Build_output.hook
+              ~warn:(fun message -> prerr_endline ("deco: " ^ message))
+              ~on_ready loaded
           with e ->
             runners.Build_output.close false;
             raise e

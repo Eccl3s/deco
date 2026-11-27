@@ -110,7 +110,11 @@ type container = {
 type workspace = {
   source : string option;  (** Host directory to mount; default ["."]. *)
   target : string;  (** Required absolute container mount point. *)
-  relabel : relabel option;  (** SELinux relabel policy; default [No_relabel]. *)
+  relabel : relabel option;
+      (** SELinux relabel policy; default [No_relabel]. *)
+  protect_git : bool option;
+      (** Whether to mount the project's [.git] directory read-only; default
+          [true]. *)
 }
 (** The [[mounts.workspace]] table: bind mount of the project workspace into the
     container. *)

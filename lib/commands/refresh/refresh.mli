@@ -61,8 +61,9 @@ val run :
     running, so a failed build changes no container. Then stop and remove the
     old container (via {!Remove.run}, which runs [pre_stop] with [hook] and
     passes skip warnings to [warn]) and create and start the replacement (via
-    {!Assemble.run}, which then runs [post_create] and [post_start]), failing
-    with [Container_appeared], before any hook, if assemble reused a container
+    {!Assemble.run}, which passes its unprotected Git directory warning to
+    [warn] and then runs [post_create] and [post_start]), failing with
+    [Container_appeared], before any hook, if assemble reused a container
     instead of creating one. [read_many] batches the initial inspections only.
     [progress] is called as each stage completes; [Container_started] comes
     before the replacement's hooks. The previous image is left in place, and no

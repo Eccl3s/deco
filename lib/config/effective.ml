@@ -34,6 +34,7 @@ type workspace = {
   source : string;
   target : string;
   relabel : Config_types.relabel;
+  protect_git : bool;
 }
 
 type mounts = { workspace : workspace option }

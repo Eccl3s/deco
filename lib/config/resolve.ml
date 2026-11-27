@@ -15,6 +15,7 @@ let apply (config : Config_types.t) =
                 relabel =
                   Option.value ~default:Config_types.No_relabel
                     workspace.relabel;
+                protect_git = Option.value ~default:true workspace.protect_git;
               })
           (Option.bind config.mounts (fun mounts -> mounts.workspace))
       in

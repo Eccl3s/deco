@@ -72,6 +72,7 @@ let render_multiline command =
       "--user";
       "--workdir";
       "--volume";
+      "--mount";
       "--";
     ]
   in

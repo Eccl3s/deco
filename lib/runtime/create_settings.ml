@@ -26,6 +26,17 @@ let fields (loaded : Config_loader.t) =
           List.concat_map (fun (name, value) -> [ name; value ]) c.environment
         );
       ]
+  @
+  match loaded.host_paths.protected with
+  | [] -> []
+  | paths ->
+      [
+        ( "mounts.protected",
+          length_prefixed
+            (List.concat_map
+               (fun (p : Host_paths.protected_path) -> [ p.source; p.target ])
+               paths) );
+      ]
 
 (* Each pair is its key then its value, each prefixed with its length as a
    64-bit big-endian integer, so no encoding is a prefix of a different one. *)

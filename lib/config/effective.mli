@@ -44,6 +44,9 @@ type workspace = {
   source : string;
   target : string;
   relabel : Config_types.relabel;
+  protect_git : bool;
+      (** [true] when omitted: the project's [.git] directory is mounted
+          read-only. The project's [.deco/] is always protected. *)
 }
 
 type mounts = { workspace : workspace option }

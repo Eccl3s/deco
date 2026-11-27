@@ -37,6 +37,7 @@ type workspace = {
   source : string option;
   target : string;
   relabel : relabel option;
+  protect_git : bool option;
 }
 
 type mounts = { workspace : workspace option }

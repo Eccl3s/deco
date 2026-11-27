@@ -72,8 +72,18 @@ let () =
             kind = "bind";
             readonly = false;
             relabel = "private";
+            protected = false;
+          };
+          {
+            source = "/project/.deco";
+            target = "/workspace/.deco";
+            kind = "bind";
+            readonly = true;
+            relabel = "none";
+            protected = true;
           };
         ];
+      protection = { deco = "protected"; git = "unprotected" };
       dns = [ "1.1.1.1" ];
       ports =
         [
@@ -142,7 +152,10 @@ Environment
   Env files:   /project/.env, /host/shared.env
 
 Mounts
+  .deco:       protected
+  .git:        unprotected
   /project -> /workspace (bind, read-write, relabel private)
+  /project/.deco -> /workspace/.deco (bind, read-only, relabel none, protected)
 
 DNS
   1.1.1.1
@@ -193,6 +206,7 @@ Actions
           security_options = [];
         };
       environment = { variables = []; env_files = [] };
+      protection = { deco = "not-applicable"; git = "disabled" };
       mounts = [];
       dns = [];
       ports = [];
@@ -253,6 +267,8 @@ Environment
   Env files:   none
 
 Mounts
+  .deco:       not-applicable
+  .git:        disabled
   none
 
 DNS
