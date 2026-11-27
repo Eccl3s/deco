@@ -76,6 +76,7 @@ let () =
                     source = ".";
                     target = "/workspace";
                     relabel = Config.Private;
+                    protect_git = true;
                   };
             };
         };

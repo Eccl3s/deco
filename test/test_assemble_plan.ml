@@ -70,7 +70,14 @@ let () =
           effective with
           mounts =
             {
-              workspace = Some { source = "."; target = "/workspace"; relabel };
+              workspace =
+                Some
+                  {
+                    source = ".";
+                    target = "/workspace";
+                    relabel;
+                    protect_git = true;
+                  };
             };
         }
       in
@@ -182,6 +189,7 @@ let () =
                       source = ".";
                       target = "/workspace";
                       relabel = Config.No_relabel;
+                      protect_git = true;
                     };
               };
           };

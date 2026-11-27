@@ -190,7 +190,7 @@ let from_string_with_ignored input =
         })
   in
   let workspace =
-    required_record [ "source"; "target"; "relabel" ] (fun p f ->
+    required_record [ "source"; "target"; "relabel"; "protect_git" ] (fun p f ->
         let target = required p f "target" string in
         let source = field p f "source" string in
         let relabel =
@@ -200,7 +200,10 @@ let from_string_with_ignored input =
                  ("shared", Shared); ("private", Private); ("none", No_relabel);
                ])
         in
-        Option.map (fun target -> { source; target; relabel }) target)
+        let protect_git = field p f "protect_git" boolean in
+        Option.map
+          (fun target -> { source; target; relabel; protect_git })
+          target)
   in
   let mounts =
     record [ "workspace" ] (fun p f ->

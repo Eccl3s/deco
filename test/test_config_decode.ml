@@ -96,6 +96,23 @@ let () =
   ignore (bad "project.name='x'\nuser.uid='1000'");
   ignore (bad "project.name='x'\nuser.uid=1.0");
   ignore (bad "project.name='x'\nmounts.workspace={target='/w',relabel='bad'}");
+  (* protect_git is an optional boolean. *)
+  let workspace text =
+    Option.get
+      (Option.get
+         (ok ("project.name='x'\nmounts.workspace={target='/w'" ^ text ^ "}"))
+           .mounts)
+        .workspace
+  in
+  assert ((workspace "").protect_git = None);
+  assert ((workspace ",protect_git=false").protect_git = Some false);
+  (match
+     Config.Decode.from_string
+       "project.name='x'\nmounts.workspace={target='/w',protect_git='no'}"
+   with
+  | Error [ Config.Decode.Schema_error e ] ->
+      assert (e.path = [ "mounts"; "workspace"; "protect_git" ])
+  | _ -> assert false);
   let message =
     bad "project.name='x'\nbuild.args.'a.b'=1"
     |> List.hd |> Config.Decode.error_to_string

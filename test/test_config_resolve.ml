@@ -37,6 +37,14 @@ let () =
   assert (c.container.workdir = Some "/w");
   let w = Option.get c.mounts.workspace in
   assert (w.source = "." && w.relabel = Config.No_relabel && w.target = "/w");
+  assert w.protect_git;
+  assert (
+    not
+      (Option.get
+         (resolve (decode "mounts.workspace={target='/w',protect_git=false}"))
+           .mounts
+           .workspace)
+        .protect_git);
   let c =
     resolve
       (decode
