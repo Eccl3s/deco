@@ -1,9 +1,89 @@
+type protection = Protected | Unprotected | Disabled | Not_applicable
+type protected_path = { source : string; target : string }
+
 type t = {
   build_context : string;
   containerfile : string;
   workspace_source : string option;
   env_files : string list;
+  protected : protected_path list;
+  deco_protection : protection;
+  git_protection : protection;
 }
+
+(* The path of [path] relative to [dir], both canonical: [Some ""] for [dir]
+   itself, [None] when [path] is outside it. *)
+let relative ~dir path =
+  if path = dir then Some ""
+  else
+    let prefix = if dir = "/" then "/" else dir ^ "/" in
+    if String.starts_with ~prefix path then
+      Some
+        (String.sub path (String.length prefix)
+           (String.length path - String.length prefix))
+    else None
+
+(* [relative] appended to a container [target], which may end in [/]. *)
+let container_path target relative =
+  let rec trim s =
+    let n = String.length s in
+    if n > 1 && s.[n - 1] = '/' then trim (String.sub s 0 (n - 1)) else s
+  in
+  match (trim target, relative) with
+  | target, "" -> target
+  | "/", relative -> "/" ^ relative
+  | target, relative -> target ^ "/" ^ relative
+
+let protection ~(project : Project.t) ~workspace ~source =
+  match (workspace, source) with
+  | Some (w : Config.Effective.workspace), Some source -> (
+      match relative ~dir:source project.root with
+      | None ->
+          ( [],
+            Not_applicable,
+            if w.protect_git then Not_applicable else Disabled )
+      | Some root_relative ->
+          let inside name =
+            let host = Filename.concat project.root name in
+            let relative =
+              if root_relative = "" then name
+              else Filename.concat root_relative name
+            in
+            { source = host; target = container_path w.target relative }
+          in
+          let deco =
+            (* Discovery found .deco/config.toml, so .deco exists; protect the
+               directory it resolves to when that is inside the workspace. *)
+            match Unix.realpath (Filename.concat project.root ".deco") with
+            | real -> (
+                match relative ~dir:source real with
+                | Some relative ->
+                    Some
+                      {
+                        source = real;
+                        target = container_path w.target relative;
+                      }
+                | None -> None)
+            | exception Unix.Unix_error _ -> None
+          in
+          let git, git_state =
+            if not w.protect_git then (None, Disabled)
+            else
+              match
+                (Unix.lstat (Filename.concat project.root ".git")).st_kind
+              with
+              | Unix.S_DIR -> (Some (inside ".git"), Protected)
+              | _ -> (None, Unprotected)
+              | exception Unix.Unix_error (Unix.ENOENT, _, _) ->
+                  (None, Not_applicable)
+              | exception Unix.Unix_error _ -> (None, Unprotected)
+          in
+          ( Option.to_list deco @ Option.to_list git,
+            (if deco = None then Not_applicable else Protected),
+            git_state ))
+  | Some w, None ->
+      ([], Not_applicable, if w.protect_git then Not_applicable else Disabled)
+  | None, _ -> ([], Not_applicable, Not_applicable)
 
 let resolve ?home_dir ~(project : Project.t) (config : Config.Effective.t) =
   let errors = ref [] in
@@ -104,7 +184,20 @@ let resolve ?home_dir ~(project : Project.t) (config : Config.Effective.t) =
   in
   match (!errors, build_context, containerfile) with
   | [], Some build_context, Some containerfile ->
-      Ok { build_context; containerfile; workspace_source; env_files }
+      let protected, deco_protection, git_protection =
+        protection ~project ~workspace:config.mounts.workspace
+          ~source:workspace_source
+      in
+      Ok
+        {
+          build_context;
+          containerfile;
+          workspace_source;
+          env_files;
+          protected;
+          deco_protection;
+          git_protection;
+        }
   | [], _, _ ->
       invalid_arg "Host_paths: missing resolved paths without diagnostics"
   | errors, _, _ -> Error (List.sort Config.Diagnostic.compare errors)

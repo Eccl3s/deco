@@ -19,6 +19,9 @@ let () =
           containerfile = "/project/.deco/build/Containerfile";
           workspace_source = None;
           env_files = [];
+          protected = [];
+          deco_protection = Not_applicable;
+          git_protection = Not_applicable;
         };
       identity = Image;
     }
@@ -303,6 +306,9 @@ let () =
           containerfile = "/project/.deco/build/Containerfile";
           workspace_source = None;
           env_files = [];
+          protected = [];
+          deco_protection = Not_applicable;
+          git_protection = Not_applicable;
         };
       identity = Image;
     }
@@ -732,6 +738,9 @@ let () =
           containerfile = "/project/.deco/build/Containerfile";
           workspace_source = None;
           env_files = [];
+          protected = [];
+          deco_protection = Not_applicable;
+          git_protection = Not_applicable;
         };
       identity = Image;
     }
@@ -862,6 +871,9 @@ let () =
           containerfile = "/project/.deco/build/Containerfile";
           workspace_source = None;
           env_files = [];
+          protected = [];
+          deco_protection = Not_applicable;
+          git_protection = Not_applicable;
         };
       identity = Image;
     }
@@ -980,6 +992,9 @@ let () =
           containerfile = "/project/.deco/build/Containerfile";
           workspace_source = None;
           env_files = [ "/project/.env" ];
+          protected = [];
+          deco_protection = Not_applicable;
+          git_protection = Not_applicable;
         };
       identity = Image;
     }
