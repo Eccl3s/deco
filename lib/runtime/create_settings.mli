@@ -23,7 +23,14 @@ val fields : Config_loader.t -> (string * string) list
     lists and [container.environment] table, each as its values in configured
     order, each value prefixed with its length as a 64-bit big-endian integer so
     distinct lists cannot share a value. Env files are their canonical host
-    paths; the environment is each name followed by its value. *)
+    paths; the environment is each name followed by its value.
+
+    [mounts.protected] contributes the {!Host_paths.protected_path} list, each
+    source followed by its target, whenever it is non-empty. Since [.deco/] is
+    protected for every workspace that contains the project root, a container
+    created without protection, including one created before this field existed,
+    is incompatible with any such configuration, and so is one created before a
+    protected [.git] existed. *)
 
 val digest : (string * string) list -> string
 (** [blake2b-256:] followed by lowercase hexadecimal, over the pairs sorted by

@@ -205,3 +205,44 @@ let () =
     digest ~env_files:[ "/project/.env" ] "container.env_files=['.env']"
     = digest ~env_files:[ "/project/.env" ]
         "container.env_files=['/project/.env']")
+
+(* Protected workspace paths contribute their sources and targets, in order,
+   when there are any. *)
+let () =
+  let prefixed values =
+    String.concat ""
+      (List.map
+         (fun v ->
+           let b = Bytes.create 8 in
+           Bytes.set_int64_be b 0 (Int64.of_int (String.length v));
+           Bytes.to_string b ^ v)
+         values)
+  in
+  let with_protected protected =
+    let loaded = load "project.name='x'\n" in
+    { loaded with host_paths = { loaded.host_paths with protected } }
+  in
+  let deco : Host_paths.protected_path =
+    { source = "/project/.deco"; target = "/w/.deco" }
+  and git : Host_paths.protected_path =
+    { source = "/project/.git"; target = "/w/.git" }
+  in
+  assert (Create_settings.fields (with_protected []) = []);
+  assert (
+    Create_settings.fields (with_protected [ deco; git ])
+    = [
+        ( "mounts.protected",
+          prefixed [ "/project/.deco"; "/w/.deco"; "/project/.git"; "/w/.git" ]
+        );
+      ]);
+  let digest protected = Create_settings.of_loaded (with_protected protected) in
+  let all =
+    [
+      digest [];
+      digest [ deco ];
+      digest [ deco; git ];
+      digest [ git; deco ];
+      digest [ { deco with target = "/other/.deco" } ];
+    ]
+  in
+  assert (List.length (List.sort_uniq compare all) = List.length all)

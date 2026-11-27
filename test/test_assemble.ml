@@ -166,6 +166,42 @@ let () =
   assert (
     Assemble.compatibility ~selinux_enabled:false mounted image mounted_c
     = Ok ());
+  (* A container created without protection, or before .git existed, is
+     incompatible once paths are protected; one created with them is not. *)
+  let protecting protected =
+    { mounted with host_paths = { mounted.host_paths with protected } }
+  in
+  let deco_path : Host_paths.protected_path =
+    { source = "/project/.deco"; target = "/workspace/.deco" }
+  and git_path : Host_paths.protected_path =
+    { source = "/project/.git"; target = "/workspace/.git" }
+  in
+  let protected = protecting [ deco_path; git_path ] in
+  let incompatible =
+    Container_runtime.incompatibilities ~selinux_enabled:false protected image
+  in
+  assert (incompatible mounted_c = [ settings ]);
+  assert (
+    incompatible
+      {
+        mounted_c with
+        labels =
+          mounted_c.labels
+          @ [
+              ( Create_settings.label,
+                Create_settings.of_loaded (protecting [ deco_path ]) );
+            ];
+      }
+    = [ settings ]);
+  assert (
+    incompatible
+      {
+        mounted_c with
+        labels =
+          mounted_c.labels
+          @ [ (Create_settings.label, Create_settings.of_loaded protected) ];
+      }
+    = []);
   (* Read-only protection mounts under the workspace do not count as workspace
      mounts. *)
   assert (
