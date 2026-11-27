@@ -603,3 +603,104 @@ let () =
                  };
              };
          }))
+
+(* Protected paths are mounted read-only after the workspace, without
+   relabelling; a .git that is not a directory produces a warning instead. *)
+let () =
+  let source =
+    Result.get_ok
+      (Config.Decode.from_string
+         "project.name='example'\n\
+          mounts.workspace={target='/workspace',relabel='private'}\n")
+  in
+  let base : Config_loader.t =
+    {
+      ignored_paths = [];
+      contents = "";
+      project =
+        { root = "/project"; config_path = "/project/.deco/config.toml" };
+      source;
+      effective = Result.get_ok (Config.Resolve.apply source);
+      host_paths =
+        {
+          build_context = "/project/.deco/build";
+          containerfile = "/project/.deco/build/Containerfile";
+          workspace_source = Some "/project";
+          env_files = [];
+          protected =
+            [
+              { source = "/project/.deco"; target = "/workspace/.deco" };
+              { source = "/project/.git"; target = "/workspace/.git" };
+            ];
+          deco_protection = Protected;
+          git_protection = Protected;
+        };
+      identity = User_identity.Image;
+    }
+  in
+  let plan = get (Assemble_plan.make base) in
+  let create =
+    Assemble_plan.resolve ~image_id:"iid" ~container_id:"cid" plan.create
+  in
+  let rec after flag = function
+    | x :: rest when x = flag -> rest
+    | _ :: rest -> after flag rest
+    | [] -> failwith flag
+  in
+  (match after "--volume" create with
+  | "/project:/workspace:Z" :: "--mount"
+    :: "type=bind,source=/project/.deco,destination=/workspace/.deco,ro=true"
+    :: "--mount"
+    :: "type=bind,source=/project/.git,destination=/workspace/.git,ro=true"
+    :: "--" :: _ ->
+      ()
+  | _ -> failwith (String.concat " " create));
+  let preview = Assemble_plan.render plan in
+  let contains text =
+    let rec loop i =
+      i + String.length text <= String.length preview
+      && (String.sub preview i (String.length text) = text || loop (i + 1))
+    in
+    loop 0
+  in
+  assert (
+    contains
+      "--mount \
+       type=bind,source=/project/.deco,destination=/workspace/.deco,ro=true \\\n");
+  assert (Assemble_plan.unprotected_git base = None);
+  let with_paths f = { base with host_paths = f base.host_paths } in
+  (* No protected paths: only the workspace volume. *)
+  let plain = with_paths (fun h -> { h with protected = [] }) in
+  assert (
+    not
+      (List.mem "--mount"
+         (Assemble_plan.resolve ~image_id:"" ~container_id:""
+            (get (Assemble_plan.make plain)).create)));
+  assert (
+    Result.is_error
+      (Assemble_plan.make
+         (with_paths (fun h ->
+              {
+                h with
+                protected = [ { source = "/a,b/.deco"; target = "/w/.deco" } ];
+              }))));
+  let unprotected =
+    with_paths (fun h ->
+        {
+          h with
+          protected = [ List.hd h.protected ];
+          git_protection = Unprotected;
+        })
+  in
+  (match Assemble_plan.unprotected_git unprotected with
+  | Some message ->
+      assert (
+        String.starts_with ~prefix:"/project/.git is not a directory" message)
+  | None -> assert false);
+  List.iter
+    (fun git_protection ->
+      assert (
+        Assemble_plan.unprotected_git
+          (with_paths (fun h -> { h with git_protection }))
+        = None))
+    [ Host_paths.Disabled; Not_applicable ]

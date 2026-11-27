@@ -23,7 +23,8 @@ let compatibility = Container_runtime.compatibility
 
 let run ?execute ?read_many
     ?(probe = fun () -> Container_runtime.local_selinux ()) ?hook
-    ?(on_ready = fun (_ : outcome) -> Ok ()) loaded =
+    ?(warn = fun (_ : string) -> ()) ?(on_ready = fun (_ : outcome) -> Ok ())
+    loaded =
   let concurrent = Option.is_some read_many || Option.is_none execute in
   let injected = execute in
   let execute =
@@ -220,6 +221,7 @@ let run ?execute ?read_many
           | None -> Ok ()
           | Some message -> fail (Conflict message)
         in
+        Option.iter warn (Assemble_plan.unprotected_git loaded);
         let* r = mutation Process.Capture (command ~image_id:image.id Create) in
         let* id = created_id r in
         let* container =

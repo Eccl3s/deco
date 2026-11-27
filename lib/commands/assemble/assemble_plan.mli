@@ -38,6 +38,15 @@ type t = private {
 type error = string
 
 val make : Config_loader.t -> (t, error) result
+(** The create command mounts each {!Host_paths.protected_path} read-only with
+    [--mount type=bind,...,ro=true] after the workspace [--volume], without
+    relabelling. Protected paths containing commas are an error. *)
+
+val unprotected_git : Config_loader.t -> string option
+(** The warning, without the [deco:] prefix, that [assemble] and [refresh] write
+    to stderr whenever they create a container (and their dry runs write) while
+    [.git] is not a directory, so its Git directory is not protected; [None]
+    otherwise. The path is escaped for the terminal. *)
 
 val resolve :
   image_id:string -> container_id:string -> argument list -> string list

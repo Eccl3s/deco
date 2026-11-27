@@ -84,6 +84,17 @@ let render t =
      else "")
   ^ "<image-id> is resolved when assembling the environment.\n"
 
+let unprotected_git (loaded : Config_loader.t) =
+  match loaded.host_paths.git_protection with
+  | Host_paths.Unprotected ->
+      Some
+        (Terminal_text.escape (Filename.concat loaded.project.root ".git")
+        ^ " is not a directory, so the Git directory it names is not mounted \
+           read-only and code in the container can change it if the workspace \
+           contains it. Set mounts.workspace.protect_git = false to accept \
+           this.")
+  | Protected | Disabled | Not_applicable -> None
+
 let make (loaded : Config_loader.t) =
   let c = loaded.effective and paths = loaded.host_paths in
   let image = Config.Effective.image_reference c.image in
@@ -144,17 +155,33 @@ let make (loaded : Config_loader.t) =
     | Some w, Some source ->
         if String.contains source ':' || String.contains w.target ':' then
           Error "Workspace mount paths cannot contain colons"
+        else if
+          List.exists
+            (fun (p : Host_paths.protected_path) ->
+              String.contains p.source ',' || String.contains p.target ',')
+            paths.protected
+        then Error "Protected workspace paths cannot contain commas"
         else
           Ok
-            [
-              "--volume";
-              (source ^ ":" ^ w.target
-              ^
-              match w.relabel with
-              | Config.Shared -> ":z"
-              | Private -> ":Z"
-              | No_relabel -> "");
-            ]
+            ([
+               "--volume";
+               (source ^ ":" ^ w.target
+               ^
+               match w.relabel with
+               | Config.Shared -> ":z"
+               | Private -> ":Z"
+               | No_relabel -> "");
+             ]
+            (* After the workspace, so they cover it; never relabelled, since
+               the workspace relabel already covers their content. *)
+            @ List.concat_map
+                (fun (p : Host_paths.protected_path) ->
+                  [
+                    "--mount";
+                    "type=bind,source=" ^ p.source ^ ",destination=" ^ p.target
+                    ^ ",ro=true";
+                  ])
+                paths.protected)
     | _ -> Error "Workspace configuration and resolved paths disagree"
   in
   match mount with

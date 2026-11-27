@@ -163,7 +163,8 @@ let run ?execute ?read_many ?probe ?hook ?warn
       Ok ())
   in
   match
-    Assemble.run ?execute:injected ?read_many ?probe ?hook ~on_ready loaded
+    Assemble.run ?execute:injected ?read_many ?probe ?hook ?warn ~on_ready
+      loaded
   with
   | Ok outcome ->
       Ok

@@ -32,6 +32,7 @@ val run :
   ?read_many:(string list list -> (Process.result, Process.error) result list) ->
   ?probe:(unit -> bool option) ->
   ?hook:Hook.runner ->
+  ?warn:(string -> unit) ->
   ?on_ready:(outcome -> (unit, cause) result) ->
   Config_loader.t ->
   (outcome, error) result
@@ -42,4 +43,5 @@ val run :
     created earlier but never started) runs [post_create], and a created or
     started container runs [post_start], with [hook]; an already running
     container runs no hook. A failed hook stops later hooks and leaves the
-    container running. *)
+    container running. Just before creating a container, the
+    {!Assemble_plan.unprotected_git} warning, if any, is passed to [warn]. *)

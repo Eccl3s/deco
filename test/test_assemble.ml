@@ -166,6 +166,25 @@ let () =
   assert (
     Assemble.compatibility ~selinux_enabled:false mounted image mounted_c
     = Ok ());
+  (* Read-only protection mounts under the workspace do not count as workspace
+     mounts. *)
+  assert (
+    Assemble.compatibility ~selinux_enabled:false mounted image
+      {
+        mounted_c with
+        mounts =
+          mounted_c.mounts
+          @ List.map
+              (fun name ->
+                {
+                  Podman.kind = "bind";
+                  source = "/project/" ^ name;
+                  destination = "/workspace/" ^ name;
+                  options = [ "ro"; "rbind" ];
+                })
+              [ ".deco"; ".git" ];
+      }
+    = Ok ());
   assert (
     Result.is_error
       (Assemble.compatibility ~selinux_enabled:true mounted image mounted_c));
@@ -1031,3 +1050,65 @@ let () =
     sublist
       [ "--env-file"; "/project/.env"; "--env"; "TOKEN=SECRET_VALUE" ]
       !created)
+
+(* Assemble warns about an unprotected .git just before creating a container,
+   and only then. *)
+let () =
+  let source =
+    Result.get_ok (Config.Decode.from_string "project.name='example'\n")
+  in
+  let loaded : Config_loader.t =
+    {
+      ignored_paths = [];
+      contents = "";
+      source;
+      effective = Result.get_ok (Config.Resolve.apply source);
+      project =
+        { root = "/project"; config_path = "/project/.deco/config.toml" };
+      host_paths =
+        {
+          build_context = "/project/.deco/build";
+          containerfile = "/project/.deco/build/Containerfile";
+          workspace_source = None;
+          env_files = [];
+          protected = [];
+          deco_protection = Not_applicable;
+          git_protection = Unprotected;
+        };
+      identity = Image;
+    }
+  in
+  let events = ref [] in
+  let execute _ argv =
+    let ok stdout =
+      Ok { Process.status = Unix.WEXITED 0; stdout; stderr = "" }
+    in
+    match argv with
+    | [ "podman"; "--remote=false"; "version" ] -> ok ""
+    | [ "podman"; "--remote=false"; "image"; "inspect"; "--"; _ ] ->
+        ok
+          {|[{"Id":"iid","Labels":{"dev.deco.managed":"true","dev.deco.project":"example","dev.deco.project-root":"/project"},"Config":{"User":"","WorkingDir":"/"}}]|}
+    | [ "podman"; "--remote=false"; "container"; "inspect"; "--"; _ ] ->
+        Ok { Process.status = Unix.WEXITED 125; stdout = ""; stderr = "" }
+    | [ "podman"; "--remote=false"; "container"; "exists"; "--"; _ ] ->
+        Ok { Process.status = Unix.WEXITED 1; stdout = ""; stderr = "" }
+    | "podman" :: "--remote=false" :: "create" :: _ ->
+        events := "create" :: !events;
+        Error { Process.operation = "create"; message = "reached" }
+    | _ -> failwith ("Unexpected command: " ^ String.concat " " argv)
+  in
+  let warn message = events := ("warn " ^ message) :: !events in
+  ignore (Assemble.run ~execute ~warn loaded);
+  (match List.rev !events with
+  | [ warning; "create" ] ->
+      assert (String.starts_with ~prefix:"warn /project/.git is not" warning)
+  | _ -> assert false);
+  (* No warning when protection is not affected. *)
+  events := [];
+  ignore
+    (Assemble.run ~execute ~warn
+       {
+         loaded with
+         host_paths = { loaded.host_paths with git_protection = Disabled };
+       });
+  assert (!events = [ "create" ])
