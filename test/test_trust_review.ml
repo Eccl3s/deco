@@ -93,6 +93,8 @@ let () =
             "";
             "Mounts";
             "  Workspace:      none";
+            "  Protect .deco:  not-applicable";
+            "  Protect .git:   not-applicable";
             "";
             "Hooks";
             "  none";
@@ -229,4 +231,40 @@ let () =
       let review = Deco.Trust_review.render ~now:0. status loaded in
       assert (
         contains review
-          ("  Workspace:      " ^ root ^ " -> /workspace (read-write)\n")))
+          ("  Workspace:      " ^ root
+         ^ " -> /workspace (read-write)\n\
+           \  Protect .deco:  protected\n\
+           \  Protect .git:   not-applicable\n"));
+      (* A .git directory is protected; a .git file or protect_git = false is
+         flagged. *)
+      let git_state root setup config =
+        Unix.mkdir root 0o700;
+        Unix.mkdir (Filename.concat root ".deco") 0o700;
+        Unix.mkdir (Filename.concat root ".deco/build") 0o700;
+        write
+          (Filename.concat root ".deco/build/Containerfile")
+          "FROM scratch\n";
+        write (Filename.concat root ".deco/config.toml") config;
+        setup (Filename.concat root ".git");
+        let loaded, status = project_loaded root in
+        Deco.Trust_review.render ~now:0. status loaded
+      in
+      let workspace = "project.name='git'\nmounts.workspace={target='/w'}\n" in
+      let dir path = Unix.mkdir path 0o700 in
+      List.iter
+        (fun (name, setup, config, expected) ->
+          let review = git_state (Filename.concat temp name) setup config in
+          if not (contains review ("  Protect .git:   " ^ expected ^ "\n")) then
+            failwith review)
+        [
+          ("git-dir", dir, workspace, "protected");
+          ( "git-file",
+            (fun path -> write path "gitdir: ../elsewhere\n"),
+            workspace,
+            "unprotected  [.git is not a directory]" );
+          ( "git-disabled",
+            dir,
+            "project.name='git'\n\
+             mounts.workspace={target='/w',protect_git=false}\n",
+            "disabled  [protect_git = false]" );
+        ])

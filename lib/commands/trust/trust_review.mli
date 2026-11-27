@@ -9,7 +9,8 @@ val render : now:float -> Trust.status -> Config_loader.t -> string
     mounts, hooks and actions, and the planned settings that are accepted but
     not applied, in that order. A build context outside the canonical [.deco/]
     directory ([status.deco_dir]) and a workspace source outside the project
-    root are flagged, and so are privileged mode and any devices, added
+    root are flagged, and so are a [.git] left writable by [protect_git = false]
+    or because it is not a directory, privileged mode and any devices, added
     capabilities or security options; dropped capabilities are listed unflagged.
     Build arguments and environment variables are listed by name only, never
     with their values. Env files are listed by canonical path, one per line, and

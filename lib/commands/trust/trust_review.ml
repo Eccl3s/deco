@@ -108,6 +108,16 @@ let render ~now (status : Trust.status) (loaded : Config_loader.t) =
            "outside the project"
            (safe source ^ " -> " ^ safe workspace.target ^ " (read-write)"))
   | Some _, None | None, _ -> field "Workspace" "none");
+  (* Workspace protection keeps the container from changing .deco/ and Git's
+     hooks and configuration; anything that leaves .git writable is flagged. *)
+  let state = function
+    | Host_paths.Protected -> "protected"
+    | Unprotected -> flag true ".git is not a directory" "unprotected"
+    | Disabled -> flag true "protect_git = false" "disabled"
+    | Not_applicable -> "not-applicable"
+  in
+  field "Protect .deco" (state host.deco_protection);
+  field "Protect .git" (state host.git_protection);
   section false "Hooks";
   (match Config.Effective.configured_hooks effective.hooks with
   | [] -> line "  none"
