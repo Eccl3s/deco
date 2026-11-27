@@ -5,6 +5,7 @@ import os
 import pathlib
 import pty
 import select
+import shutil
 import signal
 import subprocess
 import sys
@@ -181,6 +182,46 @@ with tempfile.TemporaryDirectory(prefix='deco-debian-workflow-') as directory:
         config_path.write_bytes(originals[config_path]); env_file.unlink()
         deco('--project-dir',str(root),'refresh','--keep-image')
         assert 'LITERAL' not in container_env()
+        # Workspace protection: .deco is read-only in the container while the
+        # rest of the workspace stays writable.
+        def in_container(script):
+            return deco('--project-dir',str(root),'exec','--','/bin/sh','-c',script,check=False)
+        result=in_container('echo tampered >> .deco/config.toml')
+        assert result.returncode!=0,result
+        assert in_container('touch .deco/planted').returncode!=0
+        assert not (root/'.deco/planted').exists()
+        assert config_path.read_bytes()==originals[config_path]
+        result=in_container('printf ok > .deco-writable && cat .deco-writable')
+        assert result.returncode==0 and result.stdout=='ok',result
+        (root/'.deco-writable').unlink()
+        # A .git created after the container makes it incompatible until refresh,
+        # which then mounts .git read-only too.
+        subprocess.run(['git','init','-q',str(root)],check=True,capture_output=True,timeout=60,
+                       env=dict(env,GIT_CONFIG_GLOBAL=os.devnull,GIT_CONFIG_SYSTEM=os.devnull))
+        result=in_container('true')
+        assert result.returncode==4 and 'run deco refresh' in result.stderr,result
+        assert info('--project-dir',str(root))['protection']=={'deco':'protected','git':'protected'}
+        deco('--project-dir',str(root),'refresh','--keep-image')
+        result=in_container('cat .git/HEAD')
+        assert result.returncode==0 and result.stdout.startswith('ref: '),result
+        git_config=(root/'.git/config').read_bytes()
+        assert in_container('touch .git/hooks/pre-commit').returncode!=0
+        assert in_container('echo "[core] hooksPath = /tmp" >> .git/config').returncode!=0
+        assert not (root/'.git/hooks/pre-commit').exists() and (root/'.git/config').read_bytes()==git_config
+        # protect_git = false leaves .git writable, as configured.
+        text=originals[config_path].decode()
+        assert text.count('[mounts.workspace]\n')==1,text
+        config_path.write_text(text.replace('[mounts.workspace]\n','[mounts.workspace]\nprotect_git = false\n'))
+        deco('--project-dir',str(root),'trust','--yes')
+        deco('--project-dir',str(root),'refresh','--keep-image')
+        assert info('--project-dir',str(root))['protection']=={'deco':'protected','git':'disabled'}
+        assert in_container('touch .git/writable').returncode==0 and (root/'.git/writable').exists()
+        assert in_container('touch .deco/planted').returncode!=0
+        # Restore the approved configuration and remove the repository.
+        config_path.write_bytes(originals[config_path])
+        shutil.rmtree(root/'.git')
+        deco('--project-dir',str(root),'refresh','--keep-image')
+        assert info('--project-dir',str(root))['protection']=={'deco':'protected','git':'not-applicable'}
         # Lifecycle hooks: each appends its name to a marker in the workspace,
         # which the hooks see as their working directory.
         hook_names=['post_create','post_start','pre_enter','pre_stop']
