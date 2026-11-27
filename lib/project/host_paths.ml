@@ -2,6 +2,7 @@ type t = {
   build_context : string;
   containerfile : string;
   workspace_source : string option;
+  env_files : string list;
 }
 
 let resolve ?home_dir ~(project : Project.t) (config : Config.Effective.t) =
@@ -91,9 +92,19 @@ let resolve ?home_dir ~(project : Project.t) (config : Config.Effective.t) =
           [ "mounts"; "workspace"; "source" ]
           ~base:project.root ~kind:Unix.S_DIR workspace.source)
   in
+  let env_files =
+    List.concat
+      (List.mapi
+         (fun index value ->
+           Option.to_list
+             (resolve_path
+                [ "container"; Printf.sprintf "env_files[%d]" index ]
+                ~base:project.root ~kind:Unix.S_REG value))
+         config.container.env_files)
+  in
   match (!errors, build_context, containerfile) with
   | [], Some build_context, Some containerfile ->
-      Ok { build_context; containerfile; workspace_source }
+      Ok { build_context; containerfile; workspace_source; env_files }
   | [], _, _ ->
       invalid_arg "Host_paths: missing resolved paths without diagnostics"
   | errors, _, _ -> Error (List.sort Config.Diagnostic.compare errors)

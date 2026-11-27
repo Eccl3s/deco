@@ -21,6 +21,10 @@ let fields (loaded : Config_loader.t) =
         ("cap_add", c.cap_add);
         ("cap_drop", c.cap_drop);
         ("security_options", c.security_options);
+        ("env_files", loaded.host_paths.env_files);
+        ( "environment",
+          List.concat_map (fun (name, value) -> [ name; value ]) c.environment
+        );
       ]
 
 (* Each pair is its key then its value, each prefixed with its length as a

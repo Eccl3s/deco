@@ -173,6 +173,8 @@ let from_string_with_ignored input =
         "cap_add";
         "cap_drop";
         "security_options";
+        "env_files";
+        "environment";
       ] (fun p f ->
         {
           name = field p f "name" string;
@@ -183,6 +185,8 @@ let from_string_with_ignored input =
           cap_add = field p f "cap_add" strings;
           cap_drop = field p f "cap_drop" strings;
           security_options = field p f "security_options" strings;
+          env_files = field p f "env_files" strings;
+          environment = field p f "environment" args;
         })
   in
   let workspace =

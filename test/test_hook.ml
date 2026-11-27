@@ -14,6 +14,7 @@ let load ?(identity = User_identity.Image) text =
          build_context = "/project/.deco/build";
          containerfile = "/project/.deco/build/Containerfile";
          workspace_source = None;
+         env_files = [];
        };
      identity;
    }

@@ -59,6 +59,11 @@ let () =
           cap_drop = [ "ALL" ];
           security_options = [ "label=disable\x1b[2J" ];
         };
+      environment =
+        {
+          variables = [ "NODE_ENV"; "TOKEN\x1b[2J" ];
+          env_files = [ "/project/.env"; "/host/shared.env" ];
+        };
       mounts =
         [
           {
@@ -132,6 +137,10 @@ Security
   Cap drop:    ALL
   Options:     label=disable\x1b[2J
 
+Environment
+  Variables:   NODE_ENV, TOKEN\x1b[2J
+  Env files:   /project/.env, /host/shared.env
+
 Mounts
   /project -> /workspace (bind, read-write, relabel private)
 
@@ -183,6 +192,7 @@ Actions
           cap_drop = [];
           security_options = [];
         };
+      environment = { variables = []; env_files = [] };
       mounts = [];
       dns = [];
       ports = [];
@@ -237,6 +247,10 @@ Security
   Cap add:     none
   Cap drop:    none
   Options:     none
+
+Environment
+  Variables:   none
+  Env files:   none
 
 Mounts
   none

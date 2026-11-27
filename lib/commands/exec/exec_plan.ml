@@ -28,13 +28,8 @@ let make (loaded : Config_loader.t) ~tty command =
                 argv;
           }
         in
-        if
-          List.exists
-            (List.exists (function
-              | Command_plan.Literal s -> String.contains s '\000'
-              | _ -> false))
-            [ plan.start; plan.exec ]
-        then Error "Command arguments cannot contain NUL bytes"
+        if List.exists Command_plan.contains_nul [ plan.start; plan.exec ] then
+          Error "Command arguments cannot contain NUL bytes"
         else Ok plan
 
 let prepare t =

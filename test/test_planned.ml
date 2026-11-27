@@ -4,35 +4,23 @@ let decode extra =
 let () =
   let config, paths =
     Result.get_ok
-      (decode
-         "container.env_files=['.env']\n\
-          network.mode='pasta'\n\
-          container.environment.TOKEN='SECRET_VALUE'")
+      (decode "container.namespaces.pid='host'\nnetwork.mode='pasta'")
   in
   assert ((Option.get config.Config.container).Config.name = None);
   assert (
-    paths
-    = [
-        [ "container"; "env_files" ];
-        [ "container"; "environment"; "TOKEN" ];
-        [ "network"; "mode" ];
-      ]);
+    paths = [ [ "container"; "namespaces"; "pid" ]; [ "network"; "mode" ] ]);
   assert (
     Config.Decode.planned_settings
       "project.name='example'\n\
-       container.env_files=['.env']\n\
        container.namespaces.pid='host'\n\
        network.ports=[{host=8080,container=80}]\n\
        hooks.post_create='supported-not-listed'\n\
        actions={supported='not listed'}\n\
-       container.environment.TOKEN='SECRET_VALUE'\n\
        container.name='supported-not-listed'"
     = [
-        ([ "container"; "env_files" ], Some "[\".env\"]");
-        ([ "container"; "environment"; "TOKEN" ], None);
-        ([ "container"; "namespaces"; "pid" ], Some "\"host\"");
-        ([ "network"; "ports[0]"; "container" ], Some "80");
-        ([ "network"; "ports[0]"; "host" ], Some "8080");
+        ([ "container"; "namespaces"; "pid" ], "\"host\"");
+        ([ "network"; "ports[0]"; "container" ], "80");
+        ([ "network"; "ports[0]"; "host" ], "8080");
       ]);
   assert (Config.Decode.planned_settings "not = [toml" = []);
   List.iter
@@ -57,7 +45,6 @@ let () =
       (decode
          "network.ports=[{host=999999,container=1}]\n\
           mounts.volumes=[{source='/missing/path',target='/volume'}]\n\
-          container.env_files=['/missing/file']\n\
           container.secrets=[{name='unavailable'}]\n\
           hooks.pre_stop='supported'")
   in
@@ -68,11 +55,14 @@ let () =
       (decode
          "container.namespaces.pid='future-mode'\nnetwork.mode='future-mode'"))
 
-(* Security options are supported settings, so they are no longer listed. *)
+(* Security options and the environment are supported settings, so they are no
+   longer listed. *)
 let () =
   assert (
     Config.Decode.planned_settings
       "project.name='example'\n\
+       container.env_files=['.env']\n\
+       container.environment.TOKEN='SECRET_VALUE'\n\
        container.privileged=true\n\
        container.devices=['/dev/fuse']\n\
        container.cap_add=['NET_ADMIN']\n\

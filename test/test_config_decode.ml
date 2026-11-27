@@ -222,4 +222,26 @@ let () =
       ("container.cap_add=[1]", "cap_add");
       ("container.cap_drop=['ALL',false]", "cap_drop");
       ("container.security_options={}", "security_options");
-    ]
+      ("container.env_files='.env'", "env_files");
+      ("container.env_files=[1]", "env_files");
+      ("container.environment=['A=1']", "environment");
+    ];
+  (* The environment keeps configured order; values are literal. *)
+  let c =
+    decoded
+      "container.env_files=['b.env','a.env']\n\
+       [container.environment]\n\
+       ZED='$HOME'\n\
+       ALPHA='a b'"
+  in
+  assert (c.env_files = Some [ "b.env"; "a.env" ]);
+  assert (c.environment = Some [ ("ZED", "$HOME"); ("ALPHA", "a b") ]);
+  (match
+     Config.Decode.from_string
+       "project.name='x'\ncontainer.environment.TOKEN=42"
+   with
+  | Error [ Config.Decode.Schema_error e ] ->
+      assert (e.path = [ "container"; "environment"; "TOKEN" ])
+  | _ -> assert false);
+  let c = decoded "container.name='n'" in
+  assert (c.env_files = None && c.environment = None)

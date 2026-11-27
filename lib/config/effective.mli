@@ -33,6 +33,11 @@ type container = {
   cap_drop : string list;
   security_options : string list;
       (** The lists are empty when omitted and keep their configured order. *)
+  env_files : string list;
+      (** Host env file paths as written, resolved later against the project
+          root. *)
+  environment : (string * string) list;
+      (** Variables in configured order; values are literal and never shown. *)
 }
 
 type workspace = {

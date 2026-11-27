@@ -14,6 +14,7 @@ let load text =
          build_context = "/project/.deco/build";
          containerfile = "/project/.deco/build/Containerfile";
          workspace_source = None;
+         env_files = [];
        };
      identity = User_identity.Image;
    }
@@ -144,3 +145,60 @@ let () =
   in
   assert (with_options [ "a"; "b" ] <> with_options [ "a\000b" ]);
   assert (with_options [ "ab" ] <> with_options [ "a"; "b" ])
+
+(* Env files (canonical paths) and the environment (name, value pairs)
+   contribute in configured order, only when configured. *)
+let () =
+  let prefixed values =
+    String.concat ""
+      (List.map
+         (fun v ->
+           let b = Bytes.create 8 in
+           Bytes.set_int64_be b 0 (Int64.of_int (String.length v));
+           Bytes.to_string b ^ v)
+         values)
+  in
+  let load ?(env_files = []) text =
+    let loaded = load ("project.name='x'\n" ^ text) in
+    { loaded with host_paths = { loaded.host_paths with env_files } }
+  in
+  assert (
+    Create_settings.fields (load "container={environment={},env_files=[]}") = []);
+  assert (
+    Create_settings.fields
+      (load
+         ~env_files:[ "/project/b.env"; "/host/a.env" ]
+         "container.env_files=['b.env','~/a.env']\n\
+          container.environment={ZED='z',ALPHA=''}")
+    = [
+        ("container.env_files", prefixed [ "/project/b.env"; "/host/a.env" ]);
+        ("container.environment", prefixed [ "ZED"; "z"; "ALPHA"; "" ]);
+      ]);
+  let digest ?env_files text =
+    Create_settings.of_loaded (load ?env_files text)
+  in
+  let all =
+    [
+      digest "";
+      digest "container.environment.A='1'";
+      digest "container.environment.A='2'";
+      digest "container.environment.B='1'";
+      digest "container.environment={A='1',B='2'}";
+      digest "container.environment={B='2',A='1'}";
+      (* Name/value boundaries are length-prefixed. *)
+      digest "container.environment={A='B',C=''}";
+      digest "container.environment={A='',BC=''}";
+      digest ~env_files:[ "/a.env" ] "container.env_files=['/a.env']";
+      digest ~env_files:[ "/b.env" ] "container.env_files=['/b.env']";
+      digest ~env_files:[ "/a.env"; "/b.env" ]
+        "container.env_files=['/a.env','/b.env']";
+      digest ~env_files:[ "/b.env"; "/a.env" ]
+        "container.env_files=['/b.env','/a.env']";
+    ]
+  in
+  assert (List.length (List.sort_uniq compare all) = List.length all);
+  (* Only resolved paths count: two spellings of one file give one digest. *)
+  assert (
+    digest ~env_files:[ "/project/.env" ] "container.env_files=['.env']"
+    = digest ~env_files:[ "/project/.env" ]
+        "container.env_files=['/project/.env']")

@@ -13,6 +13,7 @@ type operation =
 
 type argument = Command_plan.argument =
   | Literal of string
+  | Redacted of { shown : string; actual : string }
   | Image_id
   | Container_id
 

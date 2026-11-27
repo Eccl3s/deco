@@ -260,7 +260,10 @@ container-create flags:
 
 Each `env_files` entry is resolved as a host path from the project root and
 must exist as a regular file. Env file contents are parsed by the selected
-container engine.
+container engine when the container is created. A later change to an env
+file's contents takes effect only when the container is recreated, for
+example with `deco refresh`, and does not make the existing container
+incompatible.
 
 Each `devices` entry must be one of `HOST_PATH`, `HOST_PATH:CONTAINER_PATH`,
 or `HOST_PATH:CONTAINER_PATH:PERMISSIONS`. `HOST_PATH` must be absolute.

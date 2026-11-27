@@ -11,6 +11,7 @@ type operation =
 
 type argument = Command_plan.argument =
   | Literal of string
+  | Redacted of { shown : string; actual : string }
   | Image_id
   | Container_id
 
@@ -56,7 +57,7 @@ let render t =
            List.exists
              (function
                | Literal arg -> String.starts_with ~prefix:"--cap-add=" arg
-               | Image_id | Container_id -> false)
+               | Redacted _ | Image_id | Container_id -> false)
              (command Create)
          then
            ", after checking that the image's "
@@ -186,10 +187,23 @@ let make (loaded : Config_loader.t) =
                 ("--cap-drop", c.container.cap_drop);
                 ("--security-opt", c.container.security_options);
               ]
-          @ (match c.container.workdir with
-            | None -> []
-            | Some w -> [ "--workdir"; w ])
-          @ mount @ [ "--" ])
+          @ List.concat_map (fun path -> [ "--env-file"; path ]) paths.env_files
+          )
+        (* Values are never displayed; --env overrides --env-file in Podman
+           whatever their order. *)
+        @ List.concat_map
+            (fun (name, value) ->
+              [
+                Literal "--env";
+                Redacted
+                  { shown = name ^ "=<hidden>"; actual = name ^ "=" ^ value };
+              ])
+            c.container.environment
+        @ literals
+            ((match c.container.workdir with
+               | None -> []
+               | Some w -> [ "--workdir"; w ])
+            @ mount @ [ "--" ])
         @ [ Image_id ]
       in
       let roles =
@@ -245,13 +259,7 @@ let make (loaded : Config_loader.t) =
       let steps =
         List.map2 (fun operation step -> { step with operation }) roles steps
       in
-      if
-        List.exists
-          (fun step ->
-            List.exists
-              (function Literal s -> String.contains s '\000' | _ -> false)
-              step.command)
-          steps
+      if List.exists (fun step -> Command_plan.contains_nul step.command) steps
       then Error "Command arguments cannot contain NUL bytes"
       else
         Ok

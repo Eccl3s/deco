@@ -162,9 +162,15 @@ let () =
               ("--security-opt", configured.security_options);
             ];
           assert (contains preview "--privileged" = configured.privileged);
+          (* Environment variables are applied, but previews hide values. *)
           List.iter
-            (fun flag -> assert (not (contains preview flag)))
-            [ "--network"; "--env" ];
+            (fun (name, value) ->
+              assert (contains preview ("--env '" ^ name ^ "=<hidden>'"));
+              assert (not (contains preview (name ^ "=" ^ value))))
+            configured.environment;
+          assert (contains preview "--env " = (configured.environment <> []));
+          assert (contains preview "--env-file" = (configured.env_files <> []));
+          assert (not (contains preview "--network"));
 
           let file = Filename.concat path ".deco/config.toml" in
           let original = In_channel.with_open_bin file In_channel.input_all in
@@ -251,10 +257,8 @@ let () =
              name = 'hostile'\n\
              [container.environment]\n\
              \"x\\u001b[31my\" = 'true'\n");
-      assert (
-        contains
-          (run temp [ "validate"; "--project-dir"; hostile ] 0)
-          "  container.environment.x\\x1b[31my\n");
+      ignore (run temp [ "validate"; "--project-dir"; hostile ] 2);
+      assert (contains !last_errors "container.environment.\"x\\027[31my\"");
       let spaced = Filename.concat temp "Another Project" in
       ignore (run temp [ "init"; spaced ] 0);
       ignore (run temp [ "validate"; "--project-dir"; spaced ] 0);

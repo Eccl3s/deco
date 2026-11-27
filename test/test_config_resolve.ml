@@ -159,3 +159,17 @@ let () =
   assert (c.devices = [ "/dev/b"; "/dev/a" ]);
   assert (c.cap_add = [ "MKNOD"; "SYS_ADMIN" ]);
   assert (c.cap_drop = [ "ALL" ] && c.security_options = [ "label=disable" ])
+
+(* The environment defaults to empty and keeps configured order. *)
+let () =
+  let c = (resolve (decode "")).container in
+  assert (c.env_files = [] && c.environment = []);
+  let c =
+    (resolve
+       (decode
+          "container.env_files=['b.env','a.env']\n\
+           container.environment={ZED='z',ALPHA='a'}"))
+      .container
+  in
+  assert (c.env_files = [ "b.env"; "a.env" ]);
+  assert (c.environment = [ ("ZED", "z"); ("ALPHA", "a") ])

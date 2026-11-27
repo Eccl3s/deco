@@ -15,13 +15,7 @@ let make (loaded : Config_loader.t) =
       argv
   in
   let container_name = loaded.effective.container.name in
-  if
-    String.contains container_name '\000'
-    || List.exists
-         (function
-           | Command_plan.Literal value -> String.contains value '\000'
-           | Command_plan.Image_id | Command_plan.Container_id -> false)
-         start
+  if String.contains container_name '\000' || Command_plan.contains_nul start
   then Error "Command arguments cannot contain NUL bytes"
   else
     Ok

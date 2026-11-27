@@ -1,9 +1,28 @@
-type argument = Literal of string | Image_id | Container_id
+type argument =
+  | Literal of string
+  | Redacted of { shown : string; actual : string }
+  | Image_id
+  | Container_id
 
 let resolve ~image_id ~container_id command =
   List.map
     (function
-      | Literal s -> s | Image_id -> image_id | Container_id -> container_id)
+      | Literal s -> s
+      | Redacted { actual; _ } -> actual
+      | Image_id -> image_id
+      | Container_id -> container_id)
+    command
+
+let value = function
+  | Literal s | Redacted { actual = s; _ } -> Some s
+  | Image_id | Container_id -> None
+
+let contains_nul command =
+  List.exists
+    (fun argument ->
+      match value argument with
+      | Some s -> String.contains s '\000'
+      | None -> false)
     command
 
 let quote s =
@@ -25,6 +44,8 @@ let escape_literals command =
   List.map
     (function
       | Literal s -> Literal (Terminal_text.escape s)
+      | Redacted { shown; actual } ->
+          Redacted { shown = Terminal_text.escape shown; actual }
       | (Image_id | Container_id) as placeholder -> placeholder)
     command
 
@@ -32,7 +53,7 @@ let render_command command =
   String.concat " "
     (List.map
        (function
-         | Literal s -> quote s
+         | Literal s | Redacted { shown = s; _ } -> quote s
          | Image_id -> "'<image-id>'"
          | Container_id -> "'<container-id>'")
        command)
@@ -45,6 +66,8 @@ let render_multiline command =
       "--target";
       "--label";
       "--build-arg";
+      "--env";
+      "--env-file";
       "--name";
       "--user";
       "--workdir";

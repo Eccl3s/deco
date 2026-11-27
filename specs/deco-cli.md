@@ -477,7 +477,7 @@ Reports the current project's resolved configuration and Podman resource
 state without changing it. The report includes project identity, Podman
 availability and version, image identity, existence, age, and ownership,
 container identity, state, age, ownership, and compatibility, user mode,
-workdir, container security options, resource limits, workspace protection, mounts, published ports, configured
+workdir, container security options, environment variable names and env files, resource limits, workspace protection, mounts, published ports, configured
 hooks, action names, and configuration trust state. `info` does not require trust.
 
 `info` performs only read-only Podman queries. Reporting ownership or
@@ -534,6 +534,10 @@ JSON output has this shape:
     "cap_add": [],
     "cap_drop": ["ALL"],
     "security_options": []
+  },
+  "environment": {
+    "variables": ["NODE_ENV"],
+    "env_files": ["/home/user/my-project/.env"]
   },
   "resources": {
     "cpus": 2.5,
@@ -622,6 +626,13 @@ Configuration fields:
   configured order, empty when omitted. They come from the configuration, not
   from inspecting the container; an existing container created with different
   values is reported through `container.compatible`.
+- `environment` reports the configured `[container.environment]` variable
+  names, sorted, as `variables`, and the configured `container.env_files` as
+  `env_files`: canonical host paths in configured order. Both are empty arrays
+  when omitted. Variable values and env file contents are never reported. Like
+  `security`, they come from the configuration; a container created with
+  different variables, values, or env file paths is reported through
+  `container.compatible`.
 - `resources` reports the configured `[container.resources]` limits: `cpus`
   and `pids` as numbers and `memory` and `memory_swap` as the strings written
   in the configuration, each `null` when unset. Like `security`, they come
@@ -645,7 +656,7 @@ Configuration fields:
 - Each `ports` entry includes `host`, `container`, `protocol`, and `bind`.
 
 Human output presents the same information as labelled sections in this
-order: project, trust, Podman, image, container, runtime, security, resources, mounts,
+order: project, trust, Podman, image, container, runtime, security, environment, resources, mounts,
 DNS, ports, hooks, and actions. The mounts section begins with the
 `protection` states and marks each protection mount as protected. Timestamps are shown in UTC together with a relative age, such as
 `2026-11-11 09:14 UTC (9 days ago)`. Missing values are shown as `-`, and an

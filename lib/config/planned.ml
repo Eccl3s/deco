@@ -3,7 +3,6 @@ type schema =
   | Integer
   | Boolean
   | Strings
-  | Map
   | Table of (string * schema) list
   | Rows of (string * schema) list
 
@@ -26,8 +25,6 @@ let registry = function
       ]
   | [ "container" ] ->
       [
-        ("env_files", Strings);
-        ("environment", Map);
         ("namespaces", Table (strings [ "pid"; "ipc"; "uts"; "cgroup"; "user" ]));
         ( "secrets",
           Rows
@@ -75,17 +72,9 @@ let rec render = function
       ^ "}"
   | value -> Otoml.Printer.to_string value
 
-(* Environment-variable values must never be shown. *)
-let hidden = function
-  | "container" :: "environment" :: _ :: _ -> true
-  | _ -> false
-
 let strip tree =
   let ignored = ref [] and errors = ref [] in
-  let report path value =
-    let value = if hidden path then None else Some (render value) in
-    ignored := (path, value) :: !ignored
-  in
+  let report path value = ignored := (path, render value) :: !ignored in
   let error path message = errors := Diagnostic.{ path; message } :: !errors in
   let rec check path schema value =
     match (schema, value) with
@@ -101,18 +90,13 @@ let strip tree =
             | Otoml.TomlString _ -> ()
             | _ -> error path "Expected an array of strings")
           values
-    | (Map | Table _), (Otoml.TomlTable fields | Otoml.TomlInlineTable fields)
-      ->
+    | Table allowed, (Otoml.TomlTable fields | Otoml.TomlInlineTable fields) ->
         if fields = [] then report path value;
         List.iter
           (fun (key, value) ->
-            match schema with
-            | Map -> check (path @ [ key ]) String value
-            | Table allowed -> (
-                match List.assoc_opt key allowed with
-                | Some schema -> check (path @ [ key ]) schema value
-                | None -> error (path @ [ key ]) "Unknown or unsupported key")
-            | _ -> assert false)
+            match List.assoc_opt key allowed with
+            | Some schema -> check (path @ [ key ]) schema value
+            | None -> error (path @ [ key ]) "Unknown or unsupported key")
           fields
     | Rows fields, Otoml.TomlArray rows ->
         if rows = [] then report path value;

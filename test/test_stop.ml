@@ -20,6 +20,7 @@ let () =
           build_context = "/project/.deco/build";
           containerfile = "/project/.deco/build/Containerfile";
           workspace_source = None;
+          env_files = [];
         };
       identity = User_identity.Image;
     }
@@ -240,6 +241,7 @@ let () =
            build_context = "/project/.deco/build";
            containerfile = "/project/.deco/build/Containerfile";
            workspace_source = None;
+           env_files = [];
          };
        identity = User_identity.Image;
      }
