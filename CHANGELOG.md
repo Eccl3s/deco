@@ -39,6 +39,16 @@ releases may change behaviour.
   `environment` object, and the `deco trust` review lists it, flagging env
   files outside the project. Only variable names and env file paths are shown:
   values never appear in previews, reports or the review.
+- Workspace protection: `.deco/` and, unless
+  `mounts.workspace.protect_git = false`, the project's `.git` directory are
+  mounted read-only over the workspace, so code in the container cannot change
+  the approved configuration or plant Git hooks and configuration that run on
+  the host. When `.git` is a file (a linked worktree or submodule), `assemble`
+  and `refresh` warn instead. The protection mounts contribute to
+  `dev.deco.create-digest`.
+- `deco info` reports workspace protection in its `Mounts` section and a JSON
+  `protection` object, and marks protection mounts with `protected`; the
+  `deco trust` review shows it, flagging a writable `.git`.
 
 ### Changed
 
@@ -63,6 +73,10 @@ releases may change behaviour.
   with the options applied. The same holds for configurations that set
   `[container.environment]` or `container.env_files`, including those
   generated from the `python` template.
+- Every container with a workspace is now incompatible until `deco refresh`
+  recreates it with the read-only `.deco/` (and `.git`) mounts. Inside the
+  container, Git commands that write to the repository, such as `git commit`,
+  now fail; run them on the host or set `mounts.workspace.protect_git = false`.
 - Projects generated from earlier templates keep their old files:
   - podman: remove `cap_add` from `.deco/config.toml`, or `assemble` refuses it.
   - go and rust: set `BASE_VARIANT = "trixie"` in `[build.args]`.
