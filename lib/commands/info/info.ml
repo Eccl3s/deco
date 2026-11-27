@@ -39,6 +39,7 @@ type security = {
 }
 
 type environment = { variables : string list; env_files : string list }
+type protection = { deco : string; git : string }
 
 type mount = {
   source : string;
@@ -46,6 +47,7 @@ type mount = {
   kind : string;
   readonly : bool;
   relabel : string;
+  protected : bool;
 }
 
 type port = { host : int; container : int; protocol : string; bind : string }
@@ -66,6 +68,7 @@ type report = {
   runtime : runtime;
   security : security;
   environment : environment;
+  protection : protection;
   mounts : mount list;
   dns : string list;
   ports : port list;
@@ -197,8 +200,26 @@ let build ~trust (loaded : Config_loader.t) observed =
               | Config.Shared -> "shared"
               | Private -> "private"
               | No_relabel -> "none");
+            protected = false;
           };
         ]
+        @ List.map
+            (fun (p : Host_paths.protected_path) ->
+              {
+                source = p.source;
+                target = p.target;
+                kind = "bind";
+                readonly = true;
+                relabel = "none";
+                protected = true;
+              })
+            loaded.host_paths.protected
+  in
+  let protection_state = function
+    | Host_paths.Protected -> "protected"
+    | Unprotected -> "unprotected"
+    | Disabled -> "disabled"
+    | Not_applicable -> "not-applicable"
   in
   {
     project =
@@ -254,6 +275,11 @@ let build ~trust (loaded : Config_loader.t) observed =
         variables =
           List.sort_uniq String.compare (List.map fst e.container.environment);
         env_files = loaded.host_paths.env_files;
+      };
+    protection =
+      {
+        deco = protection_state loaded.host_paths.deco_protection;
+        git = protection_state loaded.host_paths.git_protection;
       };
     mounts;
     dns = [];
@@ -374,6 +400,10 @@ let render_json r =
               ("variables", strings r.environment.variables);
               ("env_files", strings r.environment.env_files);
             ] );
+        ( "protection",
+          `Assoc
+            [ ("deco", str r.protection.deco); ("git", str r.protection.git) ]
+        );
         ( "mounts",
           `List
             (List.map
@@ -385,6 +415,7 @@ let render_json r =
                      ("type", str m.kind);
                      ("readonly", bool m.readonly);
                      ("relabel", str m.relabel);
+                     ("protected", bool m.protected);
                    ])
                r.mounts) );
         ("dns", strings r.dns);
@@ -490,13 +521,20 @@ let render_human ~now ~ignored r =
   section false "Environment";
   field "Variables" (list r.environment.variables);
   field "Env files" (list r.environment.env_files);
-  items "Mounts"
-    (fun m ->
-      Printf.sprintf "%s -> %s (%s, %s, relabel %s)" (safe m.source)
-        (safe m.target) (safe m.kind)
-        (if m.readonly then "read-only" else "read-write")
-        (safe m.relabel))
-    r.mounts;
+  section false "Mounts";
+  field ".deco" (safe r.protection.deco);
+  field ".git" (safe r.protection.git);
+  (match r.mounts with
+  | [] -> line "  none"
+  | mounts ->
+      List.iter
+        (fun m ->
+          line "  %s -> %s (%s, %s, relabel %s%s)" (safe m.source)
+            (safe m.target) (safe m.kind)
+            (if m.readonly then "read-only" else "read-write")
+            (safe m.relabel)
+            (if m.protected then ", protected" else ""))
+        mounts);
   items "DNS" safe r.dns;
   items "Ports"
     (fun (p : port) ->

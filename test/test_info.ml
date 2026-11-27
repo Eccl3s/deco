@@ -301,6 +301,7 @@ let () =
     "security_options": []
   },
   "environment": { "variables": [], "env_files": [] },
+  "protection": { "deco": "not-applicable", "git": "not-applicable" },
   "mounts": [],
   "dns": [],
   "ports": [],
@@ -487,6 +488,7 @@ let () =
               kind = "bind";
               readonly = false;
               relabel;
+              protected = false;
             };
           ]);
       let json = Info.render_json r in
@@ -494,6 +496,72 @@ let () =
       assert (contains json {|"readonly": false|});
       assert (contains json ({|"relabel": "|} ^ relabel ^ {|"|})))
     [ ("shared", "shared"); ("private", "private"); ("none", "none") ];
+  (* Protection mounts follow the workspace mount, and the protection states
+     are reported as Host_paths determined them. *)
+  let protected =
+    let base =
+      load
+        "[project]\n\
+         name = 'example'\n\
+         [mounts.workspace]\n\
+         target = '/workspace'\n"
+    in
+    {
+      base with
+      host_paths =
+        {
+          base.host_paths with
+          workspace_source = Some "/project";
+          protected =
+            [
+              { source = "/project/.deco"; target = "/workspace/.deco" };
+              { source = "/project/.git"; target = "/workspace/.git" };
+            ];
+          deco_protection = Protected;
+          git_protection = Protected;
+        };
+    }
+  in
+  let run, _ = fake (ok (container "running")) in
+  let r = collect ~loaded:protected run in
+  assert (r.protection = { deco = "protected"; git = "protected" });
+  assert (
+    List.map
+      (fun (m : Info.mount) -> (m.target, m.readonly, m.protected))
+      r.mounts
+    = [
+        ("/workspace", false, false);
+        ("/workspace/.deco", true, true);
+        ("/workspace/.git", true, true);
+      ]);
+  let json = Info.render_json r in
+  assert (
+    contains json
+      {|  "protection": { "deco": "protected", "git": "protected" },
+  "mounts": [|});
+  assert (
+    contains json
+      {|      "source": "/project/.git",
+      "target": "/workspace/.git",
+      "type": "bind",
+      "readonly": true,
+      "relabel": "none",
+      "protected": true|});
+  List.iter
+    (fun (state, expected) ->
+      let loaded =
+        {
+          protected with
+          host_paths = { protected.host_paths with git_protection = state };
+        }
+      in
+      let run, _ = fake (ok (container "running")) in
+      assert ((collect ~loaded run).protection.git = expected))
+    [
+      (Host_paths.Unprotected, "unprotected");
+      (Disabled, "disabled");
+      (Not_applicable, "not-applicable");
+    ];
   (* SELinux is detected only when it decides a relabel mismatch. *)
   let mounted =
     let base =

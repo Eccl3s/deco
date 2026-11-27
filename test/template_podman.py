@@ -88,8 +88,12 @@ with tempfile.TemporaryDirectory(prefix='deco-debian-workflow-') as directory:
         assert report['runtime']=={'user_mode':'keep-id','workdir':'/workspace','shell':'bash'},report
         assert report['security']=={'privileged':False,'devices':[],'cap_add':[],
                                     'cap_drop':['ALL'],'security_options':[]},report
+        # .deco is mounted read-only over the workspace; the project has no .git.
+        assert report['protection']=={'deco':'protected','git':'not-applicable'},report
         assert report['mounts']==[{'source':str(root),'target':'/workspace','type':'bind',
-                                   'readonly':False,'relabel':'private'}],report
+                                   'readonly':False,'relabel':'private','protected':False},
+                                  {'source':str(root/'.deco'),'target':'/workspace/.deco','type':'bind',
+                                   'readonly':True,'relabel':'none','protected':True}],report
         human=deco('info',cwd=root).stdout
         assert container_id in human and ' UTC (' in human and 'Compatible:  yes' in human,human
         assert '\x1b' not in human and 'network.mode' in human,human

@@ -74,12 +74,24 @@ type environment = {
 (** The configured container environment, like {!security} taken from the
     configuration rather than the existing container. *)
 
+type protection = {
+  deco : string;  (** [protected] or [not-applicable]. *)
+  git : string;
+      (** [protected], [unprotected], [disabled] or [not-applicable]. *)
+}
+(** The workspace protection applied when the container is created
+    ([specs/deco-cli.md], Workspace protection), determined from the host
+    filesystem. *)
+
 type mount = {
   source : string;  (** Host path, or ["-"] for source-less mounts. *)
   target : string;
   kind : string;  (** Mount type, such as ["bind"]. *)
   readonly : bool;
   relabel : string;  (** [shared], [private] or [none]. *)
+  protected : bool;
+      (** [true] for the read-only mounts workspace protection adds after the
+          workspace mount. *)
 }
 
 type port = { host : int; container : int; protocol : string; bind : string }
@@ -106,6 +118,7 @@ type report = {
   runtime : runtime;
   security : security;
   environment : environment;
+  protection : protection;
   mounts : mount list;
   dns : string list;
   ports : port list;
